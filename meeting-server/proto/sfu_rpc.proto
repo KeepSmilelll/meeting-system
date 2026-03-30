@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package sfu_rpc;
+
+option go_package = "meeting-server/signaling/protocol/pb;pb";
+
+message CreateRoomReq {
+  string meeting_id = 1;
+  int32 max_publishers = 2;
+}
+
+message CreateRoomRsp {
+  bool success = 1;
+  string sfu_address = 2;
+}
+
+message DestroyRoomReq {
+  string meeting_id = 1;
+}
+
+message DestroyRoomRsp {
+  bool success = 1;
+}
+
+message AddPublisherReq {
+  string meeting_id = 1;
+  string user_id = 2;
+  uint32 audio_ssrc = 3;
+  uint32 video_ssrc = 4;
+}
+
+message AddPublisherRsp {
+  bool success = 1;
+  uint32 udp_port = 2;
+}
+
+message RemovePublisherReq {
+  string meeting_id = 1;
+  string user_id = 2;
+}
+
+message RemovePublisherRsp {
+  bool success = 1;
+}
+
+message QualityReport {
+  string meeting_id = 1;
+  string user_id = 2;
+  float packet_loss = 3;
+  uint32 rtt_ms = 4;
+  uint32 jitter_ms = 5;
+  uint32 bitrate_kbps = 6;
+}
+
+message KeyframeRequest {
+  string meeting_id = 1;
+  string user_id = 2;
+}

@@ -32,3 +32,10 @@ bin/
 
 # Logs
 *.log
+
+# Local Go toolchain/cache
+.gocache/
+.gomodcache/
+gopath/
+tools/go/
+tools/go.zip

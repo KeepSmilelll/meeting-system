@@ -25,5 +25,6 @@ go test ./...
 
 ## 已知限制
 
-- 当前 payload 使用 JSON（Phase 0 已提供 `proto/signaling.proto`，可通过 `proto/generate.ps1` 生成 pb 后替换）
+- 当前 payload 已切换为 Protobuf 二进制（基于 `proto/signaling.proto` 生成的 `protocol/pb`）
 - Redis/MySQL/SFU RPC 尚未接入（后续阶段接入）
+
