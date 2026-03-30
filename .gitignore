@@ -1,0 +1,34 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.user
+*.suo
+
+# Build
+build/
+build_*/
+out/
+cmake-build-*/
+
+# C++ artifacts
+*.obj
+*.pdb
+*.ilk
+*.exe
+*.dll
+*.lib
+*.a
+
+# Go
+bin/
+*.test
+
+# Generated protobuf (optional)
+**/protocol/pb/*.pb.go
+
+# Logs
+*.log

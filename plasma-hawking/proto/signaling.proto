@@ -1,0 +1,210 @@
+syntax = "proto3";
+
+package meeting;
+
+option go_package = "meeting-server/signaling/protocol/pb;pb";
+
+message ErrorInfo {
+  int32 code = 1;
+  string message = 2;
+}
+
+message AuthLoginReq {
+  string username = 1;
+  string password_hash = 2;
+  string device_id = 3;
+  string platform = 4;
+}
+
+message AuthLoginRsp {
+  bool success = 1;
+  ErrorInfo error = 2;
+  string token = 3;
+  string user_id = 4;
+  string display_name = 5;
+  string avatar_url = 6;
+}
+
+message AuthLogoutReq {}
+
+message AuthLogoutRsp {
+  bool success = 1;
+}
+
+message AuthHeartbeatReq {
+  int64 client_timestamp = 1;
+}
+
+message AuthHeartbeatRsp {
+  int64 server_timestamp = 1;
+}
+
+message AuthKickNotify {
+  string reason = 1;
+}
+
+message MeetCreateReq {
+  string title = 1;
+  string password = 2;
+  int32 max_participants = 3;
+}
+
+message MeetCreateRsp {
+  bool success = 1;
+  ErrorInfo error = 2;
+  string meeting_id = 3;
+}
+
+message MeetJoinReq {
+  string meeting_id = 1;
+  string password = 2;
+}
+
+message IceServer {
+  string urls = 1;
+  string username = 2;
+  string credential = 3;
+}
+
+message Participant {
+  string user_id = 1;
+  string display_name = 2;
+  string avatar_url = 3;
+  int32 role = 4;
+  bool is_audio_on = 5;
+  bool is_video_on = 6;
+  bool is_sharing = 7;
+}
+
+message MeetJoinRsp {
+  bool success = 1;
+  ErrorInfo error = 2;
+  string meeting_id = 3;
+  string title = 4;
+  string sfu_address = 5;
+  repeated IceServer ice_servers = 6;
+  repeated Participant participants = 7;
+}
+
+message MeetLeaveReq {}
+
+message MeetLeaveRsp {
+  bool success = 1;
+}
+
+message MeetKickReq {
+  string target_user_id = 1;
+}
+
+message MeetKickRsp {
+  bool success = 1;
+  ErrorInfo error = 2;
+}
+
+message MeetMuteAllReq {
+  bool mute = 1;
+}
+
+message MeetMuteAllRsp {
+  bool success = 1;
+}
+
+message MeetStateSyncNotify {
+  string meeting_id = 1;
+  string title = 2;
+  string host_id = 3;
+  repeated Participant participants = 4;
+}
+
+message MeetParticipantJoinNotify {
+  Participant participant = 1;
+}
+
+message MeetParticipantLeaveNotify {
+  string user_id = 1;
+  string reason = 2;
+}
+
+message MeetHostChangedNotify {
+  string new_host_id = 1;
+  string new_host_name = 2;
+}
+
+message MediaOffer {
+  string target_user_id = 1;
+  string sdp = 2;
+}
+
+message MediaAnswer {
+  string target_user_id = 1;
+  string sdp = 2;
+}
+
+message MediaIceCandidate {
+  string target_user_id = 1;
+  string candidate = 2;
+  string sdp_mid = 3;
+  int32 sdp_mline_index = 4;
+}
+
+message MediaMuteToggle {
+  int32 media_type = 1;
+  bool muted = 2;
+}
+
+message MediaScreenShare {
+  bool sharing = 1;
+}
+
+message ChatSendReq {
+  int32 type = 1;
+  string content = 2;
+  string reply_to_id = 3;
+}
+
+message ChatSendRsp {
+  bool success = 1;
+  ErrorInfo error = 2;
+  string message_id = 3;
+  int64 timestamp = 4;
+}
+
+message ChatRecvNotify {
+  string message_id = 1;
+  string sender_id = 2;
+  string sender_name = 3;
+  int32 type = 4;
+  string content = 5;
+  string reply_to_id = 6;
+  int64 timestamp = 7;
+}
+
+message FileOfferReq {
+  string file_name = 1;
+  int64 file_size = 2;
+  string file_hash = 3;
+}
+
+message FileOfferRsp {
+  bool success = 1;
+  ErrorInfo error = 2;
+  string transfer_id = 3;
+}
+
+message FileAcceptReq {
+  string transfer_id = 1;
+  bool accepted = 2;
+}
+
+message FileChunkData {
+  string transfer_id = 1;
+  int64 offset = 2;
+  bytes data = 3;
+}
+
+message FileCompleteNotify {
+  string transfer_id = 1;
+  bool success = 2;
+  string file_hash = 3;
+}
+
