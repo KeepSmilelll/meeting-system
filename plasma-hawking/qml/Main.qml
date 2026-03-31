@@ -1,14 +1,83 @@
 import QtQuick
-import QtQuick.Controls
+import QtQuick.Controls as Controls
 import QtQuick.Layouts
 import "components"
+import "dialogs"
+import "pages"
 
-ApplicationWindow {
+Controls.ApplicationWindow {
     id: rootWindow
+    required property var meetingController
+    required property var appStateMachine
     visible: true
-    width: 960
-    height: 640
+    width: 1280
+    height: 820
+    minimumWidth: 1024
+    minimumHeight: 720
     title: "Meeting Client"
+    color: "#08111f"
+
+    Rectangle {
+        anchors.fill: parent
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: "#08111f" }
+            GradientStop { position: 1.0; color: "#0f172a" }
+        }
+    }
+
+    Rectangle {
+        x: -140
+        y: -100
+        width: 360
+        height: 360
+        radius: 180
+        color: "#0f766e"
+        opacity: 0.18
+    }
+
+    Rectangle {
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.rightMargin: -120
+        anchors.bottomMargin: -100
+        width: 420
+        height: 420
+        radius: 210
+        color: "#f59e0b"
+        opacity: 0.10
+    }
+
+    CreateMeetingDialog {
+        id: createMeetingDialog
+        controller: meetingController
+    }
+
+    Connections {
+        target: meetingController
+
+        function syncState() {
+            appStateMachine.update(meetingController.connected, meetingController.loggedIn, meetingController.inMeeting)
+            appStateMachine.reconnecting = meetingController.reconnecting
+        }
+
+        function onConnectedChanged() {
+            syncState()
+        }
+
+        function onLoggedInChanged() {
+            syncState()
+        }
+
+        function onInMeetingChanged() {
+            syncState()
+        }
+
+        function onReconnectingChanged() {
+            syncState()
+        }
+
+        Component.onCompleted: syncState()
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -19,163 +88,79 @@ ApplicationWindow {
             Layout.fillWidth: true
         }
 
-        ColumnLayout {
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: appStateMachine.reconnecting ? 34 : 0
+            visible: appStateMachine.reconnecting
+            color: "#7c2d12"
+            border.color: "#f59e0b"
+
+            Controls.Label {
+                anchors.centerIn: parent
+                text: "Connection lost, retrying..."
+                color: "#fef3c7"
+                font.pixelSize: 13
+            }
+        }
+
+        StackLayout {
+            id: contentStack
             Layout.fillWidth: true
             Layout.fillHeight: true
-            anchors.margins: 24
-            spacing: 12
+            currentIndex: appStateMachine.inMeeting ? 2 : (appStateMachine.loggedIn ? 1 : 0)
 
-            Rectangle {
-                Layout.fillWidth: true
-                height: 40
-                radius: 6
-                visible: meetingController.reconnecting
-                color: "#fef3c7"
-                border.color: "#f59e0b"
-
-                Text {
-                    anchors.centerIn: parent
-                    text: "Reconnecting..."
-                    color: "#92400e"
-                    font.pixelSize: 14
-                }
-            }
-
-            GroupBox {
-                Layout.fillWidth: true
-                title: "Login"
-                visible: !meetingController.loggedIn
-
-                ColumnLayout {
-                    anchors.fill: parent
-                    spacing: 8
-
-                    TextField {
-                        id: usernameInput
-                        placeholderText: "Username"
-                        text: "demo"
-                        Layout.fillWidth: true
-                    }
-
-                    TextField {
-                        id: passwordInput
-                        placeholderText: "Password"
-                        echoMode: TextInput.Password
-                        text: "demo"
-                        Layout.fillWidth: true
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-
-                        Button {
-                            text: "Login"
-                            onClicked: meetingController.login(usernameInput.text, passwordInput.text)
-                        }
-                    }
-                }
-            }
-
-            GroupBox {
+            LoginDialog {
+                controller: meetingController
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                title: "Meeting"
-                visible: meetingController.loggedIn
-
-                ColumnLayout {
-                    anchors.fill: parent
-                    spacing: 12
-
-                    Text {
-                        text: meetingController.inMeeting ? "In Meeting: " + meetingController.meetingId : "Not in meeting"
-                        font.pixelSize: 20
-                    }
-
-                    RowLayout {
-                        spacing: 8
-
-                        TextField {
-                            id: meetingInput
-                            placeholderText: "Meeting ID"
-                            Layout.preferredWidth: 220
-                        }
-
-                        Button {
-                            text: "Create"
-                            onClicked: meetingController.createMeeting("Quick Meeting", "")
-                        }
-
-                        Button {
-                            text: "Join"
-                            onClicked: meetingController.joinMeeting(meetingInput.text, "")
-                        }
-
-                        Button {
-                            text: "Leave"
-                            enabled: meetingController.inMeeting
-                            onClicked: meetingController.leaveMeeting()
-                        }
-                    }
-
-                    RowLayout {
-                        spacing: 8
-
-                        Button {
-                            text: meetingController.audioMuted ? "Unmute Audio" : "Mute Audio"
-                            enabled: meetingController.inMeeting
-                            onClicked: meetingController.toggleAudio()
-                        }
-
-                        Button {
-                            text: meetingController.videoMuted ? "Unmute Video" : "Mute Video"
-                            enabled: meetingController.inMeeting
-                            onClicked: meetingController.toggleVideo()
-                        }
-
-                        Item {
-                            Layout.fillWidth: true
-                        }
-
-                        Button {
-                            text: "Logout"
-                            onClicked: meetingController.logout()
-                        }
-                    }
-
-                    GroupBox {
-                        title: "Participants"
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-
-                        ListView {
-                            anchors.fill: parent
-                            model: meetingController.participants
-                            clip: true
-
-                            delegate: Rectangle {
-                                width: ListView.view.width
-                                height: 36
-                                color: index % 2 === 0 ? "#f5f7fa" : "#ffffff"
-
-                                Text {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    anchors.left: parent.left
-                                    anchors.leftMargin: 10
-                                    text: modelData
-                                    color: "#1f2937"
-                                }
-                            }
-                        }
-                    }
-                }
             }
 
-            Text {
-                id: statusText
-                text: meetingController.statusText
-                color: "#5f6b76"
-                font.pixelSize: 14
+            HomePage {
+                controller: meetingController
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+            }
+
+            MeetingRoom {
+                controller: meetingController
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+            }
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 34
+            color: "#0f172a"
+            border.color: "#1e293b"
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                spacing: 12
+
+                Controls.Label {
+                    text: appStateMachine.stateName + " · " + meetingController.statusText
+                    color: "#dbeafe"
+                    font.pixelSize: 12
+                    elide: Text.ElideRight
+                    Layout.fillWidth: true
+                }
+
+                Controls.Button {
+                    visible: appStateMachine.loggedIn && !appStateMachine.inMeeting && !appStateMachine.reconnecting
+                    text: "Create meeting"
+                    onClicked: createMeetingDialog.open()
+                }
+
+                Controls.Label {
+                    text: appStateMachine.inMeeting ? "Meeting" : (appStateMachine.loggedIn ? "Home" : "Login")
+                    color: "#94a3b8"
+                    font.pixelSize: 12
+                }
             }
         }
     }
 }
+

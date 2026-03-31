@@ -5,6 +5,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 namespace av::capture {
@@ -32,7 +33,11 @@ public:
     bool popFrameForEncode(AudioFrame& outFrame, std::chrono::milliseconds timeout);
 
 private:
+    struct Impl;
+    friend struct Impl;
+
     std::atomic<bool> m_running{false};
+    std::unique_ptr<Impl> m_impl;
     common::RingBuffer<AudioFrame> m_ringBuffer;
 };
 

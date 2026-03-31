@@ -17,10 +17,15 @@ constexpr quint16 kAuthLoginReq = 0x0101;
 constexpr quint16 kAuthLoginRsp = 0x0102;
 constexpr quint16 kAuthHeartbeatReq = 0x0105;
 constexpr quint16 kAuthHeartbeatRsp = 0x0106;
+constexpr quint16 kAuthKickNotify = 0x0107;
 constexpr quint16 kMeetCreateReq = 0x0201;
 constexpr quint16 kMeetCreateRsp = 0x0202;
 constexpr quint16 kMeetJoinReq = 0x0203;
 constexpr quint16 kMeetJoinRsp = 0x0204;
+constexpr quint16 kMeetLeaveReq = 0x0205;
+constexpr quint16 kMeetLeaveRsp = 0x0206;
+constexpr quint16 kMediaOffer = 0x0301;
+constexpr quint16 kMediaAnswer = 0x0302;
 constexpr quint16 kChatSendReq = 0x0401;
 constexpr quint16 kChatSendRsp = 0x0402;
 constexpr quint16 kChatRecvNotify = 0x0403;
@@ -93,10 +98,15 @@ bool SignalingClient::isConnected() const {
 void SignalingClient::login(const QString& username,
                             const QString& passwordHash,
                             const QString& deviceId,
-                            const QString& platform) {
+                            const QString& platform,
+                            bool useResumeToken) {
     meeting::AuthLoginReq req;
     req.set_username(username.toStdString());
-    req.set_password_hash(passwordHash.toStdString());
+    if (useResumeToken) {
+        req.set_resume_token(passwordHash.toStdString());
+    } else {
+        req.set_password_hash(passwordHash.toStdString());
+    }
     req.set_device_id(deviceId.toStdString());
     req.set_platform(platform.toStdString());
 
@@ -159,6 +169,18 @@ void SignalingClient::joinMeeting(const QString& meetingId, const QString& passw
     sendRawFrame(kMeetJoinReq, payload);
 }
 
+void SignalingClient::leaveMeeting() {
+    meeting::MeetLeaveReq req;
+
+    std::string payload;
+    if (!req.SerializeToString(&payload)) {
+        emit protocolError(QStringLiteral("Failed to serialize MeetLeaveReq"));
+        return;
+    }
+
+    sendRawFrame(kMeetLeaveReq, payload);
+}
+
 void SignalingClient::sendChat(int type, const QString& content, const QString& replyToId) {
     meeting::ChatSendReq req;
     req.set_type(type);
@@ -174,6 +196,34 @@ void SignalingClient::sendChat(int type, const QString& content, const QString& 
     }
 
     sendRawFrame(kChatSendReq, payload);
+}
+
+void SignalingClient::sendMediaOffer(const QString& targetUserId, const QString& sdp) {
+    meeting::MediaOffer req;
+    req.set_target_user_id(targetUserId.toStdString());
+    req.set_sdp(sdp.toStdString());
+
+    std::string payload;
+    if (!req.SerializeToString(&payload)) {
+        emit protocolError(QStringLiteral("Failed to serialize MediaOffer"));
+        return;
+    }
+
+    sendRawFrame(kMediaOffer, payload);
+}
+
+void SignalingClient::sendMediaAnswer(const QString& targetUserId, const QString& sdp) {
+    meeting::MediaAnswer req;
+    req.set_target_user_id(targetUserId.toStdString());
+    req.set_sdp(sdp.toStdString());
+
+    std::string payload;
+    if (!req.SerializeToString(&payload)) {
+        emit protocolError(QStringLiteral("Failed to serialize MediaAnswer"));
+        return;
+    }
+
+    sendRawFrame(kMediaAnswer, payload);
 }
 
 void SignalingClient::processIncomingFrames() {
@@ -228,6 +278,16 @@ void SignalingClient::handlePayload(quint16 signalType, const QByteArray& payloa
         emit heartbeatReceived(static_cast<qint64>(rsp.server_timestamp()));
         return;
     }
+    case kAuthKickNotify: {
+        meeting::AuthKickNotify notify;
+        if (!notify.ParseFromArray(payload.constData(), payload.size())) {
+            emit protocolError(QStringLiteral("Failed to parse AuthKickNotify"));
+            return;
+        }
+
+        emit kicked(toQtString(notify.reason()));
+        return;
+    }
     case kMeetCreateRsp: {
         meeting::MeetCreateRsp rsp;
         if (!rsp.ParseFromArray(payload.constData(), payload.size())) {
@@ -248,12 +308,46 @@ void SignalingClient::handlePayload(quint16 signalType, const QByteArray& payloa
 
         QStringList participants;
         participants.reserve(rsp.participants_size());
+        QString hostUserId;
         for (const auto& p : rsp.participants()) {
             participants.push_back(QStringLiteral("%1 (%2)").arg(toQtString(p.display_name()), toQtString(p.user_id())));
+            if (p.role() == 1) {
+                hostUserId = toQtString(p.user_id());
+            }
         }
 
         const QString err = rsp.has_error() ? protobufError(rsp.error()) : QString();
-        emit joinMeetingFinished(rsp.success(), toQtString(rsp.meeting_id()), toQtString(rsp.title()), participants, err);
+        emit joinMeetingFinished(rsp.success(), toQtString(rsp.meeting_id()), toQtString(rsp.title()), participants, hostUserId, err);
+        return;
+    }
+    case kMeetLeaveRsp: {
+        meeting::MeetLeaveRsp rsp;
+        if (!rsp.ParseFromArray(payload.constData(), payload.size())) {
+            emit protocolError(QStringLiteral("Failed to parse MeetLeaveRsp"));
+            return;
+        }
+
+        emit leaveMeetingFinished(rsp.success(), rsp.success() ? QString() : QStringLiteral("Leave meeting failed"));
+        return;
+    }
+    case kMediaOffer: {
+        meeting::MediaOffer offer;
+        if (!offer.ParseFromArray(payload.constData(), payload.size())) {
+            emit protocolError(QStringLiteral("Failed to parse MediaOffer"));
+            return;
+        }
+
+        emit mediaOfferReceived(toQtString(offer.target_user_id()), toQtString(offer.sdp()));
+        return;
+    }
+    case kMediaAnswer: {
+        meeting::MediaAnswer answer;
+        if (!answer.ParseFromArray(payload.constData(), payload.size())) {
+            emit protocolError(QStringLiteral("Failed to parse MediaAnswer"));
+            return;
+        }
+
+        emit mediaAnswerReceived(toQtString(answer.target_user_id()), toQtString(answer.sdp()));
         return;
     }
     case kChatSendRsp: {

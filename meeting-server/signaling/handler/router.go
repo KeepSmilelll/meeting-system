@@ -17,14 +17,19 @@ type Router struct {
 
 	authHandler    *AuthHandler
 	meetingHandler *MeetingHandler
+	mediaHandler   *MediaHandler
 	chatHandler    *ChatHandler
 }
 
-func NewRouter(cfg config.Config, sessions *server.SessionManager, memStore *store.MemoryStore, roomStateStore *store.RedisRoomStore, tokenManager *auth.TokenManager, limiter *auth.RateLimiter) *Router {
+func NewRouter(cfg config.Config, sessions *server.SessionManager, memStore *store.MemoryStore, meetingStore store.MeetingLifecycleStore, roomStateStore *store.RedisRoomStore, tokenManager *auth.TokenManager, limiter *auth.RateLimiter, meetingMirror ...MeetingMirror) *Router {
 	r := &Router{handlers: make(map[protocol.SignalType]HandlerFunc)}
 
 	r.authHandler = NewAuthHandler(sessions, memStore, tokenManager, limiter)
-	r.meetingHandler = NewMeetingHandler(cfg, sessions, memStore, roomStateStore)
+	if meetingStore == nil {
+		meetingStore = memStore
+	}
+	r.meetingHandler = NewMeetingHandler(cfg, sessions, meetingStore, roomStateStore, meetingMirror...)
+	r.mediaHandler = NewMediaHandler(sessions)
 	r.chatHandler = NewChatHandler(cfg, sessions, memStore)
 
 	r.Register(protocol.AuthLoginReq, r.authHandler.HandleLogin)
@@ -36,6 +41,10 @@ func NewRouter(cfg config.Config, sessions *server.SessionManager, memStore *sto
 	r.Register(protocol.MeetLeaveReq, r.meetingHandler.HandleLeave)
 	r.Register(protocol.MeetKickReq, r.meetingHandler.HandleKick)
 	r.Register(protocol.MeetMuteAllReq, r.meetingHandler.HandleMuteAll)
+
+	r.Register(protocol.MediaOffer, r.mediaHandler.HandleOffer)
+	r.Register(protocol.MediaAnswer, r.mediaHandler.HandleAnswer)
+	r.Register(protocol.MediaIceCandidate, r.mediaHandler.HandleIceCandidate)
 
 	r.Register(protocol.ChatSendReq, r.chatHandler.HandleSend)
 
@@ -83,6 +92,8 @@ func isStateAllowed(state server.SessionState, msgType protocol.SignalType) bool
 	case protocol.MeetCreateReq, protocol.MeetJoinReq:
 		return state == server.StateAuthenticated
 	case protocol.MeetLeaveReq, protocol.ChatSendReq, protocol.MeetKickReq, protocol.MeetMuteAllReq:
+		return state == server.StateInMeeting
+	case protocol.MediaOffer, protocol.MediaAnswer, protocol.MediaIceCandidate:
 		return state == server.StateInMeeting
 	default:
 		return true

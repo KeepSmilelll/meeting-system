@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+
 	"meeting-server/signaling/config"
 	"meeting-server/signaling/protocol"
 	"meeting-server/signaling/server"
@@ -13,12 +14,19 @@ import (
 type MeetingHandler struct {
 	cfg       config.Config
 	sessions  *server.SessionManager
-	store     *store.MemoryStore
+	store     store.MeetingLifecycleStore
 	roomState *store.RedisRoomStore
+	mirror    MeetingMirror
 }
 
-func NewMeetingHandler(cfg config.Config, sessions *server.SessionManager, memStore *store.MemoryStore, roomState *store.RedisRoomStore) *MeetingHandler {
-	return &MeetingHandler{cfg: cfg, sessions: sessions, store: memStore, roomState: roomState}
+func NewMeetingHandler(cfg config.Config, sessions *server.SessionManager, meetingStore store.MeetingLifecycleStore, roomState *store.RedisRoomStore, mirrors ...MeetingMirror) *MeetingHandler {
+	return &MeetingHandler{
+		cfg:       cfg,
+		sessions:  sessions,
+		store:     meetingStore,
+		roomState: roomState,
+		mirror:    ComposeMeetingMirrors(mirrors...),
+	}
 }
 
 func (h *MeetingHandler) HandleCreate(session *server.Session, payload []byte) {
@@ -41,8 +49,9 @@ func (h *MeetingHandler) HandleCreate(session *server.Session, payload []byte) {
 	_ = h.roomState.UpsertRoom(ctx, meeting.ID, hostParticipant.UserId)
 	_ = h.roomState.AddMember(ctx, meeting.ID, hostParticipant)
 
-	_ = session.Send(protocol.MeetCreateRsp, &protocol.MeetCreateRspBody{Success: true, MeetingId: meeting.ID})
+	_ = h.mirrorMeetingCreate(ctx, meeting, hostParticipant)
 
+	_ = session.Send(protocol.MeetCreateRsp, &protocol.MeetCreateRspBody{Success: true, MeetingId: meeting.ID})
 	_ = session.Send(protocol.MeetJoinRsp, &protocol.MeetJoinRspBody{
 		Success:      true,
 		MeetingId:    meeting.ID,
@@ -76,7 +85,9 @@ func (h *MeetingHandler) HandleJoin(session *server.Session, payload []byte) {
 	session.SetMeetingID(meeting.ID)
 	session.SetState(server.StateInMeeting)
 
-	_ = h.roomState.AddMember(context.Background(), meeting.ID, joined)
+	ctx := context.Background()
+	_ = h.roomState.AddMember(ctx, meeting.ID, joined)
+	_ = h.mirrorMeetingJoin(ctx, meeting, joined)
 
 	_ = session.Send(protocol.MeetJoinRsp, &protocol.MeetJoinRspBody{
 		Success:      true,
@@ -142,7 +153,9 @@ func (h *MeetingHandler) HandleKick(session *server.Session, payload []byte) {
 		return
 	}
 
-	_ = h.roomState.RemoveMember(context.Background(), meetingID, req.TargetUserId)
+	ctx := context.Background()
+	_ = h.roomState.RemoveMember(ctx, meetingID, req.TargetUserId)
+	_ = h.mirrorMeetingLeave(ctx, meetingID, req.TargetUserId, "被主持人移出会议")
 
 	reason := "被主持人移出会议"
 	if kickedSession, ok := h.sessions.GetByUser(req.TargetUserId); ok && kickedSession.MeetingID() == meetingID {
@@ -153,11 +166,13 @@ func (h *MeetingHandler) HandleKick(session *server.Session, payload []byte) {
 
 	h.sessions.BroadcastToRoom(meetingID, protocol.MeetParticipantLeave, &protocol.MeetParticipantLeaveNotifyBody{UserId: req.TargetUserId, Reason: reason}, req.TargetUserId)
 	if hostChanged && newHost != nil {
-		_ = h.roomState.TransferHost(context.Background(), meetingID, newHost.UserId)
+		_ = h.roomState.TransferHost(ctx, meetingID, newHost.UserId)
+		_ = h.mirrorMeetingTransferHost(ctx, meetingID, newHost.UserId)
 		h.sessions.BroadcastToRoom(meetingID, protocol.MeetHostChanged, &protocol.MeetHostChangedNotifyBody{NewHostId: newHost.UserId, NewHostName: newHost.DisplayName}, "")
 	}
 	if remaining == 0 {
-		_ = h.roomState.DeleteRoom(context.Background(), meetingID)
+		_ = h.roomState.DeleteRoom(ctx, meetingID)
+		_ = h.mirrorMeetingDelete(ctx, meetingID)
 	}
 
 	_ = session.Send(protocol.MeetKickRsp, &protocol.MeetKickRspBody{Success: true})
@@ -195,27 +210,72 @@ func (h *MeetingHandler) leave(session *server.Session, reply bool, reason strin
 	}
 
 	userID := session.UserID()
+	ctx := context.Background()
 	hostChanged, newHost, remaining, err := h.store.LeaveMeeting(meetingID, userID)
 	if err == nil {
-		_ = h.roomState.RemoveMember(context.Background(), meetingID, userID)
+		_ = h.roomState.RemoveMember(ctx, meetingID, userID)
+		_ = h.mirrorMeetingLeave(ctx, meetingID, userID, reason)
 
 		h.sessions.BroadcastToRoom(meetingID, protocol.MeetParticipantLeave, &protocol.MeetParticipantLeaveNotifyBody{UserId: userID, Reason: reason}, userID)
 		if hostChanged && newHost != nil {
-			_ = h.roomState.TransferHost(context.Background(), meetingID, newHost.UserId)
-			h.sessions.BroadcastToRoom(meetingID, protocol.MeetHostChanged, &protocol.MeetHostChangedNotifyBody{NewHostId: newHost.UserId, NewHostName: newHost.DisplayName}, "")
+			_ = h.roomState.TransferHost(ctx, meetingID, newHost.UserId)
+			_ = h.mirrorMeetingTransferHost(ctx, meetingID, newHost.UserId)
+			h.sessions.BroadcastToRoom(meetingID, protocol.MeetHostChanged, &protocol.MeetHostChangedNotifyBody{NewHostId: newHost.UserId, NewHostName: newHost.DisplayName}, userID)
 		}
 
 		if remaining == 0 {
-			_ = h.roomState.DeleteRoom(context.Background(), meetingID)
+			_ = h.roomState.DeleteRoom(ctx, meetingID)
+			_ = h.mirrorMeetingDelete(ctx, meetingID)
 		}
 	}
 
 	session.SetMeetingID("")
-	session.SetState(server.StateAuthenticated)
-
 	if reply {
+		session.SetState(server.StateAuthenticated)
 		_ = session.Send(protocol.MeetLeaveRsp, &protocol.MeetLeaveRspBody{Success: true})
 	}
+}
+
+func (h *MeetingHandler) mirrorMeetingCreate(ctx context.Context, meeting *store.Meeting, host *protocol.Participant) error {
+	if h == nil || h.mirror == nil || meeting == nil {
+		return nil
+	}
+
+	meetingCopy := *meeting
+	return h.mirror.MirrorCreate(ctx, &meetingCopy, cloneParticipant(host))
+}
+
+func (h *MeetingHandler) mirrorMeetingJoin(ctx context.Context, meeting *store.Meeting, participant *protocol.Participant) error {
+	if h == nil || h.mirror == nil || meeting == nil {
+		return nil
+	}
+
+	meetingCopy := *meeting
+	return h.mirror.MirrorJoin(ctx, &meetingCopy, cloneParticipant(participant))
+}
+
+func (h *MeetingHandler) mirrorMeetingLeave(ctx context.Context, meetingID, userID, reason string) error {
+	if h == nil || h.mirror == nil || meetingID == "" || userID == "" {
+		return nil
+	}
+
+	return h.mirror.MirrorLeave(ctx, meetingID, userID, reason)
+}
+
+func (h *MeetingHandler) mirrorMeetingTransferHost(ctx context.Context, meetingID, newHostUserID string) error {
+	if h == nil || h.mirror == nil || meetingID == "" || newHostUserID == "" {
+		return nil
+	}
+
+	return h.mirror.MirrorTransferHost(ctx, meetingID, newHostUserID)
+}
+
+func (h *MeetingHandler) mirrorMeetingDelete(ctx context.Context, meetingID string) error {
+	if h == nil || h.mirror == nil || meetingID == "" {
+		return nil
+	}
+
+	return h.mirror.MirrorDelete(ctx, meetingID)
 }
 
 func (h *MeetingHandler) replyKickError(session *server.Session, code int32, message string) {
@@ -259,3 +319,4 @@ func cloneParticipant(src *protocol.Participant) *protocol.Participant {
 	}
 	return cloned
 }
+

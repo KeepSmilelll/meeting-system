@@ -1,7 +1,9 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QVariant>
 
+#include "app/AppStateMachine.h"
 #include "app/MeetingController.h"
 
 int main(int argc, char* argv[]) {
@@ -9,7 +11,11 @@ int main(int argc, char* argv[]) {
 
     QQmlApplicationEngine engine;
     MeetingController controller;
-    engine.rootContext()->setContextProperty("meetingController", &controller);
+    AppStateMachine appStateMachine;
+    engine.setInitialProperties({
+        {QStringLiteral("meetingController"), QVariant::fromValue(&controller)},
+        {QStringLiteral("appStateMachine"), QVariant::fromValue(&appStateMachine)},
+    });
 
     const QUrl mainUrl(QStringLiteral("qrc:/MeetingApp/qml/Main.qml"));
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app, []() {
@@ -19,3 +25,4 @@ int main(int argc, char* argv[]) {
     engine.load(mainUrl);
     return app.exec();
 }
+

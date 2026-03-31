@@ -18,6 +18,8 @@ type Config struct {
 	JWTSecret         string
 	TokenTTL          time.Duration
 	DefaultSFUAddress string
+	SFURPCAddr        string
+	SFURPCTimeout     time.Duration
 
 	EnableRedis   bool
 	RedisAddr     string
@@ -43,6 +45,8 @@ func Load() Config {
 		JWTSecret:         getEnv("SIGNALING_JWT_SECRET", "dev-secret-change-me"),
 		TokenTTL:          getDuration("SIGNALING_TOKEN_TTL", 7*24*time.Hour),
 		DefaultSFUAddress: getEnv("SIGNALING_DEFAULT_SFU", "127.0.0.1:10000"),
+		SFURPCAddr:        getEnv("SIGNALING_SFU_RPC_ADDR", ""),
+		SFURPCTimeout:     getDuration("SIGNALING_SFU_RPC_TIMEOUT", 5*time.Second),
 
 		EnableRedis:   getBool("SIGNALING_ENABLE_REDIS", false),
 		RedisAddr:     getEnv("SIGNALING_REDIS_ADDR", "127.0.0.1:6379"),

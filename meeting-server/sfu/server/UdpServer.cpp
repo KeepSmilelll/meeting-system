@@ -1,17 +1,75 @@
 #include "server/UdpServer.h"
 
-#include <memory>
 #include <utility>
-
-#include <boost/system/error_code.hpp>
 
 namespace sfu {
 
-UdpServer::UdpServer(boost::asio::io_context& io, uint16_t listenPort, std::size_t maxPacketSize)
-    : io_(io),
-      socket_(io),
-      recvBuffer_(maxPacketSize > 0 ? maxPacketSize : 2048),
-      listenPort_(listenPort) {}
+UdpServer::UdpServer(std::size_t maxPacketSize, uint16_t listenPort)
+    : recvBuffer_(maxPacketSize > 0 ? maxPacketSize : 2048)
+    , listenPort_(listenPort) {}
+
+UdpServer::~UdpServer() {
+    Stop();
+}
+
+bool UdpServer::InitSockets() {
+#ifdef _WIN32
+    WSADATA data{};
+    return WSAStartup(MAKEWORD(2, 2), &data) == 0;
+#else
+    return true;
+#endif
+}
+
+void UdpServer::CleanupSockets() {
+#ifdef _WIN32
+    WSACleanup();
+#endif
+}
+
+void UdpServer::CloseSocket(SocketHandle socketHandle) {
+    if (socketHandle == kInvalidSocket) {
+        return;
+    }
+#ifdef _WIN32
+    closesocket(socketHandle);
+#else
+    close(socketHandle);
+#endif
+}
+
+bool UdpServer::SetReuseAddress(SocketHandle socketHandle) {
+    int reuse = 1;
+    return setsockopt(socketHandle, SOL_SOCKET, SO_REUSEADDR,
+                      reinterpret_cast<const char*>(&reuse), static_cast<int>(sizeof(reuse))) == 0;
+}
+
+bool UdpServer::BindAny(SocketHandle socketHandle, uint16_t listenPort) {
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    addr.sin_port = htons(listenPort);
+    return bind(socketHandle, reinterpret_cast<sockaddr*>(&addr), static_cast<int>(sizeof(addr))) == 0;
+}
+
+bool UdpServer::GetLocalPort(SocketHandle socketHandle, uint16_t* outPort) {
+    if (outPort == nullptr) {
+        return false;
+    }
+
+    sockaddr_in addr{};
+#ifdef _WIN32
+    int addrLen = static_cast<int>(sizeof(addr));
+#else
+    socklen_t addrLen = static_cast<socklen_t>(sizeof(addr));
+#endif
+    if (getsockname(socketHandle, reinterpret_cast<sockaddr*>(&addr), &addrLen) != 0) {
+        return false;
+    }
+
+    *outPort = ntohs(addr.sin_port);
+    return true;
+}
 
 bool UdpServer::Start(PacketHandler handler) {
     if (running_.exchange(true)) {
@@ -24,30 +82,32 @@ bool UdpServer::Start(PacketHandler handler) {
         return false;
     }
 
-    boost::system::error_code ec;
-    socket_.open(boost::asio::ip::udp::v4(), ec);
-    if (ec) {
+    if (!InitSockets()) {
         running_.store(false);
         return false;
     }
+    socketsStarted_ = true;
 
-    socket_.set_option(boost::asio::socket_base::reuse_address(true), ec);
-    if (ec) {
-        boost::system::error_code closeEc;
-        socket_.close(closeEc);
-        running_.store(false);
+    socket_ = static_cast<SocketHandle>(socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP));
+    if (socket_ == kInvalidSocket) {
+        Stop();
         return false;
     }
 
-    socket_.bind(boost::asio::ip::udp::endpoint(boost::asio::ip::udp::v4(), listenPort_), ec);
-    if (ec) {
-        boost::system::error_code closeEc;
-        socket_.close(closeEc);
-        running_.store(false);
+    if (!SetReuseAddress(socket_) || !BindAny(socket_, listenPort_)) {
+        Stop();
         return false;
     }
 
-    DoReceive();
+    if (!GetLocalPort(socket_, &listenPort_)) {
+        Stop();
+        return false;
+    }
+
+    receiverThread_ = std::thread([this]() {
+        ReceiveLoop();
+    });
+
     return true;
 }
 
@@ -56,62 +116,88 @@ void UdpServer::Stop() {
         return;
     }
 
-    boost::system::error_code ec;
-    socket_.close(ec);
+    CloseSocket(socket_);
+    socket_ = kInvalidSocket;
+
+    if (receiverThread_.joinable()) {
+        receiverThread_.join();
+    }
+
+    if (socketsStarted_) {
+        CleanupSockets();
+        socketsStarted_ = false;
+    }
 }
 
 void UdpServer::SendTo(const uint8_t* data, std::size_t len, const Endpoint& to) {
-    if (!running_.load() || data == nullptr || len == 0 || to.port() == 0) {
+    if (!running_.load() || data == nullptr || len == 0 || to.sin_port == 0 || socket_ == kInvalidSocket) {
         return;
     }
 
-    auto payload = std::make_shared<std::vector<uint8_t>>(data, data + len);
-    boost::asio::post(io_, [this, payload, to]() {
-        if (!running_.load()) {
-            return;
-        }
-
-        socket_.async_send_to(
-            boost::asio::buffer(*payload), to,
-            [payload](const boost::system::error_code&, std::size_t) {
-                // best-effort UDP forwarding; errors are intentionally ignored here
-            });
-    });
+    std::lock_guard<std::mutex> lock(sendMutex_);
+    const auto sent = sendto(socket_,
+                             reinterpret_cast<const char*>(data),
+                             static_cast<int>(len),
+                             0,
+                             reinterpret_cast<const sockaddr*>(&to),
+                             static_cast<int>(sizeof(to)));
+    (void)sent;
 }
 
 uint16_t UdpServer::Port() const {
-    if (!socket_.is_open()) {
+    if (socket_ == kInvalidSocket) {
         return listenPort_;
     }
 
-    boost::system::error_code ec;
-    const auto ep = socket_.local_endpoint(ec);
-    if (ec) {
-        return listenPort_;
+    uint16_t port = listenPort_;
+    if (GetLocalPort(socket_, &port)) {
+        return port;
     }
-    return ep.port();
+    return listenPort_;
 }
 
-void UdpServer::DoReceive() {
-    if (!running_.load()) {
-        return;
+void UdpServer::ReceiveLoop() {
+    while (running_.load()) {
+        fd_set readSet;
+        FD_ZERO(&readSet);
+        FD_SET(socket_, &readSet);
+
+        timeval tv{};
+        tv.tv_sec = 0;
+        tv.tv_usec = 100 * 1000;
+
+#ifdef _WIN32
+        const int rc = select(0, &readSet, nullptr, nullptr, &tv);
+#else
+        const int rc = select(socket_ + 1, &readSet, nullptr, nullptr, &tv);
+#endif
+        if (rc <= 0 || !FD_ISSET(socket_, &readSet)) {
+            continue;
+        }
+
+        Endpoint from{};
+#ifdef _WIN32
+        int fromLen = static_cast<int>(sizeof(from));
+#else
+        socklen_t fromLen = static_cast<socklen_t>(sizeof(from));
+#endif
+        const auto received = recvfrom(socket_,
+                                       reinterpret_cast<char*>(recvBuffer_.data()),
+                                       static_cast<int>(recvBuffer_.size()),
+                                       0,
+                                       reinterpret_cast<sockaddr*>(&from),
+                                       &fromLen);
+        if (!running_.load()) {
+            break;
+        }
+        if (received <= 0) {
+            continue;
+        }
+
+        if (handler_) {
+            handler_(recvBuffer_.data(), static_cast<std::size_t>(received), from);
+        }
     }
-
-    socket_.async_receive_from(
-        boost::asio::buffer(recvBuffer_), remoteEndpoint_,
-        [this](const boost::system::error_code& ec, std::size_t bytesReceived) {
-            if (!running_.load()) {
-                return;
-            }
-
-            if (!ec && bytesReceived > 0 && bytesReceived <= recvBuffer_.size() && handler_) {
-                handler_(recvBuffer_.data(), bytesReceived, remoteEndpoint_);
-            }
-
-            if (running_.load()) {
-                DoReceive();
-            }
-        });
 }
 
 } // namespace sfu

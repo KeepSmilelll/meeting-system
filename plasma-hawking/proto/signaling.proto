@@ -14,6 +14,7 @@ message AuthLoginReq {
   string password_hash = 2;
   string device_id = 3;
   string platform = 4;
+  string resume_token = 5;
 }
 
 message AuthLoginRsp {

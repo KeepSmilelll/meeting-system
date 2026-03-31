@@ -53,9 +53,11 @@ type MemoryStore struct {
 	userByID     map[string]User
 	meetings     map[string]*Meeting
 	participants map[string]map[string]*protocol.Participant // meetingID -> userID
+	joinOrder    map[string]map[string]uint64                // meetingID -> userID -> join sequence
 	meetingMsgs  map[string][]Message
 	meetingSeq   atomic.Uint64
 	messageSeq   atomic.Uint64
+	joinSeq      atomic.Uint64
 }
 
 func NewMemoryStore() *MemoryStore {
@@ -64,6 +66,7 @@ func NewMemoryStore() *MemoryStore {
 		userByID:     make(map[string]User),
 		meetings:     make(map[string]*Meeting),
 		participants: make(map[string]map[string]*protocol.Participant),
+		joinOrder:    make(map[string]map[string]uint64),
 		meetingMsgs:  make(map[string][]Message),
 	}
 
@@ -140,6 +143,7 @@ func (s *MemoryStore) CreateMeeting(title, password, hostUserID string, maxParti
 
 	s.meetings[meetingID] = meeting
 	s.participants[meetingID] = map[string]*protocol.Participant{hostUserID: hostParticipant}
+	s.joinOrder[meetingID] = map[string]uint64{hostUserID: s.joinSeq.Add(1)}
 
 	return meeting, hostParticipant, nil
 }
@@ -182,6 +186,10 @@ func (s *MemoryStore) JoinMeeting(meetingID, password, userID string) (*Meeting,
 		IsSharing:   false,
 	}
 	members[userID] = participant
+	if _, ok := s.joinOrder[meetingID]; !ok {
+		s.joinOrder[meetingID] = make(map[string]uint64)
+	}
+	s.joinOrder[meetingID][userID] = s.joinSeq.Add(1)
 
 	list := participantsToList(members)
 	return meeting, list, participant, nil
@@ -197,21 +205,23 @@ func (s *MemoryStore) LeaveMeeting(meetingID, userID string) (hostChanged bool, 
 	}
 
 	members := s.participants[meetingID]
+	joinOrder := s.joinOrder[meetingID]
 	delete(members, userID)
+	delete(joinOrder, userID)
 
 	if len(members) == 0 {
 		delete(s.participants, meetingID)
+		delete(s.joinOrder, meetingID)
 		delete(s.meetings, meetingID)
 		delete(s.meetingMsgs, meetingID)
 		return false, nil, 0, nil
 	}
 
 	if meeting.HostUserID == userID {
-		for uid, p := range members {
-			p.Role = 1
-			meeting.HostUserID = uid
-			return true, p, len(members), nil
-		}
+		nextHostID, nextHost := pickNextHostParticipant(members, joinOrder)
+		nextHost.Role = 1
+		meeting.HostUserID = nextHostID
+		return true, nextHost, len(members), nil
 	}
 
 	return false, nil, len(members), nil
@@ -275,6 +285,25 @@ func participantsToList(m map[string]*protocol.Participant) []*protocol.Particip
 		result = append(result, p)
 	}
 	return result
+}
+
+func pickNextHostParticipant(members map[string]*protocol.Participant, joinOrder map[string]uint64) (string, *protocol.Participant) {
+	var (
+		bestUserID string
+		bestSeq    uint64
+		best       *protocol.Participant
+	)
+
+	for userID, participant := range members {
+		seq := joinOrder[userID]
+		if best == nil || seq < bestSeq || (seq == bestSeq && userID < bestUserID) {
+			bestUserID = userID
+			bestSeq = seq
+			best = participant
+		}
+	}
+
+	return bestUserID, best
 }
 
 func (s *MemoryStore) generateMeetingIDLocked() string {

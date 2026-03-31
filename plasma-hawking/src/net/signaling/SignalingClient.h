@@ -27,11 +27,15 @@ public:
     void login(const QString& username,
                const QString& passwordHash,
                const QString& deviceId,
-               const QString& platform);
+               const QString& platform,
+               bool useResumeToken = false);
     void sendHeartbeat(qint64 clientTimestampMs = 0);
     void createMeeting(const QString& title, const QString& password, int maxParticipants);
     void joinMeeting(const QString& meetingId, const QString& password);
+    void leaveMeeting();
     void sendChat(int type, const QString& content, const QString& replyToId = {});
+    void sendMediaOffer(const QString& targetUserId, const QString& sdp);
+    void sendMediaAnswer(const QString& targetUserId, const QString& sdp);
 
 signals:
     void connectedChanged(bool connected);
@@ -44,7 +48,10 @@ signals:
                              const QString& meetingId,
                              const QString& title,
                              const QStringList& participants,
+                             const QString& hostUserId,
                              const QString& error);
+    void leaveMeetingFinished(bool success, const QString& error);
+    void kicked(const QString& reason);
     void chatSendFinished(bool success, const QString& messageId, const QString& error);
     void chatReceived(const QString& senderId,
                       const QString& senderName,
@@ -52,6 +59,8 @@ signals:
                       const QString& content,
                       const QString& replyToId,
                       qint64 timestamp);
+    void mediaOfferReceived(const QString& targetUserId, const QString& sdp);
+    void mediaAnswerReceived(const QString& targetUserId, const QString& sdp);
 
     // Forward-compatible escape hatch for unhandled protobuf messages.
     void protobufMessageReceived(quint16 signalType, const QByteArray& payload);
