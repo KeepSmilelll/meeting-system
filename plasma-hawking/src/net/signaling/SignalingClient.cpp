@@ -26,6 +26,8 @@ constexpr quint16 kMeetLeaveReq = 0x0205;
 constexpr quint16 kMeetLeaveRsp = 0x0206;
 constexpr quint16 kMediaOffer = 0x0301;
 constexpr quint16 kMediaAnswer = 0x0302;
+constexpr quint16 kMediaMuteToggle = 0x0304;
+constexpr quint16 kMediaScreenShare = 0x0305;
 constexpr quint16 kChatSendReq = 0x0401;
 constexpr quint16 kChatSendRsp = 0x0402;
 constexpr quint16 kChatRecvNotify = 0x0403;
@@ -198,10 +200,12 @@ void SignalingClient::sendChat(int type, const QString& content, const QString& 
     sendRawFrame(kChatSendReq, payload);
 }
 
-void SignalingClient::sendMediaOffer(const QString& targetUserId, const QString& sdp) {
+void SignalingClient::sendMediaOffer(const QString& targetUserId, const QString& sdp, quint32 audioSsrc, quint32 videoSsrc) {
     meeting::MediaOffer req;
     req.set_target_user_id(targetUserId.toStdString());
     req.set_sdp(sdp.toStdString());
+    req.set_audio_ssrc(audioSsrc);
+    req.set_video_ssrc(videoSsrc);
 
     std::string payload;
     if (!req.SerializeToString(&payload)) {
@@ -212,10 +216,12 @@ void SignalingClient::sendMediaOffer(const QString& targetUserId, const QString&
     sendRawFrame(kMediaOffer, payload);
 }
 
-void SignalingClient::sendMediaAnswer(const QString& targetUserId, const QString& sdp) {
+void SignalingClient::sendMediaAnswer(const QString& targetUserId, const QString& sdp, quint32 audioSsrc, quint32 videoSsrc) {
     meeting::MediaAnswer req;
     req.set_target_user_id(targetUserId.toStdString());
     req.set_sdp(sdp.toStdString());
+    req.set_audio_ssrc(audioSsrc);
+    req.set_video_ssrc(videoSsrc);
 
     std::string payload;
     if (!req.SerializeToString(&payload)) {
@@ -224,6 +230,33 @@ void SignalingClient::sendMediaAnswer(const QString& targetUserId, const QString
     }
 
     sendRawFrame(kMediaAnswer, payload);
+}
+
+void SignalingClient::sendMediaMuteToggle(int mediaType, bool muted) {
+    meeting::MediaMuteToggle req;
+    req.set_media_type(mediaType);
+    req.set_muted(muted);
+
+    std::string payload;
+    if (!req.SerializeToString(&payload)) {
+        emit protocolError(QStringLiteral("Failed to serialize MediaMuteToggle"));
+        return;
+    }
+
+    sendRawFrame(kMediaMuteToggle, payload);
+}
+
+void SignalingClient::sendMediaScreenShare(bool sharing) {
+    meeting::MediaScreenShare req;
+    req.set_sharing(sharing);
+
+    std::string payload;
+    if (!req.SerializeToString(&payload)) {
+        emit protocolError(QStringLiteral("Failed to serialize MediaScreenShare"));
+        return;
+    }
+
+    sendRawFrame(kMediaScreenShare, payload);
 }
 
 void SignalingClient::processIncomingFrames() {
@@ -397,3 +430,5 @@ void SignalingClient::sendRawFrame(quint16 signalType, const std::string& payloa
 }
 
 }  // namespace signaling
+
+

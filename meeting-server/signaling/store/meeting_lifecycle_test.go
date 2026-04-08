@@ -11,12 +11,13 @@ import (
 )
 
 type fakeMeetingRepo struct {
-	mu           sync.Mutex
-	nextID       uint64
-	meetingsByNo map[string]*model.Meeting
-	meetingsByID map[uint64]string
-	participants map[uint64]map[uint64]*model.Participant
-	calls        []string
+	mu                sync.Mutex
+	nextID            uint64
+	meetingsByNo      map[string]*model.Meeting
+	meetingsByID      map[uint64]string
+	participants      map[uint64]map[uint64]*model.Participant
+	participantSource *fakeParticipantRepo
+	calls             []string
 }
 
 func newFakeMeetingRepo() *fakeMeetingRepo {
@@ -81,10 +82,16 @@ func (r *fakeMeetingRepo) AddParticipant(ctx context.Context, participant *model
 		r.participants[participant.MeetingID] = bucket
 	}
 	copy := *participant
+	if copy.ID == 0 {
+		copy.ID = r.nextID
+		r.nextID++
+	}
 	if copy.JoinedAt.IsZero() {
 		copy.JoinedAt = time.Now().UTC()
 	}
 	bucket[copy.UserID] = &copy
+	participant.ID = copy.ID
+	participant.JoinedAt = copy.JoinedAt
 	return nil
 }
 
@@ -133,6 +140,19 @@ func (r *fakeMeetingRepo) TransferHost(ctx context.Context, meetingID uint64) (*
 	defer r.mu.Unlock()
 	r.record("transfer_host")
 	bucket := r.participants[meetingID]
+	if len(bucket) == 0 && r.participantSource != nil {
+		r.participantSource.mu.Lock()
+		source := r.participantSource.participants[meetingID]
+		if len(source) > 0 {
+			bucket = make(map[uint64]*model.Participant, len(source))
+			for userID, participant := range source {
+				copy := *participant
+				bucket[userID] = &copy
+			}
+			r.participants[meetingID] = bucket
+		}
+		r.participantSource.mu.Unlock()
+	}
 	var best *model.Participant
 	for _, participant := range bucket {
 		if participant.LeftAt != nil {
@@ -171,6 +191,83 @@ func (r *fakeMeetingRepo) DeleteMeeting(ctx context.Context, meetingID uint64) e
 	delete(r.meetingsByNo, meetingNo)
 	delete(r.participants, meetingID)
 	return nil
+}
+
+type fakeParticipantRepo struct {
+	mu           sync.Mutex
+	participants map[uint64]map[uint64]*model.Participant
+	calls        []string
+}
+
+func newFakeParticipantRepo() *fakeParticipantRepo {
+	return &fakeParticipantRepo{
+		participants: make(map[uint64]map[uint64]*model.Participant),
+	}
+}
+
+func (r *fakeParticipantRepo) record(call string) {
+	r.calls = append(r.calls, call)
+}
+
+func (r *fakeParticipantRepo) AddParticipant(ctx context.Context, participant *model.Participant) error {
+	_ = ctx
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.record("add_participant")
+	bucket, ok := r.participants[participant.MeetingID]
+	if !ok {
+		bucket = make(map[uint64]*model.Participant)
+		r.participants[participant.MeetingID] = bucket
+	}
+	copy := *participant
+	if copy.JoinedAt.IsZero() {
+		copy.JoinedAt = time.Now().UTC()
+	}
+	copy.ID = uint64(len(bucket) + 1)
+	bucket[copy.UserID] = &copy
+	participant.ID = copy.ID
+	participant.JoinedAt = copy.JoinedAt
+	return nil
+}
+
+func (r *fakeParticipantRepo) MarkParticipantLeft(ctx context.Context, meetingID, userID uint64) error {
+	_ = ctx
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.record("mark_left")
+	bucket, ok := r.participants[meetingID]
+	if !ok {
+		return ErrMeetingNotFound
+	}
+	participant, ok := bucket[userID]
+	if !ok {
+		return ErrMeetingNotFound
+	}
+	leftAt := time.Now().UTC()
+	participant.LeftAt = &leftAt
+	return nil
+}
+
+func (r *fakeParticipantRepo) ListActiveParticipants(ctx context.Context, meetingID uint64) ([]model.Participant, error) {
+	_ = ctx
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.record("list_active")
+	bucket := r.participants[meetingID]
+	result := make([]model.Participant, 0, len(bucket))
+	for _, participant := range bucket {
+		if participant.LeftAt != nil {
+			continue
+		}
+		result = append(result, *participant)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].JoinedAt.Equal(result[j].JoinedAt) {
+			return result[i].ID < result[j].ID
+		}
+		return result[i].JoinedAt.Before(result[j].JoinedAt)
+	})
+	return result, nil
 }
 
 func TestMeetingLifecycleStoreRepoPathCreateJoinLeaveHostTransfer(t *testing.T) {
@@ -256,5 +353,47 @@ func TestMeetingLifecycleStoreRepoPathCreateJoinLeaveHostTransfer(t *testing.T) 
 	}
 	if _, err := repo.FindByMeetingNo(context.Background(), meeting.ID); err == nil {
 		t.Fatalf("expected meeting to be deleted from repo")
+	}
+}
+
+func TestMeetingLifecycleStoreUsesExplicitParticipantRepo(t *testing.T) {
+	fallback := NewMemoryStore()
+	meetingRepo := newFakeMeetingRepo()
+	participantRepo := newFakeParticipantRepo()
+	meetingRepo.participantSource = participantRepo
+	store := NewMeetingLifecycleStoreWithParticipantRepo(fallback, meetingRepo, participantRepo)
+
+	meeting, _, err := store.CreateMeeting("repo-room", "", "u1001", 4)
+	if err != nil {
+		t.Fatalf("create meeting failed: %v", err)
+	}
+	if meeting == nil || meeting.ID == "" {
+		t.Fatalf("expected meeting id, got %+v", meeting)
+	}
+
+	if _, _, joined, err := store.JoinMeeting(meeting.ID, "", "u1002"); err != nil {
+		t.Fatalf("join failed: %v", err)
+	} else if joined == nil || joined.UserId != "u1002" {
+		t.Fatalf("unexpected joined participant: %+v", joined)
+	}
+
+	hostChanged, newHost, remaining, err := store.LeaveMeeting(meeting.ID, "u1001")
+	if err != nil {
+		t.Fatalf("leave failed: %v", err)
+	}
+	if !hostChanged || newHost == nil || newHost.UserId != "u1002" || remaining != 1 {
+		t.Fatalf("unexpected leave result changed=%v newHost=%+v remaining=%d", hostChanged, newHost, remaining)
+	}
+
+	if len(participantRepo.calls) == 0 {
+		t.Fatalf("expected explicit participant repo to be used")
+	}
+	if len(meetingRepo.calls) == 0 {
+		t.Fatalf("expected meeting repo to remain in use")
+	}
+	for _, call := range meetingRepo.calls {
+		if call == "add_participant" || call == "mark_left" {
+			t.Fatalf("expected participant lifecycle calls to bypass meeting repo, got calls=%v", meetingRepo.calls)
+		}
 	}
 }

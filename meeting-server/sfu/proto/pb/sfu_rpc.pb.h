@@ -46,7 +46,7 @@ struct TableStruct_sfu_5frpc_2eproto {
     PROTOBUF_SECTION_VARIABLE(protodesc_cold);
   static const ::PROTOBUF_NAMESPACE_ID::internal::AuxiliaryParseTableField aux[]
     PROTOBUF_SECTION_VARIABLE(protodesc_cold);
-  static const ::PROTOBUF_NAMESPACE_ID::internal::ParseTable schema[10]
+  static const ::PROTOBUF_NAMESPACE_ID::internal::ParseTable schema[14]
     PROTOBUF_SECTION_VARIABLE(protodesc_cold);
   static const ::PROTOBUF_NAMESPACE_ID::internal::FieldMetadata field_metadata[];
   static const ::PROTOBUF_NAMESPACE_ID::internal::SerializationTable serialization_table[];
@@ -72,6 +72,12 @@ extern DestroyRoomReqDefaultTypeInternal _DestroyRoomReq_default_instance_;
 class DestroyRoomRsp;
 struct DestroyRoomRspDefaultTypeInternal;
 extern DestroyRoomRspDefaultTypeInternal _DestroyRoomRsp_default_instance_;
+class GetNodeStatusReq;
+struct GetNodeStatusReqDefaultTypeInternal;
+extern GetNodeStatusReqDefaultTypeInternal _GetNodeStatusReq_default_instance_;
+class GetNodeStatusRsp;
+struct GetNodeStatusRspDefaultTypeInternal;
+extern GetNodeStatusRspDefaultTypeInternal _GetNodeStatusRsp_default_instance_;
 class KeyframeRequest;
 struct KeyframeRequestDefaultTypeInternal;
 extern KeyframeRequestDefaultTypeInternal _KeyframeRequest_default_instance_;
@@ -84,6 +90,12 @@ extern RemovePublisherReqDefaultTypeInternal _RemovePublisherReq_default_instanc
 class RemovePublisherRsp;
 struct RemovePublisherRspDefaultTypeInternal;
 extern RemovePublisherRspDefaultTypeInternal _RemovePublisherRsp_default_instance_;
+class ReportNodeStatusReq;
+struct ReportNodeStatusReqDefaultTypeInternal;
+extern ReportNodeStatusReqDefaultTypeInternal _ReportNodeStatusReq_default_instance_;
+class ReportNodeStatusRsp;
+struct ReportNodeStatusRspDefaultTypeInternal;
+extern ReportNodeStatusRspDefaultTypeInternal _ReportNodeStatusRsp_default_instance_;
 }  // namespace sfu_rpc
 PROTOBUF_NAMESPACE_OPEN
 template<> ::sfu_rpc::AddPublisherReq* Arena::CreateMaybeMessage<::sfu_rpc::AddPublisherReq>(Arena*);
@@ -92,10 +104,14 @@ template<> ::sfu_rpc::CreateRoomReq* Arena::CreateMaybeMessage<::sfu_rpc::Create
 template<> ::sfu_rpc::CreateRoomRsp* Arena::CreateMaybeMessage<::sfu_rpc::CreateRoomRsp>(Arena*);
 template<> ::sfu_rpc::DestroyRoomReq* Arena::CreateMaybeMessage<::sfu_rpc::DestroyRoomReq>(Arena*);
 template<> ::sfu_rpc::DestroyRoomRsp* Arena::CreateMaybeMessage<::sfu_rpc::DestroyRoomRsp>(Arena*);
+template<> ::sfu_rpc::GetNodeStatusReq* Arena::CreateMaybeMessage<::sfu_rpc::GetNodeStatusReq>(Arena*);
+template<> ::sfu_rpc::GetNodeStatusRsp* Arena::CreateMaybeMessage<::sfu_rpc::GetNodeStatusRsp>(Arena*);
 template<> ::sfu_rpc::KeyframeRequest* Arena::CreateMaybeMessage<::sfu_rpc::KeyframeRequest>(Arena*);
 template<> ::sfu_rpc::QualityReport* Arena::CreateMaybeMessage<::sfu_rpc::QualityReport>(Arena*);
 template<> ::sfu_rpc::RemovePublisherReq* Arena::CreateMaybeMessage<::sfu_rpc::RemovePublisherReq>(Arena*);
 template<> ::sfu_rpc::RemovePublisherRsp* Arena::CreateMaybeMessage<::sfu_rpc::RemovePublisherRsp>(Arena*);
+template<> ::sfu_rpc::ReportNodeStatusReq* Arena::CreateMaybeMessage<::sfu_rpc::ReportNodeStatusReq>(Arena*);
+template<> ::sfu_rpc::ReportNodeStatusRsp* Arena::CreateMaybeMessage<::sfu_rpc::ReportNodeStatusRsp>(Arena*);
 PROTOBUF_NAMESPACE_CLOSE
 namespace sfu_rpc {
 
@@ -1381,6 +1397,742 @@ class RemovePublisherRsp final :
 };
 // -------------------------------------------------------------------
 
+class GetNodeStatusReq final :
+    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:sfu_rpc.GetNodeStatusReq) */ {
+ public:
+  inline GetNodeStatusReq() : GetNodeStatusReq(nullptr) {}
+  ~GetNodeStatusReq() override;
+  explicit constexpr GetNodeStatusReq(::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized);
+
+  GetNodeStatusReq(const GetNodeStatusReq& from);
+  GetNodeStatusReq(GetNodeStatusReq&& from) noexcept
+    : GetNodeStatusReq() {
+    *this = ::std::move(from);
+  }
+
+  inline GetNodeStatusReq& operator=(const GetNodeStatusReq& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  inline GetNodeStatusReq& operator=(GetNodeStatusReq&& from) noexcept {
+    if (this == &from) return *this;
+    if (GetOwningArena() == from.GetOwningArena()
+  #ifdef PROTOBUF_FORCE_COPY_IN_MOVE
+        && GetOwningArena() != nullptr
+  #endif  // !PROTOBUF_FORCE_COPY_IN_MOVE
+    ) {
+      InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+
+  static const ::PROTOBUF_NAMESPACE_ID::Descriptor* descriptor() {
+    return GetDescriptor();
+  }
+  static const ::PROTOBUF_NAMESPACE_ID::Descriptor* GetDescriptor() {
+    return default_instance().GetMetadata().descriptor;
+  }
+  static const ::PROTOBUF_NAMESPACE_ID::Reflection* GetReflection() {
+    return default_instance().GetMetadata().reflection;
+  }
+  static const GetNodeStatusReq& default_instance() {
+    return *internal_default_instance();
+  }
+  static inline const GetNodeStatusReq* internal_default_instance() {
+    return reinterpret_cast<const GetNodeStatusReq*>(
+               &_GetNodeStatusReq_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages =
+    8;
+
+  friend void swap(GetNodeStatusReq& a, GetNodeStatusReq& b) {
+    a.Swap(&b);
+  }
+  inline void Swap(GetNodeStatusReq* other) {
+    if (other == this) return;
+  #ifdef PROTOBUF_FORCE_COPY_IN_SWAP
+    if (GetOwningArena() != nullptr &&
+        GetOwningArena() == other->GetOwningArena()) {
+   #else  // PROTOBUF_FORCE_COPY_IN_SWAP
+    if (GetOwningArena() == other->GetOwningArena()) {
+  #endif  // !PROTOBUF_FORCE_COPY_IN_SWAP
+      InternalSwap(other);
+    } else {
+      ::PROTOBUF_NAMESPACE_ID::internal::GenericSwap(this, other);
+    }
+  }
+  void UnsafeArenaSwap(GetNodeStatusReq* other) {
+    if (other == this) return;
+    GOOGLE_DCHECK(GetOwningArena() == other->GetOwningArena());
+    InternalSwap(other);
+  }
+
+  // implements Message ----------------------------------------------
+
+  GetNodeStatusReq* New(::PROTOBUF_NAMESPACE_ID::Arena* arena = nullptr) const final {
+    return CreateMaybeMessage<GetNodeStatusReq>(arena);
+  }
+  using ::PROTOBUF_NAMESPACE_ID::Message::CopyFrom;
+  void CopyFrom(const GetNodeStatusReq& from);
+  using ::PROTOBUF_NAMESPACE_ID::Message::MergeFrom;
+  void MergeFrom(const GetNodeStatusReq& from);
+  private:
+  static void MergeImpl(::PROTOBUF_NAMESPACE_ID::Message* to, const ::PROTOBUF_NAMESPACE_ID::Message& from);
+  public:
+  PROTOBUF_ATTRIBUTE_REINITIALIZES void Clear() final;
+  bool IsInitialized() const final;
+
+  size_t ByteSizeLong() const final;
+  const char* _InternalParse(const char* ptr, ::PROTOBUF_NAMESPACE_ID::internal::ParseContext* ctx) final;
+  uint8_t* _InternalSerialize(
+      uint8_t* target, ::PROTOBUF_NAMESPACE_ID::io::EpsCopyOutputStream* stream) const final;
+  int GetCachedSize() const final { return _cached_size_.Get(); }
+
+  private:
+  void SharedCtor();
+  void SharedDtor();
+  void SetCachedSize(int size) const final;
+  void InternalSwap(GetNodeStatusReq* other);
+
+  private:
+  friend class ::PROTOBUF_NAMESPACE_ID::internal::AnyMetadata;
+  static ::PROTOBUF_NAMESPACE_ID::StringPiece FullMessageName() {
+    return "sfu_rpc.GetNodeStatusReq";
+  }
+  protected:
+  explicit GetNodeStatusReq(::PROTOBUF_NAMESPACE_ID::Arena* arena,
+                       bool is_message_owned = false);
+  private:
+  static void ArenaDtor(void* object);
+  inline void RegisterArenaDtor(::PROTOBUF_NAMESPACE_ID::Arena* arena);
+  public:
+
+  static const ClassData _class_data_;
+  const ::PROTOBUF_NAMESPACE_ID::Message::ClassData*GetClassData() const final;
+
+  ::PROTOBUF_NAMESPACE_ID::Metadata GetMetadata() const final;
+
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+
+  enum : int {
+    kProbeFieldNumber = 1,
+  };
+  // bool probe = 1;
+  void clear_probe();
+  bool probe() const;
+  void set_probe(bool value);
+  private:
+  bool _internal_probe() const;
+  void _internal_set_probe(bool value);
+  public:
+
+  // @@protoc_insertion_point(class_scope:sfu_rpc.GetNodeStatusReq)
+ private:
+  class _Internal;
+
+  template <typename T> friend class ::PROTOBUF_NAMESPACE_ID::Arena::InternalHelper;
+  typedef void InternalArenaConstructable_;
+  typedef void DestructorSkippable_;
+  bool probe_;
+  mutable ::PROTOBUF_NAMESPACE_ID::internal::CachedSize _cached_size_;
+  friend struct ::TableStruct_sfu_5frpc_2eproto;
+};
+// -------------------------------------------------------------------
+
+class GetNodeStatusRsp final :
+    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:sfu_rpc.GetNodeStatusRsp) */ {
+ public:
+  inline GetNodeStatusRsp() : GetNodeStatusRsp(nullptr) {}
+  ~GetNodeStatusRsp() override;
+  explicit constexpr GetNodeStatusRsp(::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized);
+
+  GetNodeStatusRsp(const GetNodeStatusRsp& from);
+  GetNodeStatusRsp(GetNodeStatusRsp&& from) noexcept
+    : GetNodeStatusRsp() {
+    *this = ::std::move(from);
+  }
+
+  inline GetNodeStatusRsp& operator=(const GetNodeStatusRsp& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  inline GetNodeStatusRsp& operator=(GetNodeStatusRsp&& from) noexcept {
+    if (this == &from) return *this;
+    if (GetOwningArena() == from.GetOwningArena()
+  #ifdef PROTOBUF_FORCE_COPY_IN_MOVE
+        && GetOwningArena() != nullptr
+  #endif  // !PROTOBUF_FORCE_COPY_IN_MOVE
+    ) {
+      InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+
+  static const ::PROTOBUF_NAMESPACE_ID::Descriptor* descriptor() {
+    return GetDescriptor();
+  }
+  static const ::PROTOBUF_NAMESPACE_ID::Descriptor* GetDescriptor() {
+    return default_instance().GetMetadata().descriptor;
+  }
+  static const ::PROTOBUF_NAMESPACE_ID::Reflection* GetReflection() {
+    return default_instance().GetMetadata().reflection;
+  }
+  static const GetNodeStatusRsp& default_instance() {
+    return *internal_default_instance();
+  }
+  static inline const GetNodeStatusRsp* internal_default_instance() {
+    return reinterpret_cast<const GetNodeStatusRsp*>(
+               &_GetNodeStatusRsp_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages =
+    9;
+
+  friend void swap(GetNodeStatusRsp& a, GetNodeStatusRsp& b) {
+    a.Swap(&b);
+  }
+  inline void Swap(GetNodeStatusRsp* other) {
+    if (other == this) return;
+  #ifdef PROTOBUF_FORCE_COPY_IN_SWAP
+    if (GetOwningArena() != nullptr &&
+        GetOwningArena() == other->GetOwningArena()) {
+   #else  // PROTOBUF_FORCE_COPY_IN_SWAP
+    if (GetOwningArena() == other->GetOwningArena()) {
+  #endif  // !PROTOBUF_FORCE_COPY_IN_SWAP
+      InternalSwap(other);
+    } else {
+      ::PROTOBUF_NAMESPACE_ID::internal::GenericSwap(this, other);
+    }
+  }
+  void UnsafeArenaSwap(GetNodeStatusRsp* other) {
+    if (other == this) return;
+    GOOGLE_DCHECK(GetOwningArena() == other->GetOwningArena());
+    InternalSwap(other);
+  }
+
+  // implements Message ----------------------------------------------
+
+  GetNodeStatusRsp* New(::PROTOBUF_NAMESPACE_ID::Arena* arena = nullptr) const final {
+    return CreateMaybeMessage<GetNodeStatusRsp>(arena);
+  }
+  using ::PROTOBUF_NAMESPACE_ID::Message::CopyFrom;
+  void CopyFrom(const GetNodeStatusRsp& from);
+  using ::PROTOBUF_NAMESPACE_ID::Message::MergeFrom;
+  void MergeFrom(const GetNodeStatusRsp& from);
+  private:
+  static void MergeImpl(::PROTOBUF_NAMESPACE_ID::Message* to, const ::PROTOBUF_NAMESPACE_ID::Message& from);
+  public:
+  PROTOBUF_ATTRIBUTE_REINITIALIZES void Clear() final;
+  bool IsInitialized() const final;
+
+  size_t ByteSizeLong() const final;
+  const char* _InternalParse(const char* ptr, ::PROTOBUF_NAMESPACE_ID::internal::ParseContext* ctx) final;
+  uint8_t* _InternalSerialize(
+      uint8_t* target, ::PROTOBUF_NAMESPACE_ID::io::EpsCopyOutputStream* stream) const final;
+  int GetCachedSize() const final { return _cached_size_.Get(); }
+
+  private:
+  void SharedCtor();
+  void SharedDtor();
+  void SetCachedSize(int size) const final;
+  void InternalSwap(GetNodeStatusRsp* other);
+
+  private:
+  friend class ::PROTOBUF_NAMESPACE_ID::internal::AnyMetadata;
+  static ::PROTOBUF_NAMESPACE_ID::StringPiece FullMessageName() {
+    return "sfu_rpc.GetNodeStatusRsp";
+  }
+  protected:
+  explicit GetNodeStatusRsp(::PROTOBUF_NAMESPACE_ID::Arena* arena,
+                       bool is_message_owned = false);
+  private:
+  static void ArenaDtor(void* object);
+  inline void RegisterArenaDtor(::PROTOBUF_NAMESPACE_ID::Arena* arena);
+  public:
+
+  static const ClassData _class_data_;
+  const ::PROTOBUF_NAMESPACE_ID::Message::ClassData*GetClassData() const final;
+
+  ::PROTOBUF_NAMESPACE_ID::Metadata GetMetadata() const final;
+
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+
+  enum : int {
+    kSfuAddressFieldNumber = 2,
+    kSuccessFieldNumber = 1,
+    kMediaPortFieldNumber = 3,
+    kRoomCountFieldNumber = 4,
+    kPublisherCountFieldNumber = 5,
+    kPacketCountFieldNumber = 6,
+  };
+  // string sfu_address = 2;
+  void clear_sfu_address();
+  const std::string& sfu_address() const;
+  template <typename ArgT0 = const std::string&, typename... ArgT>
+  void set_sfu_address(ArgT0&& arg0, ArgT... args);
+  std::string* mutable_sfu_address();
+  PROTOBUF_NODISCARD std::string* release_sfu_address();
+  void set_allocated_sfu_address(std::string* sfu_address);
+  private:
+  const std::string& _internal_sfu_address() const;
+  inline PROTOBUF_ALWAYS_INLINE void _internal_set_sfu_address(const std::string& value);
+  std::string* _internal_mutable_sfu_address();
+  public:
+
+  // bool success = 1;
+  void clear_success();
+  bool success() const;
+  void set_success(bool value);
+  private:
+  bool _internal_success() const;
+  void _internal_set_success(bool value);
+  public:
+
+  // uint32 media_port = 3;
+  void clear_media_port();
+  uint32_t media_port() const;
+  void set_media_port(uint32_t value);
+  private:
+  uint32_t _internal_media_port() const;
+  void _internal_set_media_port(uint32_t value);
+  public:
+
+  // uint32 room_count = 4;
+  void clear_room_count();
+  uint32_t room_count() const;
+  void set_room_count(uint32_t value);
+  private:
+  uint32_t _internal_room_count() const;
+  void _internal_set_room_count(uint32_t value);
+  public:
+
+  // uint32 publisher_count = 5;
+  void clear_publisher_count();
+  uint32_t publisher_count() const;
+  void set_publisher_count(uint32_t value);
+  private:
+  uint32_t _internal_publisher_count() const;
+  void _internal_set_publisher_count(uint32_t value);
+  public:
+
+  // uint64 packet_count = 6;
+  void clear_packet_count();
+  uint64_t packet_count() const;
+  void set_packet_count(uint64_t value);
+  private:
+  uint64_t _internal_packet_count() const;
+  void _internal_set_packet_count(uint64_t value);
+  public:
+
+  // @@protoc_insertion_point(class_scope:sfu_rpc.GetNodeStatusRsp)
+ private:
+  class _Internal;
+
+  template <typename T> friend class ::PROTOBUF_NAMESPACE_ID::Arena::InternalHelper;
+  typedef void InternalArenaConstructable_;
+  typedef void DestructorSkippable_;
+  ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr sfu_address_;
+  bool success_;
+  uint32_t media_port_;
+  uint32_t room_count_;
+  uint32_t publisher_count_;
+  uint64_t packet_count_;
+  mutable ::PROTOBUF_NAMESPACE_ID::internal::CachedSize _cached_size_;
+  friend struct ::TableStruct_sfu_5frpc_2eproto;
+};
+// -------------------------------------------------------------------
+
+class ReportNodeStatusReq final :
+    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:sfu_rpc.ReportNodeStatusReq) */ {
+ public:
+  inline ReportNodeStatusReq() : ReportNodeStatusReq(nullptr) {}
+  ~ReportNodeStatusReq() override;
+  explicit constexpr ReportNodeStatusReq(::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized);
+
+  ReportNodeStatusReq(const ReportNodeStatusReq& from);
+  ReportNodeStatusReq(ReportNodeStatusReq&& from) noexcept
+    : ReportNodeStatusReq() {
+    *this = ::std::move(from);
+  }
+
+  inline ReportNodeStatusReq& operator=(const ReportNodeStatusReq& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  inline ReportNodeStatusReq& operator=(ReportNodeStatusReq&& from) noexcept {
+    if (this == &from) return *this;
+    if (GetOwningArena() == from.GetOwningArena()
+  #ifdef PROTOBUF_FORCE_COPY_IN_MOVE
+        && GetOwningArena() != nullptr
+  #endif  // !PROTOBUF_FORCE_COPY_IN_MOVE
+    ) {
+      InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+
+  static const ::PROTOBUF_NAMESPACE_ID::Descriptor* descriptor() {
+    return GetDescriptor();
+  }
+  static const ::PROTOBUF_NAMESPACE_ID::Descriptor* GetDescriptor() {
+    return default_instance().GetMetadata().descriptor;
+  }
+  static const ::PROTOBUF_NAMESPACE_ID::Reflection* GetReflection() {
+    return default_instance().GetMetadata().reflection;
+  }
+  static const ReportNodeStatusReq& default_instance() {
+    return *internal_default_instance();
+  }
+  static inline const ReportNodeStatusReq* internal_default_instance() {
+    return reinterpret_cast<const ReportNodeStatusReq*>(
+               &_ReportNodeStatusReq_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages =
+    10;
+
+  friend void swap(ReportNodeStatusReq& a, ReportNodeStatusReq& b) {
+    a.Swap(&b);
+  }
+  inline void Swap(ReportNodeStatusReq* other) {
+    if (other == this) return;
+  #ifdef PROTOBUF_FORCE_COPY_IN_SWAP
+    if (GetOwningArena() != nullptr &&
+        GetOwningArena() == other->GetOwningArena()) {
+   #else  // PROTOBUF_FORCE_COPY_IN_SWAP
+    if (GetOwningArena() == other->GetOwningArena()) {
+  #endif  // !PROTOBUF_FORCE_COPY_IN_SWAP
+      InternalSwap(other);
+    } else {
+      ::PROTOBUF_NAMESPACE_ID::internal::GenericSwap(this, other);
+    }
+  }
+  void UnsafeArenaSwap(ReportNodeStatusReq* other) {
+    if (other == this) return;
+    GOOGLE_DCHECK(GetOwningArena() == other->GetOwningArena());
+    InternalSwap(other);
+  }
+
+  // implements Message ----------------------------------------------
+
+  ReportNodeStatusReq* New(::PROTOBUF_NAMESPACE_ID::Arena* arena = nullptr) const final {
+    return CreateMaybeMessage<ReportNodeStatusReq>(arena);
+  }
+  using ::PROTOBUF_NAMESPACE_ID::Message::CopyFrom;
+  void CopyFrom(const ReportNodeStatusReq& from);
+  using ::PROTOBUF_NAMESPACE_ID::Message::MergeFrom;
+  void MergeFrom(const ReportNodeStatusReq& from);
+  private:
+  static void MergeImpl(::PROTOBUF_NAMESPACE_ID::Message* to, const ::PROTOBUF_NAMESPACE_ID::Message& from);
+  public:
+  PROTOBUF_ATTRIBUTE_REINITIALIZES void Clear() final;
+  bool IsInitialized() const final;
+
+  size_t ByteSizeLong() const final;
+  const char* _InternalParse(const char* ptr, ::PROTOBUF_NAMESPACE_ID::internal::ParseContext* ctx) final;
+  uint8_t* _InternalSerialize(
+      uint8_t* target, ::PROTOBUF_NAMESPACE_ID::io::EpsCopyOutputStream* stream) const final;
+  int GetCachedSize() const final { return _cached_size_.Get(); }
+
+  private:
+  void SharedCtor();
+  void SharedDtor();
+  void SetCachedSize(int size) const final;
+  void InternalSwap(ReportNodeStatusReq* other);
+
+  private:
+  friend class ::PROTOBUF_NAMESPACE_ID::internal::AnyMetadata;
+  static ::PROTOBUF_NAMESPACE_ID::StringPiece FullMessageName() {
+    return "sfu_rpc.ReportNodeStatusReq";
+  }
+  protected:
+  explicit ReportNodeStatusReq(::PROTOBUF_NAMESPACE_ID::Arena* arena,
+                       bool is_message_owned = false);
+  private:
+  static void ArenaDtor(void* object);
+  inline void RegisterArenaDtor(::PROTOBUF_NAMESPACE_ID::Arena* arena);
+  public:
+
+  static const ClassData _class_data_;
+  const ::PROTOBUF_NAMESPACE_ID::Message::ClassData*GetClassData() const final;
+
+  ::PROTOBUF_NAMESPACE_ID::Metadata GetMetadata() const final;
+
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+
+  enum : int {
+    kNodeIdFieldNumber = 1,
+    kRpcAddressFieldNumber = 2,
+    kSfuAddressFieldNumber = 3,
+    kMaxMeetingsFieldNumber = 4,
+    kMediaPortFieldNumber = 5,
+    kRoomCountFieldNumber = 6,
+    kPublisherCountFieldNumber = 7,
+    kPacketCountFieldNumber = 8,
+  };
+  // string node_id = 1;
+  void clear_node_id();
+  const std::string& node_id() const;
+  template <typename ArgT0 = const std::string&, typename... ArgT>
+  void set_node_id(ArgT0&& arg0, ArgT... args);
+  std::string* mutable_node_id();
+  PROTOBUF_NODISCARD std::string* release_node_id();
+  void set_allocated_node_id(std::string* node_id);
+  private:
+  const std::string& _internal_node_id() const;
+  inline PROTOBUF_ALWAYS_INLINE void _internal_set_node_id(const std::string& value);
+  std::string* _internal_mutable_node_id();
+  public:
+
+  // string rpc_address = 2;
+  void clear_rpc_address();
+  const std::string& rpc_address() const;
+  template <typename ArgT0 = const std::string&, typename... ArgT>
+  void set_rpc_address(ArgT0&& arg0, ArgT... args);
+  std::string* mutable_rpc_address();
+  PROTOBUF_NODISCARD std::string* release_rpc_address();
+  void set_allocated_rpc_address(std::string* rpc_address);
+  private:
+  const std::string& _internal_rpc_address() const;
+  inline PROTOBUF_ALWAYS_INLINE void _internal_set_rpc_address(const std::string& value);
+  std::string* _internal_mutable_rpc_address();
+  public:
+
+  // string sfu_address = 3;
+  void clear_sfu_address();
+  const std::string& sfu_address() const;
+  template <typename ArgT0 = const std::string&, typename... ArgT>
+  void set_sfu_address(ArgT0&& arg0, ArgT... args);
+  std::string* mutable_sfu_address();
+  PROTOBUF_NODISCARD std::string* release_sfu_address();
+  void set_allocated_sfu_address(std::string* sfu_address);
+  private:
+  const std::string& _internal_sfu_address() const;
+  inline PROTOBUF_ALWAYS_INLINE void _internal_set_sfu_address(const std::string& value);
+  std::string* _internal_mutable_sfu_address();
+  public:
+
+  // uint32 max_meetings = 4;
+  void clear_max_meetings();
+  uint32_t max_meetings() const;
+  void set_max_meetings(uint32_t value);
+  private:
+  uint32_t _internal_max_meetings() const;
+  void _internal_set_max_meetings(uint32_t value);
+  public:
+
+  // uint32 media_port = 5;
+  void clear_media_port();
+  uint32_t media_port() const;
+  void set_media_port(uint32_t value);
+  private:
+  uint32_t _internal_media_port() const;
+  void _internal_set_media_port(uint32_t value);
+  public:
+
+  // uint32 room_count = 6;
+  void clear_room_count();
+  uint32_t room_count() const;
+  void set_room_count(uint32_t value);
+  private:
+  uint32_t _internal_room_count() const;
+  void _internal_set_room_count(uint32_t value);
+  public:
+
+  // uint32 publisher_count = 7;
+  void clear_publisher_count();
+  uint32_t publisher_count() const;
+  void set_publisher_count(uint32_t value);
+  private:
+  uint32_t _internal_publisher_count() const;
+  void _internal_set_publisher_count(uint32_t value);
+  public:
+
+  // uint64 packet_count = 8;
+  void clear_packet_count();
+  uint64_t packet_count() const;
+  void set_packet_count(uint64_t value);
+  private:
+  uint64_t _internal_packet_count() const;
+  void _internal_set_packet_count(uint64_t value);
+  public:
+
+  // @@protoc_insertion_point(class_scope:sfu_rpc.ReportNodeStatusReq)
+ private:
+  class _Internal;
+
+  template <typename T> friend class ::PROTOBUF_NAMESPACE_ID::Arena::InternalHelper;
+  typedef void InternalArenaConstructable_;
+  typedef void DestructorSkippable_;
+  ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr node_id_;
+  ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr rpc_address_;
+  ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr sfu_address_;
+  uint32_t max_meetings_;
+  uint32_t media_port_;
+  uint32_t room_count_;
+  uint32_t publisher_count_;
+  uint64_t packet_count_;
+  mutable ::PROTOBUF_NAMESPACE_ID::internal::CachedSize _cached_size_;
+  friend struct ::TableStruct_sfu_5frpc_2eproto;
+};
+// -------------------------------------------------------------------
+
+class ReportNodeStatusRsp final :
+    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:sfu_rpc.ReportNodeStatusRsp) */ {
+ public:
+  inline ReportNodeStatusRsp() : ReportNodeStatusRsp(nullptr) {}
+  ~ReportNodeStatusRsp() override;
+  explicit constexpr ReportNodeStatusRsp(::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized);
+
+  ReportNodeStatusRsp(const ReportNodeStatusRsp& from);
+  ReportNodeStatusRsp(ReportNodeStatusRsp&& from) noexcept
+    : ReportNodeStatusRsp() {
+    *this = ::std::move(from);
+  }
+
+  inline ReportNodeStatusRsp& operator=(const ReportNodeStatusRsp& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  inline ReportNodeStatusRsp& operator=(ReportNodeStatusRsp&& from) noexcept {
+    if (this == &from) return *this;
+    if (GetOwningArena() == from.GetOwningArena()
+  #ifdef PROTOBUF_FORCE_COPY_IN_MOVE
+        && GetOwningArena() != nullptr
+  #endif  // !PROTOBUF_FORCE_COPY_IN_MOVE
+    ) {
+      InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+
+  static const ::PROTOBUF_NAMESPACE_ID::Descriptor* descriptor() {
+    return GetDescriptor();
+  }
+  static const ::PROTOBUF_NAMESPACE_ID::Descriptor* GetDescriptor() {
+    return default_instance().GetMetadata().descriptor;
+  }
+  static const ::PROTOBUF_NAMESPACE_ID::Reflection* GetReflection() {
+    return default_instance().GetMetadata().reflection;
+  }
+  static const ReportNodeStatusRsp& default_instance() {
+    return *internal_default_instance();
+  }
+  static inline const ReportNodeStatusRsp* internal_default_instance() {
+    return reinterpret_cast<const ReportNodeStatusRsp*>(
+               &_ReportNodeStatusRsp_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages =
+    11;
+
+  friend void swap(ReportNodeStatusRsp& a, ReportNodeStatusRsp& b) {
+    a.Swap(&b);
+  }
+  inline void Swap(ReportNodeStatusRsp* other) {
+    if (other == this) return;
+  #ifdef PROTOBUF_FORCE_COPY_IN_SWAP
+    if (GetOwningArena() != nullptr &&
+        GetOwningArena() == other->GetOwningArena()) {
+   #else  // PROTOBUF_FORCE_COPY_IN_SWAP
+    if (GetOwningArena() == other->GetOwningArena()) {
+  #endif  // !PROTOBUF_FORCE_COPY_IN_SWAP
+      InternalSwap(other);
+    } else {
+      ::PROTOBUF_NAMESPACE_ID::internal::GenericSwap(this, other);
+    }
+  }
+  void UnsafeArenaSwap(ReportNodeStatusRsp* other) {
+    if (other == this) return;
+    GOOGLE_DCHECK(GetOwningArena() == other->GetOwningArena());
+    InternalSwap(other);
+  }
+
+  // implements Message ----------------------------------------------
+
+  ReportNodeStatusRsp* New(::PROTOBUF_NAMESPACE_ID::Arena* arena = nullptr) const final {
+    return CreateMaybeMessage<ReportNodeStatusRsp>(arena);
+  }
+  using ::PROTOBUF_NAMESPACE_ID::Message::CopyFrom;
+  void CopyFrom(const ReportNodeStatusRsp& from);
+  using ::PROTOBUF_NAMESPACE_ID::Message::MergeFrom;
+  void MergeFrom(const ReportNodeStatusRsp& from);
+  private:
+  static void MergeImpl(::PROTOBUF_NAMESPACE_ID::Message* to, const ::PROTOBUF_NAMESPACE_ID::Message& from);
+  public:
+  PROTOBUF_ATTRIBUTE_REINITIALIZES void Clear() final;
+  bool IsInitialized() const final;
+
+  size_t ByteSizeLong() const final;
+  const char* _InternalParse(const char* ptr, ::PROTOBUF_NAMESPACE_ID::internal::ParseContext* ctx) final;
+  uint8_t* _InternalSerialize(
+      uint8_t* target, ::PROTOBUF_NAMESPACE_ID::io::EpsCopyOutputStream* stream) const final;
+  int GetCachedSize() const final { return _cached_size_.Get(); }
+
+  private:
+  void SharedCtor();
+  void SharedDtor();
+  void SetCachedSize(int size) const final;
+  void InternalSwap(ReportNodeStatusRsp* other);
+
+  private:
+  friend class ::PROTOBUF_NAMESPACE_ID::internal::AnyMetadata;
+  static ::PROTOBUF_NAMESPACE_ID::StringPiece FullMessageName() {
+    return "sfu_rpc.ReportNodeStatusRsp";
+  }
+  protected:
+  explicit ReportNodeStatusRsp(::PROTOBUF_NAMESPACE_ID::Arena* arena,
+                       bool is_message_owned = false);
+  private:
+  static void ArenaDtor(void* object);
+  inline void RegisterArenaDtor(::PROTOBUF_NAMESPACE_ID::Arena* arena);
+  public:
+
+  static const ClassData _class_data_;
+  const ::PROTOBUF_NAMESPACE_ID::Message::ClassData*GetClassData() const final;
+
+  ::PROTOBUF_NAMESPACE_ID::Metadata GetMetadata() const final;
+
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+
+  enum : int {
+    kSuccessFieldNumber = 1,
+  };
+  // bool success = 1;
+  void clear_success();
+  bool success() const;
+  void set_success(bool value);
+  private:
+  bool _internal_success() const;
+  void _internal_set_success(bool value);
+  public:
+
+  // @@protoc_insertion_point(class_scope:sfu_rpc.ReportNodeStatusRsp)
+ private:
+  class _Internal;
+
+  template <typename T> friend class ::PROTOBUF_NAMESPACE_ID::Arena::InternalHelper;
+  typedef void InternalArenaConstructable_;
+  typedef void DestructorSkippable_;
+  bool success_;
+  mutable ::PROTOBUF_NAMESPACE_ID::internal::CachedSize _cached_size_;
+  friend struct ::TableStruct_sfu_5frpc_2eproto;
+};
+// -------------------------------------------------------------------
+
 class QualityReport final :
     public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:sfu_rpc.QualityReport) */ {
  public:
@@ -1429,7 +2181,7 @@ class QualityReport final :
                &_QualityReport_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
-    8;
+    12;
 
   friend void swap(QualityReport& a, QualityReport& b) {
     a.Swap(&b);
@@ -1640,7 +2392,7 @@ class KeyframeRequest final :
                &_KeyframeRequest_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
-    9;
+    13;
 
   friend void swap(KeyframeRequest& a, KeyframeRequest& b) {
     a.Swap(&b);
@@ -1779,7 +2531,7 @@ inline const std::string& CreateRoomReq::meeting_id() const {
 template <typename ArgT0, typename... ArgT>
 inline PROTOBUF_ALWAYS_INLINE
 void CreateRoomReq::set_meeting_id(ArgT0&& arg0, ArgT... args) {
-
+ 
  meeting_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, static_cast<ArgT0 &&>(arg0), args..., GetArenaForAllocation());
   // @@protoc_insertion_point(field_set:sfu_rpc.CreateRoomReq.meeting_id)
 }
@@ -1792,11 +2544,11 @@ inline const std::string& CreateRoomReq::_internal_meeting_id() const {
   return meeting_id_.Get();
 }
 inline void CreateRoomReq::_internal_set_meeting_id(const std::string& value) {
-
+  
   meeting_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, value, GetArenaForAllocation());
 }
 inline std::string* CreateRoomReq::_internal_mutable_meeting_id() {
-
+  
   return meeting_id_.Mutable(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, GetArenaForAllocation());
 }
 inline std::string* CreateRoomReq::release_meeting_id() {
@@ -1805,9 +2557,9 @@ inline std::string* CreateRoomReq::release_meeting_id() {
 }
 inline void CreateRoomReq::set_allocated_meeting_id(std::string* meeting_id) {
   if (meeting_id != nullptr) {
-
+    
   } else {
-
+    
   }
   meeting_id_.SetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), meeting_id,
       GetArenaForAllocation());
@@ -1831,7 +2583,7 @@ inline int32_t CreateRoomReq::max_publishers() const {
   return _internal_max_publishers();
 }
 inline void CreateRoomReq::_internal_set_max_publishers(int32_t value) {
-
+  
   max_publishers_ = value;
 }
 inline void CreateRoomReq::set_max_publishers(int32_t value) {
@@ -1855,7 +2607,7 @@ inline bool CreateRoomRsp::success() const {
   return _internal_success();
 }
 inline void CreateRoomRsp::_internal_set_success(bool value) {
-
+  
   success_ = value;
 }
 inline void CreateRoomRsp::set_success(bool value) {
@@ -1874,7 +2626,7 @@ inline const std::string& CreateRoomRsp::sfu_address() const {
 template <typename ArgT0, typename... ArgT>
 inline PROTOBUF_ALWAYS_INLINE
 void CreateRoomRsp::set_sfu_address(ArgT0&& arg0, ArgT... args) {
-
+ 
  sfu_address_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, static_cast<ArgT0 &&>(arg0), args..., GetArenaForAllocation());
   // @@protoc_insertion_point(field_set:sfu_rpc.CreateRoomRsp.sfu_address)
 }
@@ -1887,11 +2639,11 @@ inline const std::string& CreateRoomRsp::_internal_sfu_address() const {
   return sfu_address_.Get();
 }
 inline void CreateRoomRsp::_internal_set_sfu_address(const std::string& value) {
-
+  
   sfu_address_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, value, GetArenaForAllocation());
 }
 inline std::string* CreateRoomRsp::_internal_mutable_sfu_address() {
-
+  
   return sfu_address_.Mutable(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, GetArenaForAllocation());
 }
 inline std::string* CreateRoomRsp::release_sfu_address() {
@@ -1900,9 +2652,9 @@ inline std::string* CreateRoomRsp::release_sfu_address() {
 }
 inline void CreateRoomRsp::set_allocated_sfu_address(std::string* sfu_address) {
   if (sfu_address != nullptr) {
-
+    
   } else {
-
+    
   }
   sfu_address_.SetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), sfu_address,
       GetArenaForAllocation());
@@ -1929,7 +2681,7 @@ inline const std::string& DestroyRoomReq::meeting_id() const {
 template <typename ArgT0, typename... ArgT>
 inline PROTOBUF_ALWAYS_INLINE
 void DestroyRoomReq::set_meeting_id(ArgT0&& arg0, ArgT... args) {
-
+ 
  meeting_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, static_cast<ArgT0 &&>(arg0), args..., GetArenaForAllocation());
   // @@protoc_insertion_point(field_set:sfu_rpc.DestroyRoomReq.meeting_id)
 }
@@ -1942,11 +2694,11 @@ inline const std::string& DestroyRoomReq::_internal_meeting_id() const {
   return meeting_id_.Get();
 }
 inline void DestroyRoomReq::_internal_set_meeting_id(const std::string& value) {
-
+  
   meeting_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, value, GetArenaForAllocation());
 }
 inline std::string* DestroyRoomReq::_internal_mutable_meeting_id() {
-
+  
   return meeting_id_.Mutable(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, GetArenaForAllocation());
 }
 inline std::string* DestroyRoomReq::release_meeting_id() {
@@ -1955,9 +2707,9 @@ inline std::string* DestroyRoomReq::release_meeting_id() {
 }
 inline void DestroyRoomReq::set_allocated_meeting_id(std::string* meeting_id) {
   if (meeting_id != nullptr) {
-
+    
   } else {
-
+    
   }
   meeting_id_.SetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), meeting_id,
       GetArenaForAllocation());
@@ -1985,7 +2737,7 @@ inline bool DestroyRoomRsp::success() const {
   return _internal_success();
 }
 inline void DestroyRoomRsp::_internal_set_success(bool value) {
-
+  
   success_ = value;
 }
 inline void DestroyRoomRsp::set_success(bool value) {
@@ -2008,7 +2760,7 @@ inline const std::string& AddPublisherReq::meeting_id() const {
 template <typename ArgT0, typename... ArgT>
 inline PROTOBUF_ALWAYS_INLINE
 void AddPublisherReq::set_meeting_id(ArgT0&& arg0, ArgT... args) {
-
+ 
  meeting_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, static_cast<ArgT0 &&>(arg0), args..., GetArenaForAllocation());
   // @@protoc_insertion_point(field_set:sfu_rpc.AddPublisherReq.meeting_id)
 }
@@ -2021,11 +2773,11 @@ inline const std::string& AddPublisherReq::_internal_meeting_id() const {
   return meeting_id_.Get();
 }
 inline void AddPublisherReq::_internal_set_meeting_id(const std::string& value) {
-
+  
   meeting_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, value, GetArenaForAllocation());
 }
 inline std::string* AddPublisherReq::_internal_mutable_meeting_id() {
-
+  
   return meeting_id_.Mutable(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, GetArenaForAllocation());
 }
 inline std::string* AddPublisherReq::release_meeting_id() {
@@ -2034,9 +2786,9 @@ inline std::string* AddPublisherReq::release_meeting_id() {
 }
 inline void AddPublisherReq::set_allocated_meeting_id(std::string* meeting_id) {
   if (meeting_id != nullptr) {
-
+    
   } else {
-
+    
   }
   meeting_id_.SetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), meeting_id,
       GetArenaForAllocation());
@@ -2059,7 +2811,7 @@ inline const std::string& AddPublisherReq::user_id() const {
 template <typename ArgT0, typename... ArgT>
 inline PROTOBUF_ALWAYS_INLINE
 void AddPublisherReq::set_user_id(ArgT0&& arg0, ArgT... args) {
-
+ 
  user_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, static_cast<ArgT0 &&>(arg0), args..., GetArenaForAllocation());
   // @@protoc_insertion_point(field_set:sfu_rpc.AddPublisherReq.user_id)
 }
@@ -2072,11 +2824,11 @@ inline const std::string& AddPublisherReq::_internal_user_id() const {
   return user_id_.Get();
 }
 inline void AddPublisherReq::_internal_set_user_id(const std::string& value) {
-
+  
   user_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, value, GetArenaForAllocation());
 }
 inline std::string* AddPublisherReq::_internal_mutable_user_id() {
-
+  
   return user_id_.Mutable(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, GetArenaForAllocation());
 }
 inline std::string* AddPublisherReq::release_user_id() {
@@ -2085,9 +2837,9 @@ inline std::string* AddPublisherReq::release_user_id() {
 }
 inline void AddPublisherReq::set_allocated_user_id(std::string* user_id) {
   if (user_id != nullptr) {
-
+    
   } else {
-
+    
   }
   user_id_.SetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), user_id,
       GetArenaForAllocation());
@@ -2111,7 +2863,7 @@ inline uint32_t AddPublisherReq::audio_ssrc() const {
   return _internal_audio_ssrc();
 }
 inline void AddPublisherReq::_internal_set_audio_ssrc(uint32_t value) {
-
+  
   audio_ssrc_ = value;
 }
 inline void AddPublisherReq::set_audio_ssrc(uint32_t value) {
@@ -2131,7 +2883,7 @@ inline uint32_t AddPublisherReq::video_ssrc() const {
   return _internal_video_ssrc();
 }
 inline void AddPublisherReq::_internal_set_video_ssrc(uint32_t value) {
-
+  
   video_ssrc_ = value;
 }
 inline void AddPublisherReq::set_video_ssrc(uint32_t value) {
@@ -2155,7 +2907,7 @@ inline bool AddPublisherRsp::success() const {
   return _internal_success();
 }
 inline void AddPublisherRsp::_internal_set_success(bool value) {
-
+  
   success_ = value;
 }
 inline void AddPublisherRsp::set_success(bool value) {
@@ -2175,7 +2927,7 @@ inline uint32_t AddPublisherRsp::udp_port() const {
   return _internal_udp_port();
 }
 inline void AddPublisherRsp::_internal_set_udp_port(uint32_t value) {
-
+  
   udp_port_ = value;
 }
 inline void AddPublisherRsp::set_udp_port(uint32_t value) {
@@ -2198,7 +2950,7 @@ inline const std::string& RemovePublisherReq::meeting_id() const {
 template <typename ArgT0, typename... ArgT>
 inline PROTOBUF_ALWAYS_INLINE
 void RemovePublisherReq::set_meeting_id(ArgT0&& arg0, ArgT... args) {
-
+ 
  meeting_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, static_cast<ArgT0 &&>(arg0), args..., GetArenaForAllocation());
   // @@protoc_insertion_point(field_set:sfu_rpc.RemovePublisherReq.meeting_id)
 }
@@ -2211,11 +2963,11 @@ inline const std::string& RemovePublisherReq::_internal_meeting_id() const {
   return meeting_id_.Get();
 }
 inline void RemovePublisherReq::_internal_set_meeting_id(const std::string& value) {
-
+  
   meeting_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, value, GetArenaForAllocation());
 }
 inline std::string* RemovePublisherReq::_internal_mutable_meeting_id() {
-
+  
   return meeting_id_.Mutable(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, GetArenaForAllocation());
 }
 inline std::string* RemovePublisherReq::release_meeting_id() {
@@ -2224,9 +2976,9 @@ inline std::string* RemovePublisherReq::release_meeting_id() {
 }
 inline void RemovePublisherReq::set_allocated_meeting_id(std::string* meeting_id) {
   if (meeting_id != nullptr) {
-
+    
   } else {
-
+    
   }
   meeting_id_.SetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), meeting_id,
       GetArenaForAllocation());
@@ -2249,7 +3001,7 @@ inline const std::string& RemovePublisherReq::user_id() const {
 template <typename ArgT0, typename... ArgT>
 inline PROTOBUF_ALWAYS_INLINE
 void RemovePublisherReq::set_user_id(ArgT0&& arg0, ArgT... args) {
-
+ 
  user_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, static_cast<ArgT0 &&>(arg0), args..., GetArenaForAllocation());
   // @@protoc_insertion_point(field_set:sfu_rpc.RemovePublisherReq.user_id)
 }
@@ -2262,11 +3014,11 @@ inline const std::string& RemovePublisherReq::_internal_user_id() const {
   return user_id_.Get();
 }
 inline void RemovePublisherReq::_internal_set_user_id(const std::string& value) {
-
+  
   user_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, value, GetArenaForAllocation());
 }
 inline std::string* RemovePublisherReq::_internal_mutable_user_id() {
-
+  
   return user_id_.Mutable(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, GetArenaForAllocation());
 }
 inline std::string* RemovePublisherReq::release_user_id() {
@@ -2275,9 +3027,9 @@ inline std::string* RemovePublisherReq::release_user_id() {
 }
 inline void RemovePublisherReq::set_allocated_user_id(std::string* user_id) {
   if (user_id != nullptr) {
-
+    
   } else {
-
+    
   }
   user_id_.SetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), user_id,
       GetArenaForAllocation());
@@ -2305,12 +3057,472 @@ inline bool RemovePublisherRsp::success() const {
   return _internal_success();
 }
 inline void RemovePublisherRsp::_internal_set_success(bool value) {
-
+  
   success_ = value;
 }
 inline void RemovePublisherRsp::set_success(bool value) {
   _internal_set_success(value);
   // @@protoc_insertion_point(field_set:sfu_rpc.RemovePublisherRsp.success)
+}
+
+// -------------------------------------------------------------------
+
+// GetNodeStatusReq
+
+// bool probe = 1;
+inline void GetNodeStatusReq::clear_probe() {
+  probe_ = false;
+}
+inline bool GetNodeStatusReq::_internal_probe() const {
+  return probe_;
+}
+inline bool GetNodeStatusReq::probe() const {
+  // @@protoc_insertion_point(field_get:sfu_rpc.GetNodeStatusReq.probe)
+  return _internal_probe();
+}
+inline void GetNodeStatusReq::_internal_set_probe(bool value) {
+  
+  probe_ = value;
+}
+inline void GetNodeStatusReq::set_probe(bool value) {
+  _internal_set_probe(value);
+  // @@protoc_insertion_point(field_set:sfu_rpc.GetNodeStatusReq.probe)
+}
+
+// -------------------------------------------------------------------
+
+// GetNodeStatusRsp
+
+// bool success = 1;
+inline void GetNodeStatusRsp::clear_success() {
+  success_ = false;
+}
+inline bool GetNodeStatusRsp::_internal_success() const {
+  return success_;
+}
+inline bool GetNodeStatusRsp::success() const {
+  // @@protoc_insertion_point(field_get:sfu_rpc.GetNodeStatusRsp.success)
+  return _internal_success();
+}
+inline void GetNodeStatusRsp::_internal_set_success(bool value) {
+  
+  success_ = value;
+}
+inline void GetNodeStatusRsp::set_success(bool value) {
+  _internal_set_success(value);
+  // @@protoc_insertion_point(field_set:sfu_rpc.GetNodeStatusRsp.success)
+}
+
+// string sfu_address = 2;
+inline void GetNodeStatusRsp::clear_sfu_address() {
+  sfu_address_.ClearToEmpty();
+}
+inline const std::string& GetNodeStatusRsp::sfu_address() const {
+  // @@protoc_insertion_point(field_get:sfu_rpc.GetNodeStatusRsp.sfu_address)
+  return _internal_sfu_address();
+}
+template <typename ArgT0, typename... ArgT>
+inline PROTOBUF_ALWAYS_INLINE
+void GetNodeStatusRsp::set_sfu_address(ArgT0&& arg0, ArgT... args) {
+ 
+ sfu_address_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, static_cast<ArgT0 &&>(arg0), args..., GetArenaForAllocation());
+  // @@protoc_insertion_point(field_set:sfu_rpc.GetNodeStatusRsp.sfu_address)
+}
+inline std::string* GetNodeStatusRsp::mutable_sfu_address() {
+  std::string* _s = _internal_mutable_sfu_address();
+  // @@protoc_insertion_point(field_mutable:sfu_rpc.GetNodeStatusRsp.sfu_address)
+  return _s;
+}
+inline const std::string& GetNodeStatusRsp::_internal_sfu_address() const {
+  return sfu_address_.Get();
+}
+inline void GetNodeStatusRsp::_internal_set_sfu_address(const std::string& value) {
+  
+  sfu_address_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, value, GetArenaForAllocation());
+}
+inline std::string* GetNodeStatusRsp::_internal_mutable_sfu_address() {
+  
+  return sfu_address_.Mutable(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, GetArenaForAllocation());
+}
+inline std::string* GetNodeStatusRsp::release_sfu_address() {
+  // @@protoc_insertion_point(field_release:sfu_rpc.GetNodeStatusRsp.sfu_address)
+  return sfu_address_.Release(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArenaForAllocation());
+}
+inline void GetNodeStatusRsp::set_allocated_sfu_address(std::string* sfu_address) {
+  if (sfu_address != nullptr) {
+    
+  } else {
+    
+  }
+  sfu_address_.SetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), sfu_address,
+      GetArenaForAllocation());
+#ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  if (sfu_address_.IsDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited())) {
+    sfu_address_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+  }
+#endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  // @@protoc_insertion_point(field_set_allocated:sfu_rpc.GetNodeStatusRsp.sfu_address)
+}
+
+// uint32 media_port = 3;
+inline void GetNodeStatusRsp::clear_media_port() {
+  media_port_ = 0u;
+}
+inline uint32_t GetNodeStatusRsp::_internal_media_port() const {
+  return media_port_;
+}
+inline uint32_t GetNodeStatusRsp::media_port() const {
+  // @@protoc_insertion_point(field_get:sfu_rpc.GetNodeStatusRsp.media_port)
+  return _internal_media_port();
+}
+inline void GetNodeStatusRsp::_internal_set_media_port(uint32_t value) {
+  
+  media_port_ = value;
+}
+inline void GetNodeStatusRsp::set_media_port(uint32_t value) {
+  _internal_set_media_port(value);
+  // @@protoc_insertion_point(field_set:sfu_rpc.GetNodeStatusRsp.media_port)
+}
+
+// uint32 room_count = 4;
+inline void GetNodeStatusRsp::clear_room_count() {
+  room_count_ = 0u;
+}
+inline uint32_t GetNodeStatusRsp::_internal_room_count() const {
+  return room_count_;
+}
+inline uint32_t GetNodeStatusRsp::room_count() const {
+  // @@protoc_insertion_point(field_get:sfu_rpc.GetNodeStatusRsp.room_count)
+  return _internal_room_count();
+}
+inline void GetNodeStatusRsp::_internal_set_room_count(uint32_t value) {
+  
+  room_count_ = value;
+}
+inline void GetNodeStatusRsp::set_room_count(uint32_t value) {
+  _internal_set_room_count(value);
+  // @@protoc_insertion_point(field_set:sfu_rpc.GetNodeStatusRsp.room_count)
+}
+
+// uint32 publisher_count = 5;
+inline void GetNodeStatusRsp::clear_publisher_count() {
+  publisher_count_ = 0u;
+}
+inline uint32_t GetNodeStatusRsp::_internal_publisher_count() const {
+  return publisher_count_;
+}
+inline uint32_t GetNodeStatusRsp::publisher_count() const {
+  // @@protoc_insertion_point(field_get:sfu_rpc.GetNodeStatusRsp.publisher_count)
+  return _internal_publisher_count();
+}
+inline void GetNodeStatusRsp::_internal_set_publisher_count(uint32_t value) {
+  
+  publisher_count_ = value;
+}
+inline void GetNodeStatusRsp::set_publisher_count(uint32_t value) {
+  _internal_set_publisher_count(value);
+  // @@protoc_insertion_point(field_set:sfu_rpc.GetNodeStatusRsp.publisher_count)
+}
+
+// uint64 packet_count = 6;
+inline void GetNodeStatusRsp::clear_packet_count() {
+  packet_count_ = uint64_t{0u};
+}
+inline uint64_t GetNodeStatusRsp::_internal_packet_count() const {
+  return packet_count_;
+}
+inline uint64_t GetNodeStatusRsp::packet_count() const {
+  // @@protoc_insertion_point(field_get:sfu_rpc.GetNodeStatusRsp.packet_count)
+  return _internal_packet_count();
+}
+inline void GetNodeStatusRsp::_internal_set_packet_count(uint64_t value) {
+  
+  packet_count_ = value;
+}
+inline void GetNodeStatusRsp::set_packet_count(uint64_t value) {
+  _internal_set_packet_count(value);
+  // @@protoc_insertion_point(field_set:sfu_rpc.GetNodeStatusRsp.packet_count)
+}
+
+// -------------------------------------------------------------------
+
+// ReportNodeStatusReq
+
+// string node_id = 1;
+inline void ReportNodeStatusReq::clear_node_id() {
+  node_id_.ClearToEmpty();
+}
+inline const std::string& ReportNodeStatusReq::node_id() const {
+  // @@protoc_insertion_point(field_get:sfu_rpc.ReportNodeStatusReq.node_id)
+  return _internal_node_id();
+}
+template <typename ArgT0, typename... ArgT>
+inline PROTOBUF_ALWAYS_INLINE
+void ReportNodeStatusReq::set_node_id(ArgT0&& arg0, ArgT... args) {
+ 
+ node_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, static_cast<ArgT0 &&>(arg0), args..., GetArenaForAllocation());
+  // @@protoc_insertion_point(field_set:sfu_rpc.ReportNodeStatusReq.node_id)
+}
+inline std::string* ReportNodeStatusReq::mutable_node_id() {
+  std::string* _s = _internal_mutable_node_id();
+  // @@protoc_insertion_point(field_mutable:sfu_rpc.ReportNodeStatusReq.node_id)
+  return _s;
+}
+inline const std::string& ReportNodeStatusReq::_internal_node_id() const {
+  return node_id_.Get();
+}
+inline void ReportNodeStatusReq::_internal_set_node_id(const std::string& value) {
+  
+  node_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, value, GetArenaForAllocation());
+}
+inline std::string* ReportNodeStatusReq::_internal_mutable_node_id() {
+  
+  return node_id_.Mutable(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, GetArenaForAllocation());
+}
+inline std::string* ReportNodeStatusReq::release_node_id() {
+  // @@protoc_insertion_point(field_release:sfu_rpc.ReportNodeStatusReq.node_id)
+  return node_id_.Release(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArenaForAllocation());
+}
+inline void ReportNodeStatusReq::set_allocated_node_id(std::string* node_id) {
+  if (node_id != nullptr) {
+    
+  } else {
+    
+  }
+  node_id_.SetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), node_id,
+      GetArenaForAllocation());
+#ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  if (node_id_.IsDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited())) {
+    node_id_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+  }
+#endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  // @@protoc_insertion_point(field_set_allocated:sfu_rpc.ReportNodeStatusReq.node_id)
+}
+
+// string rpc_address = 2;
+inline void ReportNodeStatusReq::clear_rpc_address() {
+  rpc_address_.ClearToEmpty();
+}
+inline const std::string& ReportNodeStatusReq::rpc_address() const {
+  // @@protoc_insertion_point(field_get:sfu_rpc.ReportNodeStatusReq.rpc_address)
+  return _internal_rpc_address();
+}
+template <typename ArgT0, typename... ArgT>
+inline PROTOBUF_ALWAYS_INLINE
+void ReportNodeStatusReq::set_rpc_address(ArgT0&& arg0, ArgT... args) {
+ 
+ rpc_address_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, static_cast<ArgT0 &&>(arg0), args..., GetArenaForAllocation());
+  // @@protoc_insertion_point(field_set:sfu_rpc.ReportNodeStatusReq.rpc_address)
+}
+inline std::string* ReportNodeStatusReq::mutable_rpc_address() {
+  std::string* _s = _internal_mutable_rpc_address();
+  // @@protoc_insertion_point(field_mutable:sfu_rpc.ReportNodeStatusReq.rpc_address)
+  return _s;
+}
+inline const std::string& ReportNodeStatusReq::_internal_rpc_address() const {
+  return rpc_address_.Get();
+}
+inline void ReportNodeStatusReq::_internal_set_rpc_address(const std::string& value) {
+  
+  rpc_address_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, value, GetArenaForAllocation());
+}
+inline std::string* ReportNodeStatusReq::_internal_mutable_rpc_address() {
+  
+  return rpc_address_.Mutable(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, GetArenaForAllocation());
+}
+inline std::string* ReportNodeStatusReq::release_rpc_address() {
+  // @@protoc_insertion_point(field_release:sfu_rpc.ReportNodeStatusReq.rpc_address)
+  return rpc_address_.Release(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArenaForAllocation());
+}
+inline void ReportNodeStatusReq::set_allocated_rpc_address(std::string* rpc_address) {
+  if (rpc_address != nullptr) {
+    
+  } else {
+    
+  }
+  rpc_address_.SetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), rpc_address,
+      GetArenaForAllocation());
+#ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  if (rpc_address_.IsDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited())) {
+    rpc_address_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+  }
+#endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  // @@protoc_insertion_point(field_set_allocated:sfu_rpc.ReportNodeStatusReq.rpc_address)
+}
+
+// string sfu_address = 3;
+inline void ReportNodeStatusReq::clear_sfu_address() {
+  sfu_address_.ClearToEmpty();
+}
+inline const std::string& ReportNodeStatusReq::sfu_address() const {
+  // @@protoc_insertion_point(field_get:sfu_rpc.ReportNodeStatusReq.sfu_address)
+  return _internal_sfu_address();
+}
+template <typename ArgT0, typename... ArgT>
+inline PROTOBUF_ALWAYS_INLINE
+void ReportNodeStatusReq::set_sfu_address(ArgT0&& arg0, ArgT... args) {
+ 
+ sfu_address_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, static_cast<ArgT0 &&>(arg0), args..., GetArenaForAllocation());
+  // @@protoc_insertion_point(field_set:sfu_rpc.ReportNodeStatusReq.sfu_address)
+}
+inline std::string* ReportNodeStatusReq::mutable_sfu_address() {
+  std::string* _s = _internal_mutable_sfu_address();
+  // @@protoc_insertion_point(field_mutable:sfu_rpc.ReportNodeStatusReq.sfu_address)
+  return _s;
+}
+inline const std::string& ReportNodeStatusReq::_internal_sfu_address() const {
+  return sfu_address_.Get();
+}
+inline void ReportNodeStatusReq::_internal_set_sfu_address(const std::string& value) {
+  
+  sfu_address_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, value, GetArenaForAllocation());
+}
+inline std::string* ReportNodeStatusReq::_internal_mutable_sfu_address() {
+  
+  return sfu_address_.Mutable(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, GetArenaForAllocation());
+}
+inline std::string* ReportNodeStatusReq::release_sfu_address() {
+  // @@protoc_insertion_point(field_release:sfu_rpc.ReportNodeStatusReq.sfu_address)
+  return sfu_address_.Release(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArenaForAllocation());
+}
+inline void ReportNodeStatusReq::set_allocated_sfu_address(std::string* sfu_address) {
+  if (sfu_address != nullptr) {
+    
+  } else {
+    
+  }
+  sfu_address_.SetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), sfu_address,
+      GetArenaForAllocation());
+#ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  if (sfu_address_.IsDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited())) {
+    sfu_address_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+  }
+#endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  // @@protoc_insertion_point(field_set_allocated:sfu_rpc.ReportNodeStatusReq.sfu_address)
+}
+
+// uint32 max_meetings = 4;
+inline void ReportNodeStatusReq::clear_max_meetings() {
+  max_meetings_ = 0u;
+}
+inline uint32_t ReportNodeStatusReq::_internal_max_meetings() const {
+  return max_meetings_;
+}
+inline uint32_t ReportNodeStatusReq::max_meetings() const {
+  // @@protoc_insertion_point(field_get:sfu_rpc.ReportNodeStatusReq.max_meetings)
+  return _internal_max_meetings();
+}
+inline void ReportNodeStatusReq::_internal_set_max_meetings(uint32_t value) {
+  
+  max_meetings_ = value;
+}
+inline void ReportNodeStatusReq::set_max_meetings(uint32_t value) {
+  _internal_set_max_meetings(value);
+  // @@protoc_insertion_point(field_set:sfu_rpc.ReportNodeStatusReq.max_meetings)
+}
+
+// uint32 media_port = 5;
+inline void ReportNodeStatusReq::clear_media_port() {
+  media_port_ = 0u;
+}
+inline uint32_t ReportNodeStatusReq::_internal_media_port() const {
+  return media_port_;
+}
+inline uint32_t ReportNodeStatusReq::media_port() const {
+  // @@protoc_insertion_point(field_get:sfu_rpc.ReportNodeStatusReq.media_port)
+  return _internal_media_port();
+}
+inline void ReportNodeStatusReq::_internal_set_media_port(uint32_t value) {
+  
+  media_port_ = value;
+}
+inline void ReportNodeStatusReq::set_media_port(uint32_t value) {
+  _internal_set_media_port(value);
+  // @@protoc_insertion_point(field_set:sfu_rpc.ReportNodeStatusReq.media_port)
+}
+
+// uint32 room_count = 6;
+inline void ReportNodeStatusReq::clear_room_count() {
+  room_count_ = 0u;
+}
+inline uint32_t ReportNodeStatusReq::_internal_room_count() const {
+  return room_count_;
+}
+inline uint32_t ReportNodeStatusReq::room_count() const {
+  // @@protoc_insertion_point(field_get:sfu_rpc.ReportNodeStatusReq.room_count)
+  return _internal_room_count();
+}
+inline void ReportNodeStatusReq::_internal_set_room_count(uint32_t value) {
+  
+  room_count_ = value;
+}
+inline void ReportNodeStatusReq::set_room_count(uint32_t value) {
+  _internal_set_room_count(value);
+  // @@protoc_insertion_point(field_set:sfu_rpc.ReportNodeStatusReq.room_count)
+}
+
+// uint32 publisher_count = 7;
+inline void ReportNodeStatusReq::clear_publisher_count() {
+  publisher_count_ = 0u;
+}
+inline uint32_t ReportNodeStatusReq::_internal_publisher_count() const {
+  return publisher_count_;
+}
+inline uint32_t ReportNodeStatusReq::publisher_count() const {
+  // @@protoc_insertion_point(field_get:sfu_rpc.ReportNodeStatusReq.publisher_count)
+  return _internal_publisher_count();
+}
+inline void ReportNodeStatusReq::_internal_set_publisher_count(uint32_t value) {
+  
+  publisher_count_ = value;
+}
+inline void ReportNodeStatusReq::set_publisher_count(uint32_t value) {
+  _internal_set_publisher_count(value);
+  // @@protoc_insertion_point(field_set:sfu_rpc.ReportNodeStatusReq.publisher_count)
+}
+
+// uint64 packet_count = 8;
+inline void ReportNodeStatusReq::clear_packet_count() {
+  packet_count_ = uint64_t{0u};
+}
+inline uint64_t ReportNodeStatusReq::_internal_packet_count() const {
+  return packet_count_;
+}
+inline uint64_t ReportNodeStatusReq::packet_count() const {
+  // @@protoc_insertion_point(field_get:sfu_rpc.ReportNodeStatusReq.packet_count)
+  return _internal_packet_count();
+}
+inline void ReportNodeStatusReq::_internal_set_packet_count(uint64_t value) {
+  
+  packet_count_ = value;
+}
+inline void ReportNodeStatusReq::set_packet_count(uint64_t value) {
+  _internal_set_packet_count(value);
+  // @@protoc_insertion_point(field_set:sfu_rpc.ReportNodeStatusReq.packet_count)
+}
+
+// -------------------------------------------------------------------
+
+// ReportNodeStatusRsp
+
+// bool success = 1;
+inline void ReportNodeStatusRsp::clear_success() {
+  success_ = false;
+}
+inline bool ReportNodeStatusRsp::_internal_success() const {
+  return success_;
+}
+inline bool ReportNodeStatusRsp::success() const {
+  // @@protoc_insertion_point(field_get:sfu_rpc.ReportNodeStatusRsp.success)
+  return _internal_success();
+}
+inline void ReportNodeStatusRsp::_internal_set_success(bool value) {
+  
+  success_ = value;
+}
+inline void ReportNodeStatusRsp::set_success(bool value) {
+  _internal_set_success(value);
+  // @@protoc_insertion_point(field_set:sfu_rpc.ReportNodeStatusRsp.success)
 }
 
 // -------------------------------------------------------------------
@@ -2328,7 +3540,7 @@ inline const std::string& QualityReport::meeting_id() const {
 template <typename ArgT0, typename... ArgT>
 inline PROTOBUF_ALWAYS_INLINE
 void QualityReport::set_meeting_id(ArgT0&& arg0, ArgT... args) {
-
+ 
  meeting_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, static_cast<ArgT0 &&>(arg0), args..., GetArenaForAllocation());
   // @@protoc_insertion_point(field_set:sfu_rpc.QualityReport.meeting_id)
 }
@@ -2341,11 +3553,11 @@ inline const std::string& QualityReport::_internal_meeting_id() const {
   return meeting_id_.Get();
 }
 inline void QualityReport::_internal_set_meeting_id(const std::string& value) {
-
+  
   meeting_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, value, GetArenaForAllocation());
 }
 inline std::string* QualityReport::_internal_mutable_meeting_id() {
-
+  
   return meeting_id_.Mutable(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, GetArenaForAllocation());
 }
 inline std::string* QualityReport::release_meeting_id() {
@@ -2354,9 +3566,9 @@ inline std::string* QualityReport::release_meeting_id() {
 }
 inline void QualityReport::set_allocated_meeting_id(std::string* meeting_id) {
   if (meeting_id != nullptr) {
-
+    
   } else {
-
+    
   }
   meeting_id_.SetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), meeting_id,
       GetArenaForAllocation());
@@ -2379,7 +3591,7 @@ inline const std::string& QualityReport::user_id() const {
 template <typename ArgT0, typename... ArgT>
 inline PROTOBUF_ALWAYS_INLINE
 void QualityReport::set_user_id(ArgT0&& arg0, ArgT... args) {
-
+ 
  user_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, static_cast<ArgT0 &&>(arg0), args..., GetArenaForAllocation());
   // @@protoc_insertion_point(field_set:sfu_rpc.QualityReport.user_id)
 }
@@ -2392,11 +3604,11 @@ inline const std::string& QualityReport::_internal_user_id() const {
   return user_id_.Get();
 }
 inline void QualityReport::_internal_set_user_id(const std::string& value) {
-
+  
   user_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, value, GetArenaForAllocation());
 }
 inline std::string* QualityReport::_internal_mutable_user_id() {
-
+  
   return user_id_.Mutable(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, GetArenaForAllocation());
 }
 inline std::string* QualityReport::release_user_id() {
@@ -2405,9 +3617,9 @@ inline std::string* QualityReport::release_user_id() {
 }
 inline void QualityReport::set_allocated_user_id(std::string* user_id) {
   if (user_id != nullptr) {
-
+    
   } else {
-
+    
   }
   user_id_.SetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), user_id,
       GetArenaForAllocation());
@@ -2431,7 +3643,7 @@ inline float QualityReport::packet_loss() const {
   return _internal_packet_loss();
 }
 inline void QualityReport::_internal_set_packet_loss(float value) {
-
+  
   packet_loss_ = value;
 }
 inline void QualityReport::set_packet_loss(float value) {
@@ -2451,7 +3663,7 @@ inline uint32_t QualityReport::rtt_ms() const {
   return _internal_rtt_ms();
 }
 inline void QualityReport::_internal_set_rtt_ms(uint32_t value) {
-
+  
   rtt_ms_ = value;
 }
 inline void QualityReport::set_rtt_ms(uint32_t value) {
@@ -2471,7 +3683,7 @@ inline uint32_t QualityReport::jitter_ms() const {
   return _internal_jitter_ms();
 }
 inline void QualityReport::_internal_set_jitter_ms(uint32_t value) {
-
+  
   jitter_ms_ = value;
 }
 inline void QualityReport::set_jitter_ms(uint32_t value) {
@@ -2491,7 +3703,7 @@ inline uint32_t QualityReport::bitrate_kbps() const {
   return _internal_bitrate_kbps();
 }
 inline void QualityReport::_internal_set_bitrate_kbps(uint32_t value) {
-
+  
   bitrate_kbps_ = value;
 }
 inline void QualityReport::set_bitrate_kbps(uint32_t value) {
@@ -2514,7 +3726,7 @@ inline const std::string& KeyframeRequest::meeting_id() const {
 template <typename ArgT0, typename... ArgT>
 inline PROTOBUF_ALWAYS_INLINE
 void KeyframeRequest::set_meeting_id(ArgT0&& arg0, ArgT... args) {
-
+ 
  meeting_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, static_cast<ArgT0 &&>(arg0), args..., GetArenaForAllocation());
   // @@protoc_insertion_point(field_set:sfu_rpc.KeyframeRequest.meeting_id)
 }
@@ -2527,11 +3739,11 @@ inline const std::string& KeyframeRequest::_internal_meeting_id() const {
   return meeting_id_.Get();
 }
 inline void KeyframeRequest::_internal_set_meeting_id(const std::string& value) {
-
+  
   meeting_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, value, GetArenaForAllocation());
 }
 inline std::string* KeyframeRequest::_internal_mutable_meeting_id() {
-
+  
   return meeting_id_.Mutable(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, GetArenaForAllocation());
 }
 inline std::string* KeyframeRequest::release_meeting_id() {
@@ -2540,9 +3752,9 @@ inline std::string* KeyframeRequest::release_meeting_id() {
 }
 inline void KeyframeRequest::set_allocated_meeting_id(std::string* meeting_id) {
   if (meeting_id != nullptr) {
-
+    
   } else {
-
+    
   }
   meeting_id_.SetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), meeting_id,
       GetArenaForAllocation());
@@ -2565,7 +3777,7 @@ inline const std::string& KeyframeRequest::user_id() const {
 template <typename ArgT0, typename... ArgT>
 inline PROTOBUF_ALWAYS_INLINE
 void KeyframeRequest::set_user_id(ArgT0&& arg0, ArgT... args) {
-
+ 
  user_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, static_cast<ArgT0 &&>(arg0), args..., GetArenaForAllocation());
   // @@protoc_insertion_point(field_set:sfu_rpc.KeyframeRequest.user_id)
 }
@@ -2578,11 +3790,11 @@ inline const std::string& KeyframeRequest::_internal_user_id() const {
   return user_id_.Get();
 }
 inline void KeyframeRequest::_internal_set_user_id(const std::string& value) {
-
+  
   user_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, value, GetArenaForAllocation());
 }
 inline std::string* KeyframeRequest::_internal_mutable_user_id() {
-
+  
   return user_id_.Mutable(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, GetArenaForAllocation());
 }
 inline std::string* KeyframeRequest::release_user_id() {
@@ -2591,9 +3803,9 @@ inline std::string* KeyframeRequest::release_user_id() {
 }
 inline void KeyframeRequest::set_allocated_user_id(std::string* user_id) {
   if (user_id != nullptr) {
-
+    
   } else {
-
+    
   }
   user_id_.SetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), user_id,
       GetArenaForAllocation());
@@ -2608,6 +3820,14 @@ inline void KeyframeRequest::set_allocated_user_id(std::string* user_id) {
 #ifdef __GNUC__
   #pragma GCC diagnostic pop
 #endif  // __GNUC__
+// -------------------------------------------------------------------
+
+// -------------------------------------------------------------------
+
+// -------------------------------------------------------------------
+
+// -------------------------------------------------------------------
+
 // -------------------------------------------------------------------
 
 // -------------------------------------------------------------------

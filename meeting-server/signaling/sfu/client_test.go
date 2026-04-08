@@ -129,3 +129,72 @@ func TestDisabledClient(t *testing.T) {
 		t.Fatalf("unexpected disabled response: %+v", rsp)
 	}
 }
+
+func TestTCPClientGetNodeStatusRoundTrip(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	client := NewClient("127.0.0.1:10000", WithTimeout(time.Second), WithDialer(func(context.Context, string, string) (net.Conn, error) {
+		return clientConn, nil
+	}))
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer serverConn.Close()
+
+		header, payload, err := readFrame(serverConn)
+		if err != nil {
+			t.Errorf("readFrame failed: %v", err)
+			return
+		}
+		if header.method != methodGetNodeStatus || header.kind != wireKindRequest {
+			t.Errorf("unexpected get node status frame: %+v", header)
+			return
+		}
+
+		req := &pb.GetNodeStatusReq{}
+		if err := proto.Unmarshal(payload, req); err != nil {
+			t.Errorf("unmarshal request failed: %v", err)
+			return
+		}
+
+		rspBytes, err := proto.Marshal(&pb.GetNodeStatusRsp{
+			Success:        true,
+			SfuAddress:     "127.0.0.1:10000",
+			MediaPort:      5004,
+			RoomCount:      3,
+			PublisherCount: 7,
+			PacketCount:    99,
+		})
+		if err != nil {
+			t.Errorf("marshal response failed: %v", err)
+			return
+		}
+
+		if err := writeFrame(serverConn, wireHeader{
+			method: methodGetNodeStatus,
+			kind:   wireKindResponse,
+			status: 0,
+			length: uint32(len(rspBytes)),
+		}, rspBytes); err != nil {
+			t.Errorf("writeFrame failed: %v", err)
+			return
+		}
+	}()
+
+	rsp, err := client.GetNodeStatus(context.Background(), &pb.GetNodeStatusReq{})
+	if err != nil {
+		t.Fatalf("GetNodeStatus failed: %v", err)
+	}
+	if !rsp.GetSuccess() || rsp.GetRoomCount() != 3 || rsp.GetPublisherCount() != 7 || rsp.GetPacketCount() != 99 {
+		t.Fatalf("unexpected node status response: %+v", rsp)
+	}
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("server goroutine did not finish")
+	}
+}

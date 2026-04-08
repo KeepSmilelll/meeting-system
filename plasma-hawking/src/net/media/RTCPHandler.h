@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 namespace media {
@@ -44,6 +45,26 @@ struct RTCPReceiverReport {
     std::vector<RTCPReportBlock> reportBlocks;
 };
 
+struct RTCPNackFeedback {
+    uint32_t senderSsrc{0};
+    uint32_t mediaSsrc{0};
+    std::vector<uint16_t> lostSequences;
+};
+
+struct RTCPPliFeedback {
+    uint32_t senderSsrc{0};
+    uint32_t mediaSsrc{0};
+};
+
+struct RTCPRembFeedback {
+    uint32_t senderSsrc{0};
+    uint32_t mediaSsrc{0};
+    uint8_t bitrateExp{0};
+    uint32_t bitrateMantissa{0};
+    uint32_t bitrateBps{0};
+    std::vector<uint32_t> targetSsrcs;
+};
+
 class RTCPHandler {
 public:
     bool parseHeader(const uint8_t* data, std::size_t len, RTCPHeader& outHeader) const;
@@ -54,6 +75,9 @@ public:
 
     bool parseSenderReport(const uint8_t* data, std::size_t len, RTCPSenderReport& outReport) const;
     bool parseReceiverReport(const uint8_t* data, std::size_t len, RTCPReceiverReport& outReport) const;
+    bool parseNackFeedback(const uint8_t* data, std::size_t len, RTCPNackFeedback& outFeedback) const;
+    bool parsePliFeedback(const uint8_t* data, std::size_t len, RTCPPliFeedback& outFeedback) const;
+    bool parseRembFeedback(const uint8_t* data, std::size_t len, RTCPRembFeedback& outFeedback) const;
 
     std::vector<uint8_t> buildSenderReport(const RTCPSenderReport& report) const;
     std::vector<uint8_t> buildReceiverReport(const RTCPReceiverReport& report) const;
@@ -262,6 +286,125 @@ inline bool media::RTCPHandler::parseReceiverReport(const uint8_t* data, std::si
         blockPtr += 24;
     }
     return true;
+}
+
+inline bool media::RTCPHandler::parseNackFeedback(const uint8_t* data, std::size_t len, RTCPNackFeedback& outFeedback) const {
+    RTCPHeader header{};
+    if (!parseHeader(data, len, header) ||
+        header.packetType != 205 ||
+        header.countOrFormat != 1) {
+        return false;
+    }
+
+    const std::size_t packetBytes = packetSizeBytes(header);
+    if (packetBytes < 12 || len < packetBytes) {
+        return false;
+    }
+
+    const uint8_t* body = data + 4;
+    outFeedback.senderSsrc = (static_cast<uint32_t>(body[0]) << 24) |
+                             (static_cast<uint32_t>(body[1]) << 16) |
+                             (static_cast<uint32_t>(body[2]) << 8) |
+                             static_cast<uint32_t>(body[3]);
+    outFeedback.mediaSsrc = (static_cast<uint32_t>(body[4]) << 24) |
+                            (static_cast<uint32_t>(body[5]) << 16) |
+                            (static_cast<uint32_t>(body[6]) << 8) |
+                            static_cast<uint32_t>(body[7]);
+
+    outFeedback.lostSequences.clear();
+    for (std::size_t offset = 12; offset + 4 <= packetBytes; offset += 4) {
+        const uint8_t* block = data + offset;
+        const uint16_t pid = static_cast<uint16_t>((static_cast<uint16_t>(block[0]) << 8) | block[1]);
+        const uint16_t blp = static_cast<uint16_t>((static_cast<uint16_t>(block[2]) << 8) | block[3]);
+        outFeedback.lostSequences.push_back(pid);
+        for (uint16_t bit = 0; bit < 16U; ++bit) {
+            if ((blp & static_cast<uint16_t>(1U << bit)) == 0U) {
+                continue;
+            }
+            outFeedback.lostSequences.push_back(static_cast<uint16_t>(pid + bit + 1U));
+        }
+    }
+    return !outFeedback.lostSequences.empty();
+}
+
+inline bool media::RTCPHandler::parsePliFeedback(const uint8_t* data, std::size_t len, RTCPPliFeedback& outFeedback) const {
+    RTCPHeader header{};
+    if (!parseHeader(data, len, header) ||
+        header.packetType != 206 ||
+        header.countOrFormat != 1) {
+        return false;
+    }
+
+    const std::size_t packetBytes = packetSizeBytes(header);
+    if (packetBytes < 12 || len < packetBytes) {
+        return false;
+    }
+
+    const uint8_t* body = data + 4;
+    outFeedback.senderSsrc = (static_cast<uint32_t>(body[0]) << 24) |
+                             (static_cast<uint32_t>(body[1]) << 16) |
+                             (static_cast<uint32_t>(body[2]) << 8) |
+                             static_cast<uint32_t>(body[3]);
+    outFeedback.mediaSsrc = (static_cast<uint32_t>(body[4]) << 24) |
+                            (static_cast<uint32_t>(body[5]) << 16) |
+                            (static_cast<uint32_t>(body[6]) << 8) |
+                            static_cast<uint32_t>(body[7]);
+    return true;
+}
+
+inline bool media::RTCPHandler::parseRembFeedback(const uint8_t* data, std::size_t len, RTCPRembFeedback& outFeedback) const {
+    RTCPHeader header{};
+    if (!parseHeader(data, len, header) ||
+        header.packetType != 206 ||
+        header.countOrFormat != 15) {
+        return false;
+    }
+
+    const std::size_t packetBytes = packetSizeBytes(header);
+    if (packetBytes < 20 || len < packetBytes) {
+        return false;
+    }
+
+    const uint8_t* body = data + 4;
+    const uint8_t* fci = body + 8;
+    if (fci[0] != 'R' || fci[1] != 'E' || fci[2] != 'M' || fci[3] != 'B') {
+        return false;
+    }
+
+    const uint8_t ssrcCount = fci[4];
+    const std::size_t requiredBytes = 20U + static_cast<std::size_t>(ssrcCount) * 4U;
+    if (packetBytes < requiredBytes || len < requiredBytes) {
+        return false;
+    }
+
+    outFeedback.senderSsrc = (static_cast<uint32_t>(body[0]) << 24) |
+                             (static_cast<uint32_t>(body[1]) << 16) |
+                             (static_cast<uint32_t>(body[2]) << 8) |
+                             static_cast<uint32_t>(body[3]);
+    outFeedback.mediaSsrc = (static_cast<uint32_t>(body[4]) << 24) |
+                            (static_cast<uint32_t>(body[5]) << 16) |
+                            (static_cast<uint32_t>(body[6]) << 8) |
+                            static_cast<uint32_t>(body[7]);
+    outFeedback.bitrateExp = static_cast<uint8_t>((fci[5] >> 2U) & 0x3FU);
+    outFeedback.bitrateMantissa = (static_cast<uint32_t>(fci[5] & 0x03U) << 16U) |
+                                  (static_cast<uint32_t>(fci[6]) << 8U) |
+                                  static_cast<uint32_t>(fci[7]);
+    const uint64_t bitrate = static_cast<uint64_t>(outFeedback.bitrateMantissa) << outFeedback.bitrateExp;
+    outFeedback.bitrateBps = bitrate > std::numeric_limits<uint32_t>::max()
+        ? std::numeric_limits<uint32_t>::max()
+        : static_cast<uint32_t>(bitrate);
+
+    outFeedback.targetSsrcs.clear();
+    outFeedback.targetSsrcs.reserve(ssrcCount);
+    for (uint8_t i = 0; i < ssrcCount; ++i) {
+        const uint8_t* p = fci + 8U + static_cast<std::size_t>(i) * 4U;
+        const uint32_t ssrc = (static_cast<uint32_t>(p[0]) << 24) |
+                              (static_cast<uint32_t>(p[1]) << 16) |
+                              (static_cast<uint32_t>(p[2]) << 8) |
+                              static_cast<uint32_t>(p[3]);
+        outFeedback.targetSsrcs.push_back(ssrc);
+    }
+    return !outFeedback.targetSsrcs.empty();
 }
 
 inline std::vector<uint8_t> media::RTCPHandler::buildSenderReport(const RTCPSenderReport& report) const {
@@ -474,7 +617,49 @@ inline bool media::runRtcpMainFlowSelfCheck() {
 
     RTCPHeader feedbackHeader{};
     feedbackHeader.packetType = 205;
+
+    const std::vector<uint8_t> nackPacket = {
+        0x81, 0xCD, 0x00, 0x03,
+        0x22, 0x22, 0x22, 0x22,
+        0x11, 0x11, 0x11, 0x11,
+        0x10, 0x00, 0x00, 0x05,
+    };
+    RTCPNackFeedback nack{};
+    if (!handler.parseNackFeedback(nackPacket.data(), nackPacket.size(), nack)) {
+        return false;
+    }
+
+    const std::vector<uint8_t> pliPacket = {
+        0x81, 0xCE, 0x00, 0x02,
+        0x22, 0x22, 0x22, 0x22,
+        0x11, 0x11, 0x11, 0x11,
+    };
+    RTCPPliFeedback pli{};
+    if (!handler.parsePliFeedback(pliPacket.data(), pliPacket.size(), pli)) {
+        return false;
+    }
+
+    const std::vector<uint8_t> rembPacket = {
+        0x8F, 0xCE, 0x00, 0x05,
+        0x22, 0x22, 0x22, 0x22,
+        0x00, 0x00, 0x00, 0x00,
+        'R', 'E', 'M', 'B',
+        0x01,
+        0x03, 0x0D, 0x40,
+        0x11, 0x11, 0x11, 0x11,
+    };
+    RTCPRembFeedback remb{};
+    if (!handler.parseRembFeedback(rembPacket.data(), rembPacket.size(), remb)) {
+        return false;
+    }
+
     return handler.isSenderReport(slices[0].header) &&
            handler.isReceiverReport(slices[1].header) &&
-           handler.isFeedbackPacket(feedbackHeader);
+           handler.isFeedbackPacket(feedbackHeader) &&
+           nack.lostSequences.size() == 3 &&
+           nack.lostSequences.front() == 0x1000U &&
+           pli.mediaSsrc == 0x11111111U &&
+           remb.bitrateBps == 200000U &&
+           remb.targetSsrcs.size() == 1 &&
+           remb.targetSsrcs.front() == 0x11111111U;
 }

@@ -57,11 +57,14 @@ Controls.Pane {
             model: root.controller.participantModel
 
             delegate: Rectangle {
+                readonly property bool remoteSharer: sharing && userId !== root.controller.userId
+                readonly property bool activeShare: remoteSharer && userId === root.controller.activeShareUserId
                 width: ListView.view.width
                 height: 88
                 radius: 16
                 color: userId === root.controller.userId ? "#132238" : (index % 2 === 0 ? "#0f172a" : "#111827")
-                border.color: host ? "#f59e0b" : "#1f2937"
+                border.color: activeShare ? "#38bdf8" : (host ? "#f59e0b" : "#1f2937")
+                border.width: activeShare ? 2 : 1
 
                 ColumnLayout {
                     anchors.fill: parent
@@ -154,13 +157,13 @@ Controls.Pane {
                         Rectangle {
                             visible: sharing
                             radius: 999
-                            color: "#7c2d12"
+                            color: activeShare ? "#0c4a6e" : "#7c2d12"
                             implicitWidth: 86
                             implicitHeight: 22
 
                             Controls.Label {
                                 anchors.centerIn: parent
-                                text: "Sharing"
+                                text: activeShare ? "Watching" : "Sharing"
                                 color: "#fff7ed"
                                 font.pixelSize: 11
                             }
@@ -168,6 +171,13 @@ Controls.Pane {
 
                         Item { Layout.fillWidth: true }
                     }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    enabled: remoteSharer
+                    cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                    onClicked: root.controller.setActiveShareUserId(userId)
                 }
             }
         }

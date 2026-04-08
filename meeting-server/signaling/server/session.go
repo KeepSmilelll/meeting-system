@@ -41,6 +41,7 @@ type Session struct {
 
 	connectedAt time.Time
 	lastSeenNs  atomic.Int64
+	logoutClose atomic.Bool
 
 	metaMu    sync.RWMutex
 	userID    string
@@ -201,6 +202,14 @@ func (s *Session) MeetingID() string {
 	s.metaMu.RLock()
 	defer s.metaMu.RUnlock()
 	return s.meetingID
+}
+
+func (s *Session) MarkLogoutClose() {
+	s.logoutClose.Store(true)
+}
+
+func (s *Session) LogoutClose() bool {
+	return s.logoutClose.Load()
 }
 
 func (s *Session) touch() {

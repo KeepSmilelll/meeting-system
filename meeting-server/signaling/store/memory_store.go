@@ -260,6 +260,25 @@ func (s *MemoryStore) HasParticipant(meetingID, userID string) (bool, error) {
 	_, exists := members[userID]
 	return exists, nil
 }
+
+func (s *MemoryStore) SnapshotMeeting(meetingID string) (*Meeting, []*protocol.Participant, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	meeting, ok := s.meetings[meetingID]
+	if !ok {
+		return nil, nil, ErrMeetingNotFound
+	}
+
+	members, ok := s.participants[meetingID]
+	if !ok {
+		return nil, nil, ErrMeetingNotFound
+	}
+
+	meetingCopy := *meeting
+	return &meetingCopy, participantsToList(members), nil
+}
+
 func (s *MemoryStore) SaveMessage(meetingID, senderID string, msgType int32, content, replyToID string) Message {
 	id := s.messageSeq.Add(1)
 	msg := Message{

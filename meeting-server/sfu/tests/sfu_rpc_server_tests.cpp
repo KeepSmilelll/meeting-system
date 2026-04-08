@@ -428,6 +428,27 @@ bool TestServiceLifecycle() {
         return false;
     }
 
+    addReq.set_audio_ssrc(33);
+    addReq.set_video_ssrc(44);
+    if (!SerializeMessage(addReq, &payload)) {
+        std::cerr << "Serialize second add request failed\n";
+        return false;
+    }
+
+    if (!service.Dispatch(sfu::RpcMethod::kAddPublisher, payload.data(), payload.size(), &responseBytes)) {
+        std::cerr << "Dispatch second add failed\n";
+        return false;
+    }
+
+    if (!ParseMessage(responseBytes, &addRsp) || !addRsp.success()) {
+        std::cerr << "Second add response mismatch\n";
+        return false;
+    }
+    if (!room || room->GetPublisher("alice") == nullptr || room->GetPublisher("alice")->AudioSsrc() != 33) {
+        std::cerr << "Publisher should be updated on repeated add\n";
+        return false;
+    }
+
     sfu_rpc::DestroyRoomReq destroyReq;
     destroyReq.set_meeting_id("room-100");
     if (!SerializeMessage(destroyReq, &payload)) {
@@ -449,6 +470,67 @@ bool TestServiceLifecycle() {
     return true;
 }
 
+bool TestAddPublisherRefreshesExistingBinding() {
+    auto roomManager = std::make_shared<sfu::RoomManager>();
+    sfu::RpcService service(roomManager);
+    service.SetAdvertisedAddress("127.0.0.1:4567");
+
+    sfu_rpc::CreateRoomReq createReq;
+    createReq.set_meeting_id("room-refresh");
+    createReq.set_max_publishers(2);
+    std::vector<uint8_t> payload;
+    if (!SerializeMessage(createReq, &payload)) {
+        std::cerr << "Serialize create request failed\n";
+        return false;
+    }
+
+    std::vector<uint8_t> responseBytes;
+    if (!service.Dispatch(sfu::RpcMethod::kCreateRoom, payload.data(), payload.size(), &responseBytes)) {
+        std::cerr << "Dispatch create failed\n";
+        return false;
+    }
+
+    sfu_rpc::AddPublisherReq addReq;
+    addReq.set_meeting_id("room-refresh");
+    addReq.set_user_id("alice");
+    addReq.set_audio_ssrc(0x11111111U);
+    if (!SerializeMessage(addReq, &payload) ||
+        !service.Dispatch(sfu::RpcMethod::kAddPublisher, payload.data(), payload.size(), &responseBytes)) {
+        std::cerr << "Dispatch initial add failed\n";
+        return false;
+    }
+
+    addReq.set_audio_ssrc(0x33333333U);
+    if (!SerializeMessage(addReq, &payload) ||
+        !service.Dispatch(sfu::RpcMethod::kAddPublisher, payload.data(), payload.size(), &responseBytes)) {
+        std::cerr << "Dispatch refreshed add failed\n";
+        return false;
+    }
+
+    const auto room = roomManager->GetRoomShared("room-refresh");
+    if (!room || room->PublisherCount() != 1) {
+        std::cerr << "Expected one publisher after refresh\n";
+        return false;
+    }
+
+    const auto publisher = room->GetPublisher("alice");
+    if (!publisher || publisher->AudioSsrc() != 0x33333333U) {
+        std::cerr << "Publisher SSRC was not refreshed\n";
+        return false;
+    }
+
+    sfu::RoomManager::PublisherLocation location;
+    if (service.mediaIngress()->ResolvePublisher(0x11111111U, &location)) {
+        std::cerr << "Old SSRC should no longer resolve\n";
+        return false;
+    }
+    if (!service.mediaIngress()->ResolvePublisher(0x33333333U, &location) || location.publisher.userId != "alice") {
+        std::cerr << "New SSRC should resolve to alice\n";
+        return false;
+    }
+
+    return true;
+}
 bool TestMediaIngressRouting() {
     auto roomManager = std::make_shared<sfu::RoomManager>();
     sfu::RpcService service(roomManager);
@@ -571,6 +653,1704 @@ bool TestMediaIngressRouting() {
     return service.mediaIngress()->PacketCount() > 0;
 }
 
+bool TestMediaIngressRetransmitsOnNack() {
+    auto roomManager = std::make_shared<sfu::RoomManager>();
+    sfu::RpcService service(roomManager);
+
+    sfu_rpc::CreateRoomReq createReq;
+    createReq.set_meeting_id("room-nack");
+    createReq.set_max_publishers(2);
+    std::vector<uint8_t> payload;
+    if (!SerializeMessage(createReq, &payload)) {
+        std::cerr << "Serialize create request failed\n";
+        return false;
+    }
+
+    std::vector<uint8_t> responseBytes;
+    if (!service.Dispatch(sfu::RpcMethod::kCreateRoom, payload.data(), payload.size(), &responseBytes)) {
+        std::cerr << "Dispatch create failed\n";
+        return false;
+    }
+
+    uint16_t subscriberPort = 0;
+    SocketHandle subscriberSocket = kInvalidSocket;
+    if (!CreateBoundUdpSocket(&subscriberSocket, &subscriberPort)) {
+        std::cerr << "CreateBoundUdpSocket failed\n";
+        return false;
+    }
+
+    auto room = roomManager->GetRoomShared("room-nack");
+    if (!room) {
+        std::cerr << "Room should exist before nack test\n";
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    auto subscriber = std::make_shared<sfu::Subscriber>("bob", "127.0.0.1:" + std::to_string(subscriberPort), 0x22222222U, 0);
+    if (!room->AddSubscriber(subscriber)) {
+        std::cerr << "AddSubscriber failed\n";
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    sfu_rpc::AddPublisherReq addReq;
+    addReq.set_meeting_id("room-nack");
+    addReq.set_user_id("alice");
+    addReq.set_audio_ssrc(0x11111111U);
+    addReq.set_video_ssrc(0);
+    if (!SerializeMessage(addReq, &payload) ||
+        !service.Dispatch(sfu::RpcMethod::kAddPublisher, payload.data(), payload.size(), &responseBytes)) {
+        std::cerr << "Dispatch add failed\n";
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    sfu_rpc::AddPublisherRsp addRsp;
+    if (!ParseMessage(responseBytes, &addRsp) || !addRsp.success() || addRsp.udp_port() == 0) {
+        std::cerr << "AddPublisher should return a live UDP port\n";
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    SocketHandle senderSocket = kInvalidSocket;
+    uint16_t senderPort = 0;
+    if (!CreateBoundUdpSocket(&senderSocket, &senderPort)) {
+        std::cerr << "CreateBoundUdpSocket for sender failed\n";
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    const std::vector<uint8_t> rtpPacket = {
+        0x80, 0x60,
+        0x00, 0x2A,
+        0x00, 0x00, 0x00, 0x64,
+        0x11, 0x11, 0x11, 0x11,
+        0xAB, 0xCD, 0xEF
+    };
+    if (!SendUdpPacket(senderSocket, addRsp.udp_port(), rtpPacket.data(), rtpPacket.size())) {
+        std::cerr << "SendUdpPacket RTP failed\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    std::vector<uint8_t> firstForwardedPacket;
+    if (!ReceiveUdpPacket(subscriberSocket, &firstForwardedPacket)) {
+        std::cerr << "Expected initial forwarded RTP packet\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    const std::vector<uint8_t> nackPacket = {
+        0x81, 0xCD, 0x00, 0x03,
+        0x22, 0x22, 0x22, 0x22,
+        0x22, 0x22, 0x22, 0x22,
+        0x00, 0x2A, 0x00, 0x00,
+    };
+    if (!SendUdpPacket(subscriberSocket, addRsp.udp_port(), nackPacket.data(), nackPacket.size())) {
+        std::cerr << "SendUdpPacket NACK failed\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    std::vector<uint8_t> retransmitPacket;
+    if (!ReceiveUdpPacket(subscriberSocket, &retransmitPacket, 1000)) {
+        std::cerr << "Expected retransmitted RTP packet after NACK\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    const bool validRetransmit = retransmitPacket.size() == rtpPacket.size() &&
+                                 retransmitPacket[2] == 0x00 &&
+                                 retransmitPacket[3] == 0x2A &&
+                                 retransmitPacket[8] == 0x22 &&
+                                 retransmitPacket[9] == 0x22 &&
+                                 retransmitPacket[10] == 0x22 &&
+                                 retransmitPacket[11] == 0x22;
+    if (!validRetransmit) {
+        std::cerr << "Retransmit packet mismatch after NACK\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    CloseSocket(senderSocket);
+    CloseSocket(subscriberSocket);
+    return true;
+}
+
+bool TestMediaIngressForwardsPliToPublisher() {
+    auto roomManager = std::make_shared<sfu::RoomManager>();
+    sfu::RpcService service(roomManager);
+
+    sfu_rpc::CreateRoomReq createReq;
+    createReq.set_meeting_id("room-pli");
+    createReq.set_max_publishers(2);
+    std::vector<uint8_t> payload;
+    if (!SerializeMessage(createReq, &payload)) {
+        std::cerr << "Serialize create request failed\n";
+        return false;
+    }
+
+    std::vector<uint8_t> responseBytes;
+    if (!service.Dispatch(sfu::RpcMethod::kCreateRoom, payload.data(), payload.size(), &responseBytes)) {
+        std::cerr << "Dispatch create failed\n";
+        return false;
+    }
+
+    uint16_t subscriberPort = 0;
+    SocketHandle subscriberSocket = kInvalidSocket;
+    if (!CreateBoundUdpSocket(&subscriberSocket, &subscriberPort)) {
+        std::cerr << "CreateBoundUdpSocket failed\n";
+        return false;
+    }
+
+    auto room = roomManager->GetRoomShared("room-pli");
+    if (!room) {
+        std::cerr << "Room should exist before pli test\n";
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    auto subscriber = std::make_shared<sfu::Subscriber>("bob", "127.0.0.1:" + std::to_string(subscriberPort), 0x22222222U, 0);
+    if (!room->AddSubscriber(subscriber)) {
+        std::cerr << "AddSubscriber failed\n";
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    sfu_rpc::AddPublisherReq addReq;
+    addReq.set_meeting_id("room-pli");
+    addReq.set_user_id("alice");
+    addReq.set_audio_ssrc(0x11111111U);
+    if (!SerializeMessage(addReq, &payload) ||
+        !service.Dispatch(sfu::RpcMethod::kAddPublisher, payload.data(), payload.size(), &responseBytes)) {
+        std::cerr << "Dispatch add failed\n";
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    sfu_rpc::AddPublisherRsp addRsp;
+    if (!ParseMessage(responseBytes, &addRsp) || !addRsp.success() || addRsp.udp_port() == 0) {
+        std::cerr << "AddPublisher should return a live UDP port\n";
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    SocketHandle senderSocket = kInvalidSocket;
+    uint16_t senderPort = 0;
+    if (!CreateBoundUdpSocket(&senderSocket, &senderPort)) {
+        std::cerr << "CreateBoundUdpSocket for sender failed\n";
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    const std::vector<uint8_t> rtpPacket = {
+        0x80, 0x60,
+        0x00, 0x2A,
+        0x00, 0x00, 0x00, 0x64,
+        0x11, 0x11, 0x11, 0x11,
+        0xAB, 0xCD, 0xEF
+    };
+    if (!SendUdpPacket(senderSocket, addRsp.udp_port(), rtpPacket.data(), rtpPacket.size())) {
+        std::cerr << "SendUdpPacket RTP failed\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    std::vector<uint8_t> forwardedPacket;
+    if (!ReceiveUdpPacket(subscriberSocket, &forwardedPacket)) {
+        std::cerr << "Expected initial forwarded RTP packet\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    const std::vector<uint8_t> pliPacket = {
+        0x81, 0xCE, 0x00, 0x02,
+        0x22, 0x22, 0x22, 0x22,
+        0x22, 0x22, 0x22, 0x22,
+    };
+    if (!SendUdpPacket(subscriberSocket, addRsp.udp_port(), pliPacket.data(), pliPacket.size())) {
+        std::cerr << "SendUdpPacket PLI failed\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    std::vector<uint8_t> forwardedPli;
+    if (!ReceiveUdpPacket(senderSocket, &forwardedPli, 1000)) {
+        std::cerr << "Expected forwarded PLI packet to publisher\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    const bool validPli = forwardedPli.size() == pliPacket.size() &&
+                          forwardedPli[0] == 0x81 &&
+                          forwardedPli[1] == 0xCE &&
+                          forwardedPli[2] == 0x00 &&
+                          forwardedPli[3] == 0x02 &&
+                          forwardedPli[8] == 0x11 &&
+                          forwardedPli[9] == 0x11 &&
+                          forwardedPli[10] == 0x11 &&
+                          forwardedPli[11] == 0x11;
+    if (!validPli) {
+        std::cerr << "Forwarded PLI packet mismatch\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    CloseSocket(senderSocket);
+    CloseSocket(subscriberSocket);
+    return true;
+}
+
+bool TestMediaIngressCoalescesFrequentPli() {
+    auto roomManager = std::make_shared<sfu::RoomManager>();
+    sfu::RpcService service(roomManager);
+
+    sfu_rpc::CreateRoomReq createReq;
+    createReq.set_meeting_id("room-pli-coalesce");
+    createReq.set_max_publishers(2);
+    std::vector<uint8_t> payload;
+    if (!SerializeMessage(createReq, &payload)) {
+        std::cerr << "Serialize create request failed\n";
+        return false;
+    }
+
+    std::vector<uint8_t> responseBytes;
+    if (!service.Dispatch(sfu::RpcMethod::kCreateRoom, payload.data(), payload.size(), &responseBytes)) {
+        std::cerr << "Dispatch create failed\n";
+        return false;
+    }
+
+    uint16_t subscriberPort = 0;
+    SocketHandle subscriberSocket = kInvalidSocket;
+    if (!CreateBoundUdpSocket(&subscriberSocket, &subscriberPort)) {
+        std::cerr << "CreateBoundUdpSocket failed\n";
+        return false;
+    }
+
+    auto room = roomManager->GetRoomShared("room-pli-coalesce");
+    if (!room) {
+        std::cerr << "Room should exist before pli coalesce test\n";
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    auto subscriber = std::make_shared<sfu::Subscriber>("bob", "127.0.0.1:" + std::to_string(subscriberPort), 0x22222222U, 0);
+    if (!room->AddSubscriber(subscriber)) {
+        std::cerr << "AddSubscriber failed\n";
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    sfu_rpc::AddPublisherReq addReq;
+    addReq.set_meeting_id("room-pli-coalesce");
+    addReq.set_user_id("alice");
+    addReq.set_audio_ssrc(0x11111111U);
+    if (!SerializeMessage(addReq, &payload) ||
+        !service.Dispatch(sfu::RpcMethod::kAddPublisher, payload.data(), payload.size(), &responseBytes)) {
+        std::cerr << "Dispatch add failed\n";
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    sfu_rpc::AddPublisherRsp addRsp;
+    if (!ParseMessage(responseBytes, &addRsp) || !addRsp.success() || addRsp.udp_port() == 0) {
+        std::cerr << "AddPublisher should return a live UDP port\n";
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    SocketHandle senderSocket = kInvalidSocket;
+    uint16_t senderPort = 0;
+    if (!CreateBoundUdpSocket(&senderSocket, &senderPort)) {
+        std::cerr << "CreateBoundUdpSocket for sender failed\n";
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    const std::vector<uint8_t> rtpPacket = {
+        0x80, 0x60,
+        0x00, 0x2A,
+        0x00, 0x00, 0x00, 0x64,
+        0x11, 0x11, 0x11, 0x11,
+        0xAB, 0xCD, 0xEF
+    };
+    if (!SendUdpPacket(senderSocket, addRsp.udp_port(), rtpPacket.data(), rtpPacket.size())) {
+        std::cerr << "SendUdpPacket RTP failed\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    std::vector<uint8_t> forwardedPacket;
+    if (!ReceiveUdpPacket(subscriberSocket, &forwardedPacket)) {
+        std::cerr << "Expected initial forwarded RTP packet\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    const std::vector<uint8_t> pliPacket = {
+        0x81, 0xCE, 0x00, 0x02,
+        0x22, 0x22, 0x22, 0x22,
+        0x22, 0x22, 0x22, 0x22,
+    };
+
+    auto validateForwardedPli = [&](const std::vector<uint8_t>& packet) {
+        return packet.size() == pliPacket.size() &&
+               packet[0] == 0x81 &&
+               packet[1] == 0xCE &&
+               packet[2] == 0x00 &&
+               packet[3] == 0x02 &&
+               packet[8] == 0x11 &&
+               packet[9] == 0x11 &&
+               packet[10] == 0x11 &&
+               packet[11] == 0x11;
+    };
+
+    if (!SendUdpPacket(subscriberSocket, addRsp.udp_port(), pliPacket.data(), pliPacket.size())) {
+        std::cerr << "SendUdpPacket first PLI failed\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    std::vector<uint8_t> firstForwardedPli;
+    if (!ReceiveUdpPacket(senderSocket, &firstForwardedPli, 1000) || !validateForwardedPli(firstForwardedPli)) {
+        std::cerr << "Expected first forwarded PLI packet to publisher\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    if (!SendUdpPacket(subscriberSocket, addRsp.udp_port(), pliPacket.data(), pliPacket.size())) {
+        std::cerr << "SendUdpPacket second PLI failed\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    std::vector<uint8_t> suppressedPli;
+    if (ReceiveUdpPacket(senderSocket, &suppressedPli, 150)) {
+        std::cerr << "Second PLI inside cooldown should be coalesced\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+
+    if (!SendUdpPacket(subscriberSocket, addRsp.udp_port(), pliPacket.data(), pliPacket.size())) {
+        std::cerr << "SendUdpPacket third PLI failed\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    std::vector<uint8_t> thirdForwardedPli;
+    if (!ReceiveUdpPacket(senderSocket, &thirdForwardedPli, 1000) || !validateForwardedPli(thirdForwardedPli)) {
+        std::cerr << "Expected third PLI after cooldown to be forwarded\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    CloseSocket(senderSocket);
+    CloseSocket(subscriberSocket);
+    return true;
+}
+
+bool TestMediaIngressForwardsRembToPublisher() {
+    auto roomManager = std::make_shared<sfu::RoomManager>();
+    sfu::RpcService service(roomManager);
+
+    sfu_rpc::CreateRoomReq createReq;
+    createReq.set_meeting_id("room-remb");
+    createReq.set_max_publishers(2);
+    std::vector<uint8_t> payload;
+    if (!SerializeMessage(createReq, &payload)) {
+        std::cerr << "Serialize create request failed\n";
+        return false;
+    }
+
+    std::vector<uint8_t> responseBytes;
+    if (!service.Dispatch(sfu::RpcMethod::kCreateRoom, payload.data(), payload.size(), &responseBytes)) {
+        std::cerr << "Dispatch create failed\n";
+        return false;
+    }
+
+    uint16_t subscriberPort = 0;
+    SocketHandle subscriberSocket = kInvalidSocket;
+    if (!CreateBoundUdpSocket(&subscriberSocket, &subscriberPort)) {
+        std::cerr << "CreateBoundUdpSocket failed\n";
+        return false;
+    }
+
+    auto room = roomManager->GetRoomShared("room-remb");
+    if (!room) {
+        std::cerr << "Room should exist before remb test\n";
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    auto subscriber = std::make_shared<sfu::Subscriber>("bob", "127.0.0.1:" + std::to_string(subscriberPort), 0x22222222U, 0);
+    if (!room->AddSubscriber(subscriber)) {
+        std::cerr << "AddSubscriber failed\n";
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    sfu_rpc::AddPublisherReq addReq;
+    addReq.set_meeting_id("room-remb");
+    addReq.set_user_id("alice");
+    addReq.set_audio_ssrc(0x11111111U);
+    if (!SerializeMessage(addReq, &payload) ||
+        !service.Dispatch(sfu::RpcMethod::kAddPublisher, payload.data(), payload.size(), &responseBytes)) {
+        std::cerr << "Dispatch add failed\n";
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    sfu_rpc::AddPublisherRsp addRsp;
+    if (!ParseMessage(responseBytes, &addRsp) || !addRsp.success() || addRsp.udp_port() == 0) {
+        std::cerr << "AddPublisher should return a live UDP port\n";
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    SocketHandle senderSocket = kInvalidSocket;
+    uint16_t senderPort = 0;
+    if (!CreateBoundUdpSocket(&senderSocket, &senderPort)) {
+        std::cerr << "CreateBoundUdpSocket for sender failed\n";
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    const std::vector<uint8_t> rtpPacket = {
+        0x80, 0x60,
+        0x00, 0x2A,
+        0x00, 0x00, 0x00, 0x64,
+        0x11, 0x11, 0x11, 0x11,
+        0xAB, 0xCD, 0xEF
+    };
+    if (!SendUdpPacket(senderSocket, addRsp.udp_port(), rtpPacket.data(), rtpPacket.size())) {
+        std::cerr << "SendUdpPacket RTP failed\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    std::vector<uint8_t> forwardedPacket;
+    if (!ReceiveUdpPacket(subscriberSocket, &forwardedPacket)) {
+        std::cerr << "Expected initial forwarded RTP packet\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    const std::vector<uint8_t> rembPacket = {
+        0x8F, 0xCE, 0x00, 0x05,
+        0x22, 0x22, 0x22, 0x22,
+        0x00, 0x00, 0x00, 0x00,
+        'R', 'E', 'M', 'B',
+        0x01,
+        0x03, 0x0D, 0x40,
+        0x22, 0x22, 0x22, 0x22,
+    };
+    if (!SendUdpPacket(subscriberSocket, addRsp.udp_port(), rembPacket.data(), rembPacket.size())) {
+        std::cerr << "SendUdpPacket REMB failed\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    std::vector<uint8_t> forwardedRemb;
+    if (!ReceiveUdpPacket(senderSocket, &forwardedRemb, 1000)) {
+        std::cerr << "Expected forwarded REMB packet to publisher\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    const bool validRemb = forwardedRemb.size() == rembPacket.size() &&
+                           forwardedRemb[0] == 0x8F &&
+                           forwardedRemb[1] == 0xCE &&
+                           forwardedRemb[2] == 0x00 &&
+                           forwardedRemb[3] == 0x05 &&
+                           forwardedRemb[12] == 'R' &&
+                           forwardedRemb[13] == 'E' &&
+                           forwardedRemb[14] == 'M' &&
+                           forwardedRemb[15] == 'B' &&
+                           forwardedRemb[16] == 0x01 &&
+                           forwardedRemb[17] == 0x03 &&
+                           forwardedRemb[18] == 0x0D &&
+                           forwardedRemb[19] == 0x40 &&
+                           forwardedRemb[20] == 0x11 &&
+                           forwardedRemb[21] == 0x11 &&
+                           forwardedRemb[22] == 0x11 &&
+                           forwardedRemb[23] == 0x11;
+    if (!validRemb) {
+        std::cerr << "Forwarded REMB packet mismatch\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    CloseSocket(senderSocket);
+    CloseSocket(subscriberSocket);
+    return true;
+}
+
+bool TestMediaIngressUsesVideoRewriteAndFeedbackMapping() {
+    auto roomManager = std::make_shared<sfu::RoomManager>();
+    sfu::RpcService service(roomManager);
+
+    sfu_rpc::CreateRoomReq createReq;
+    createReq.set_meeting_id("room-video-feedback");
+    createReq.set_max_publishers(2);
+    std::vector<uint8_t> payload;
+    if (!SerializeMessage(createReq, &payload)) {
+        std::cerr << "Serialize create request failed\n";
+        return false;
+    }
+
+    std::vector<uint8_t> responseBytes;
+    if (!service.Dispatch(sfu::RpcMethod::kCreateRoom, payload.data(), payload.size(), &responseBytes)) {
+        std::cerr << "Dispatch create failed\n";
+        return false;
+    }
+
+    uint16_t subscriberPort = 0;
+    SocketHandle subscriberSocket = kInvalidSocket;
+    if (!CreateBoundUdpSocket(&subscriberSocket, &subscriberPort)) {
+        std::cerr << "CreateBoundUdpSocket failed\n";
+        return false;
+    }
+
+    auto room = roomManager->GetRoomShared("room-video-feedback");
+    if (!room) {
+        std::cerr << "Room should exist before video rewrite test\n";
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    auto subscriber = std::make_shared<sfu::Subscriber>("bob", "127.0.0.1:" + std::to_string(subscriberPort), 0x22222222U, 0x33333333U);
+    if (!room->AddSubscriber(subscriber)) {
+        std::cerr << "AddSubscriber failed\n";
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    sfu_rpc::AddPublisherReq addReq;
+    addReq.set_meeting_id("room-video-feedback");
+    addReq.set_user_id("alice");
+    addReq.set_audio_ssrc(0x11111111U);
+    addReq.set_video_ssrc(0x44444444U);
+    if (!SerializeMessage(addReq, &payload) ||
+        !service.Dispatch(sfu::RpcMethod::kAddPublisher, payload.data(), payload.size(), &responseBytes)) {
+        std::cerr << "Dispatch add failed\n";
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    sfu_rpc::AddPublisherRsp addRsp;
+    if (!ParseMessage(responseBytes, &addRsp) || !addRsp.success() || addRsp.udp_port() == 0) {
+        std::cerr << "AddPublisher should return a live UDP port\n";
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    SocketHandle senderSocket = kInvalidSocket;
+    uint16_t senderPort = 0;
+    if (!CreateBoundUdpSocket(&senderSocket, &senderPort)) {
+        std::cerr << "CreateBoundUdpSocket for sender failed\n";
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    const std::vector<uint8_t> videoRtpPacket = {
+        0x80, 0x61,
+        0x00, 0x2A,
+        0x00, 0x00, 0x10, 0x00,
+        0x44, 0x44, 0x44, 0x44,
+        0xAB, 0xCD, 0xEF
+    };
+    if (!SendUdpPacket(senderSocket, addRsp.udp_port(), videoRtpPacket.data(), videoRtpPacket.size())) {
+        std::cerr << "SendUdpPacket video RTP failed\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    std::vector<uint8_t> forwardedVideoPacket;
+    if (!ReceiveUdpPacket(subscriberSocket, &forwardedVideoPacket)) {
+        std::cerr << "Expected forwarded video RTP packet\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+    if (forwardedVideoPacket.size() != videoRtpPacket.size() ||
+        forwardedVideoPacket[8] != 0x33 || forwardedVideoPacket[9] != 0x33 ||
+        forwardedVideoPacket[10] != 0x33 || forwardedVideoPacket[11] != 0x33) {
+        std::cerr << "Video RTP should be rewritten with subscriber video SSRC\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    const std::vector<uint8_t> pliPacket = {
+        0x81, 0xCE, 0x00, 0x02,
+        0x66, 0x66, 0x66, 0x66,
+        0x33, 0x33, 0x33, 0x33,
+    };
+    if (!SendUdpPacket(subscriberSocket, addRsp.udp_port(), pliPacket.data(), pliPacket.size())) {
+        std::cerr << "SendUdpPacket video PLI failed\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    std::vector<uint8_t> forwardedPli;
+    if (!ReceiveUdpPacket(senderSocket, &forwardedPli, 1000)) {
+        std::cerr << "Expected forwarded video PLI packet\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+    if (forwardedPli.size() != pliPacket.size() ||
+        forwardedPli[8] != 0x44 || forwardedPli[9] != 0x44 ||
+        forwardedPli[10] != 0x44 || forwardedPli[11] != 0x44) {
+        std::cerr << "Video PLI should target publisher video SSRC\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    const std::vector<uint8_t> rembPacket = {
+        0x8F, 0xCE, 0x00, 0x05,
+        0x66, 0x66, 0x66, 0x66,
+        0x00, 0x00, 0x00, 0x00,
+        'R', 'E', 'M', 'B',
+        0x01,
+        0x03, 0x0D, 0x40,
+        0x33, 0x33, 0x33, 0x33,
+    };
+    if (!SendUdpPacket(subscriberSocket, addRsp.udp_port(), rembPacket.data(), rembPacket.size())) {
+        std::cerr << "SendUdpPacket video REMB failed\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    std::vector<uint8_t> forwardedRemb;
+    if (!ReceiveUdpPacket(senderSocket, &forwardedRemb, 1000)) {
+        std::cerr << "Expected forwarded video REMB packet\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+    if (forwardedRemb.size() != rembPacket.size() ||
+        forwardedRemb[20] != 0x44 || forwardedRemb[21] != 0x44 ||
+        forwardedRemb[22] != 0x44 || forwardedRemb[23] != 0x44) {
+        std::cerr << "Video REMB should target publisher video SSRC\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    CloseSocket(senderSocket);
+    CloseSocket(subscriberSocket);
+    return true;
+}
+
+bool TestMediaIngressIsolatesFeedbackAcrossPublishers() {
+    auto roomManager = std::make_shared<sfu::RoomManager>();
+    sfu::RpcService service(roomManager);
+
+    sfu_rpc::CreateRoomReq createReq;
+    createReq.set_meeting_id("room-feedback-isolation");
+    createReq.set_max_publishers(4);
+    std::vector<uint8_t> payload;
+    if (!SerializeMessage(createReq, &payload)) {
+        std::cerr << "Serialize create request failed\n";
+        return false;
+    }
+
+    std::vector<uint8_t> responseBytes;
+    if (!service.Dispatch(sfu::RpcMethod::kCreateRoom, payload.data(), payload.size(), &responseBytes)) {
+        std::cerr << "Dispatch create failed\n";
+        return false;
+    }
+
+    uint16_t subscriberPort = 0;
+    SocketHandle subscriberSocket = kInvalidSocket;
+    if (!CreateBoundUdpSocket(&subscriberSocket, &subscriberPort)) {
+        std::cerr << "CreateBoundUdpSocket failed\n";
+        return false;
+    }
+
+    auto room = roomManager->GetRoomShared("room-feedback-isolation");
+    if (!room) {
+        std::cerr << "Room should exist before feedback isolation test\n";
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    auto subscriber = std::make_shared<sfu::Subscriber>("bob", "127.0.0.1:" + std::to_string(subscriberPort), 0, 0);
+    if (!room->AddSubscriber(subscriber)) {
+        std::cerr << "AddSubscriber failed\n";
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    auto addPublisher = [&](const std::string& userId, uint32_t videoSsrc) -> bool {
+        sfu_rpc::AddPublisherReq addReq;
+        addReq.set_meeting_id("room-feedback-isolation");
+        addReq.set_user_id(userId);
+        addReq.set_audio_ssrc(0);
+        addReq.set_video_ssrc(videoSsrc);
+        if (!SerializeMessage(addReq, &payload) ||
+            !service.Dispatch(sfu::RpcMethod::kAddPublisher, payload.data(), payload.size(), &responseBytes)) {
+            return false;
+        }
+        sfu_rpc::AddPublisherRsp addRsp;
+        return ParseMessage(responseBytes, &addRsp) && addRsp.success() && addRsp.udp_port() == service.MediaPort();
+    };
+
+    constexpr uint32_t kAliceVideoSsrc = 0x44444444U;
+    constexpr uint32_t kCharlieVideoSsrc = 0x55555555U;
+    if (!addPublisher("alice", kAliceVideoSsrc) || !addPublisher("charlie", kCharlieVideoSsrc)) {
+        std::cerr << "AddPublisher for isolation test failed\n";
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    SocketHandle aliceSocket = kInvalidSocket;
+    uint16_t alicePort = 0;
+    if (!CreateBoundUdpSocket(&aliceSocket, &alicePort)) {
+        std::cerr << "CreateBoundUdpSocket for alice failed\n";
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    SocketHandle charlieSocket = kInvalidSocket;
+    uint16_t charliePort = 0;
+    if (!CreateBoundUdpSocket(&charlieSocket, &charliePort)) {
+        std::cerr << "CreateBoundUdpSocket for charlie failed\n";
+        CloseSocket(aliceSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    const std::vector<uint8_t> aliceVideoPacket = {
+        0x80, 0x61,
+        0x00, 0x10,
+        0x00, 0x00, 0x20, 0x00,
+        0x44, 0x44, 0x44, 0x44,
+        0xA1, 0xA2, 0xA3
+    };
+    const std::vector<uint8_t> charlieVideoPacket = {
+        0x80, 0x61,
+        0x00, 0x20,
+        0x00, 0x00, 0x30, 0x00,
+        0x55, 0x55, 0x55, 0x55,
+        0xB1, 0xB2, 0xB3
+    };
+    if (!SendUdpPacket(aliceSocket, service.MediaPort(), aliceVideoPacket.data(), aliceVideoPacket.size()) ||
+        !SendUdpPacket(charlieSocket, service.MediaPort(), charlieVideoPacket.data(), charlieVideoPacket.size())) {
+        std::cerr << "SendUdpPacket video RTP failed\n";
+        CloseSocket(charlieSocket);
+        CloseSocket(aliceSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    bool sawAlice = false;
+    bool sawCharlie = false;
+    for (int i = 0; i < 4 && (!sawAlice || !sawCharlie); ++i) {
+        std::vector<uint8_t> forwarded;
+        if (!ReceiveUdpPacket(subscriberSocket, &forwarded, 500)) {
+            continue;
+        }
+        if (forwarded.size() >= 12 &&
+            forwarded[8] == 0x44 && forwarded[9] == 0x44 &&
+            forwarded[10] == 0x44 && forwarded[11] == 0x44) {
+            sawAlice = true;
+        } else if (forwarded.size() >= 12 &&
+                   forwarded[8] == 0x55 && forwarded[9] == 0x55 &&
+                   forwarded[10] == 0x55 && forwarded[11] == 0x55) {
+            sawCharlie = true;
+        }
+    }
+    if (!sawAlice || !sawCharlie) {
+        std::cerr << "Expected forwarded video packets for both publishers\n";
+        CloseSocket(charlieSocket);
+        CloseSocket(aliceSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    const std::vector<uint8_t> pliForCharlie = {
+        0x81, 0xCE, 0x00, 0x02,
+        0x66, 0x66, 0x66, 0x66,
+        0x55, 0x55, 0x55, 0x55,
+    };
+    if (!SendUdpPacket(subscriberSocket, service.MediaPort(), pliForCharlie.data(), pliForCharlie.size())) {
+        std::cerr << "SendUdpPacket PLI for charlie failed\n";
+        CloseSocket(charlieSocket);
+        CloseSocket(aliceSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    std::vector<uint8_t> charliePli;
+    if (!ReceiveUdpPacket(charlieSocket, &charliePli, 1000)) {
+        std::cerr << "Expected PLI forwarded to charlie publisher endpoint\n";
+        CloseSocket(charlieSocket);
+        CloseSocket(aliceSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+    if (charliePli.size() != pliForCharlie.size() ||
+        charliePli[8] != 0x55 || charliePli[9] != 0x55 ||
+        charliePli[10] != 0x55 || charliePli[11] != 0x55) {
+        std::cerr << "PLI forwarded to charlie has unexpected media SSRC\n";
+        CloseSocket(charlieSocket);
+        CloseSocket(aliceSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+    std::vector<uint8_t> unexpectedAlicePli;
+    if (ReceiveUdpPacket(aliceSocket, &unexpectedAlicePli, 150)) {
+        std::cerr << "PLI for charlie should not be forwarded to alice endpoint\n";
+        CloseSocket(charlieSocket);
+        CloseSocket(aliceSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    const std::vector<uint8_t> rembForAlice = {
+        0x8F, 0xCE, 0x00, 0x05,
+        0x66, 0x66, 0x66, 0x66,
+        0x00, 0x00, 0x00, 0x00,
+        'R', 'E', 'M', 'B',
+        0x01,
+        0x03, 0x0D, 0x40,
+        0x44, 0x44, 0x44, 0x44,
+    };
+    if (!SendUdpPacket(subscriberSocket, service.MediaPort(), rembForAlice.data(), rembForAlice.size())) {
+        std::cerr << "SendUdpPacket REMB for alice failed\n";
+        CloseSocket(charlieSocket);
+        CloseSocket(aliceSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    std::vector<uint8_t> aliceRemb;
+    if (!ReceiveUdpPacket(aliceSocket, &aliceRemb, 1000)) {
+        std::cerr << "Expected REMB forwarded to alice publisher endpoint\n";
+        CloseSocket(charlieSocket);
+        CloseSocket(aliceSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+    if (aliceRemb.size() != rembForAlice.size() ||
+        aliceRemb[20] != 0x44 || aliceRemb[21] != 0x44 ||
+        aliceRemb[22] != 0x44 || aliceRemb[23] != 0x44) {
+        std::cerr << "REMB forwarded to alice has unexpected target SSRC\n";
+        CloseSocket(charlieSocket);
+        CloseSocket(aliceSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+    std::vector<uint8_t> unexpectedCharlieRemb;
+    if (ReceiveUdpPacket(charlieSocket, &unexpectedCharlieRemb, 150)) {
+        std::cerr << "REMB for alice should not be forwarded to charlie endpoint\n";
+        CloseSocket(charlieSocket);
+        CloseSocket(aliceSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    const std::vector<uint8_t> nackForCharlie = {
+        0x81, 0xCD, 0x00, 0x03,
+        0x77, 0x77, 0x77, 0x77,
+        0x55, 0x55, 0x55, 0x55,
+        0x00, 0x20, 0x00, 0x00,
+    };
+    if (!SendUdpPacket(subscriberSocket, service.MediaPort(), nackForCharlie.data(), nackForCharlie.size())) {
+        std::cerr << "SendUdpPacket NACK for charlie failed\n";
+        CloseSocket(charlieSocket);
+        CloseSocket(aliceSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    std::vector<uint8_t> retransmit;
+    if (!ReceiveUdpPacket(subscriberSocket, &retransmit, 1000)) {
+        std::cerr << "Expected NACK retransmit packet\n";
+        CloseSocket(charlieSocket);
+        CloseSocket(aliceSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+    if (retransmit.size() != charlieVideoPacket.size() ||
+        retransmit[2] != 0x00 || retransmit[3] != 0x20 ||
+        retransmit[8] != 0x55 || retransmit[9] != 0x55 ||
+        retransmit[10] != 0x55 || retransmit[11] != 0x55) {
+        std::cerr << "NACK retransmit should target charlie stream only\n";
+        CloseSocket(charlieSocket);
+        CloseSocket(aliceSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    CloseSocket(charlieSocket);
+    CloseSocket(aliceSocket);
+    CloseSocket(subscriberSocket);
+    return true;
+}
+
+bool TestMediaIngressIsolatesFeedbackAcrossSubscribers() {
+    auto roomManager = std::make_shared<sfu::RoomManager>();
+    sfu::RpcService service(roomManager);
+
+    sfu_rpc::CreateRoomReq createReq;
+    createReq.set_meeting_id("room-subscriber-feedback-isolation");
+    createReq.set_max_publishers(2);
+    std::vector<uint8_t> payload;
+    if (!SerializeMessage(createReq, &payload)) {
+        std::cerr << "Serialize create request failed\n";
+        return false;
+    }
+
+    std::vector<uint8_t> responseBytes;
+    if (!service.Dispatch(sfu::RpcMethod::kCreateRoom, payload.data(), payload.size(), &responseBytes)) {
+        std::cerr << "Dispatch create failed\n";
+        return false;
+    }
+
+    SocketHandle subscriberASocket = kInvalidSocket;
+    uint16_t subscriberAPort = 0;
+    if (!CreateBoundUdpSocket(&subscriberASocket, &subscriberAPort)) {
+        std::cerr << "CreateBoundUdpSocket for subscriber A failed\n";
+        return false;
+    }
+
+    SocketHandle subscriberBSocket = kInvalidSocket;
+    uint16_t subscriberBPort = 0;
+    if (!CreateBoundUdpSocket(&subscriberBSocket, &subscriberBPort)) {
+        std::cerr << "CreateBoundUdpSocket for subscriber B failed\n";
+        CloseSocket(subscriberASocket);
+        return false;
+    }
+
+    auto room = roomManager->GetRoomShared("room-subscriber-feedback-isolation");
+    if (!room) {
+        std::cerr << "Room should exist before subscriber isolation test\n";
+        CloseSocket(subscriberBSocket);
+        CloseSocket(subscriberASocket);
+        return false;
+    }
+
+    auto subscriberA = std::make_shared<sfu::Subscriber>("bob",
+                                                         "127.0.0.1:" + std::to_string(subscriberAPort),
+                                                         0,
+                                                         0x55555555U);
+    auto subscriberB = std::make_shared<sfu::Subscriber>("charlie",
+                                                         "127.0.0.1:" + std::to_string(subscriberBPort),
+                                                         0,
+                                                         0x66666666U);
+    if (!room->AddSubscriber(subscriberA) || !room->AddSubscriber(subscriberB)) {
+        std::cerr << "AddSubscriber failed for subscriber isolation test\n";
+        CloseSocket(subscriberBSocket);
+        CloseSocket(subscriberASocket);
+        return false;
+    }
+
+    sfu_rpc::AddPublisherReq addReq;
+    addReq.set_meeting_id("room-subscriber-feedback-isolation");
+    addReq.set_user_id("alice");
+    addReq.set_audio_ssrc(0);
+    addReq.set_video_ssrc(0x44444444U);
+    if (!SerializeMessage(addReq, &payload) ||
+        !service.Dispatch(sfu::RpcMethod::kAddPublisher, payload.data(), payload.size(), &responseBytes)) {
+        std::cerr << "Dispatch add publisher failed\n";
+        CloseSocket(subscriberBSocket);
+        CloseSocket(subscriberASocket);
+        return false;
+    }
+
+    sfu_rpc::AddPublisherRsp addRsp;
+    if (!ParseMessage(responseBytes, &addRsp) || !addRsp.success() || addRsp.udp_port() == 0) {
+        std::cerr << "AddPublisher should return a live UDP port\n";
+        CloseSocket(subscriberBSocket);
+        CloseSocket(subscriberASocket);
+        return false;
+    }
+
+    SocketHandle senderSocket = kInvalidSocket;
+    uint16_t senderPort = 0;
+    if (!CreateBoundUdpSocket(&senderSocket, &senderPort)) {
+        std::cerr << "CreateBoundUdpSocket for sender failed\n";
+        CloseSocket(subscriberBSocket);
+        CloseSocket(subscriberASocket);
+        return false;
+    }
+
+    const std::vector<uint8_t> videoPacket = {
+        0x80, 0x61,
+        0x00, 0x30,
+        0x00, 0x00, 0x40, 0x00,
+        0x44, 0x44, 0x44, 0x44,
+        0xC1, 0xC2, 0xC3
+    };
+    if (!SendUdpPacket(senderSocket, addRsp.udp_port(), videoPacket.data(), videoPacket.size())) {
+        std::cerr << "SendUdpPacket video RTP failed\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberBSocket);
+        CloseSocket(subscriberASocket);
+        return false;
+    }
+
+    std::vector<uint8_t> forwardedA;
+    std::vector<uint8_t> forwardedB;
+    if (!ReceiveUdpPacket(subscriberASocket, &forwardedA, 1000) ||
+        !ReceiveUdpPacket(subscriberBSocket, &forwardedB, 1000)) {
+        std::cerr << "Expected forwarded RTP packet on both subscriber endpoints\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberBSocket);
+        CloseSocket(subscriberASocket);
+        return false;
+    }
+
+    const bool validForwardA = forwardedA.size() == videoPacket.size() &&
+                               forwardedA[8] == 0x55 && forwardedA[9] == 0x55 &&
+                               forwardedA[10] == 0x55 && forwardedA[11] == 0x55;
+    const bool validForwardB = forwardedB.size() == videoPacket.size() &&
+                               forwardedB[8] == 0x66 && forwardedB[9] == 0x66 &&
+                               forwardedB[10] == 0x66 && forwardedB[11] == 0x66;
+    if (!validForwardA || !validForwardB) {
+        std::cerr << "Per-subscriber RTP SSRC rewrite mismatch\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberBSocket);
+        CloseSocket(subscriberASocket);
+        return false;
+    }
+
+    const std::vector<uint8_t> pliFromSubscriberA = {
+        0x81, 0xCE, 0x00, 0x02,
+        0x77, 0x77, 0x77, 0x77,
+        0x55, 0x55, 0x55, 0x55,
+    };
+    if (!SendUdpPacket(subscriberASocket, addRsp.udp_port(), pliFromSubscriberA.data(), pliFromSubscriberA.size())) {
+        std::cerr << "SendUdpPacket PLI from subscriber A failed\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberBSocket);
+        CloseSocket(subscriberASocket);
+        return false;
+    }
+
+    std::vector<uint8_t> forwardedPli;
+    if (!ReceiveUdpPacket(senderSocket, &forwardedPli, 1000)) {
+        std::cerr << "Expected forwarded PLI packet to publisher endpoint\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberBSocket);
+        CloseSocket(subscriberASocket);
+        return false;
+    }
+    if (forwardedPli.size() != pliFromSubscriberA.size() ||
+        forwardedPli[8] != 0x44 || forwardedPli[9] != 0x44 ||
+        forwardedPli[10] != 0x44 || forwardedPli[11] != 0x44) {
+        std::cerr << "PLI forwarded from subscriber A should target publisher source SSRC\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberBSocket);
+        CloseSocket(subscriberASocket);
+        return false;
+    }
+
+    const std::vector<uint8_t> rembFromSubscriberB = {
+        0x8F, 0xCE, 0x00, 0x05,
+        0x88, 0x88, 0x88, 0x88,
+        0x00, 0x00, 0x00, 0x00,
+        'R', 'E', 'M', 'B',
+        0x01,
+        0x03, 0x0D, 0x40,
+        0x66, 0x66, 0x66, 0x66,
+    };
+    if (!SendUdpPacket(subscriberBSocket, addRsp.udp_port(), rembFromSubscriberB.data(), rembFromSubscriberB.size())) {
+        std::cerr << "SendUdpPacket REMB from subscriber B failed\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberBSocket);
+        CloseSocket(subscriberASocket);
+        return false;
+    }
+
+    std::vector<uint8_t> forwardedRemb;
+    if (!ReceiveUdpPacket(senderSocket, &forwardedRemb, 1000)) {
+        std::cerr << "Expected forwarded REMB packet to publisher endpoint\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberBSocket);
+        CloseSocket(subscriberASocket);
+        return false;
+    }
+    if (forwardedRemb.size() != rembFromSubscriberB.size() ||
+        forwardedRemb[20] != 0x44 || forwardedRemb[21] != 0x44 ||
+        forwardedRemb[22] != 0x44 || forwardedRemb[23] != 0x44) {
+        std::cerr << "REMB forwarded from subscriber B should target publisher source SSRC\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberBSocket);
+        CloseSocket(subscriberASocket);
+        return false;
+    }
+
+    const std::vector<uint8_t> highRembFromSubscriberA = {
+        0x8F, 0xCE, 0x00, 0x05,
+        0xAA, 0xAA, 0xAA, 0xAA,
+        0x00, 0x00, 0x00, 0x00,
+        'R', 'E', 'M', 'B',
+        0x01,
+        0x10, 0x61, 0xA8,
+        0x55, 0x55, 0x55, 0x55,
+    };
+    if (!SendUdpPacket(subscriberASocket, addRsp.udp_port(), highRembFromSubscriberA.data(), highRembFromSubscriberA.size())) {
+        std::cerr << "SendUdpPacket high REMB from subscriber A failed\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberBSocket);
+        CloseSocket(subscriberASocket);
+        return false;
+    }
+
+    std::vector<uint8_t> aggregatedRemb;
+    if (!ReceiveUdpPacket(senderSocket, &aggregatedRemb, 1000)) {
+        std::cerr << "Expected aggregated REMB packet to publisher endpoint\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberBSocket);
+        CloseSocket(subscriberASocket);
+        return false;
+    }
+    if (aggregatedRemb.size() != highRembFromSubscriberA.size() ||
+        aggregatedRemb[17] != 0x03 || aggregatedRemb[18] != 0x0D || aggregatedRemb[19] != 0x40 ||
+        aggregatedRemb[20] != 0x44 || aggregatedRemb[21] != 0x44 ||
+        aggregatedRemb[22] != 0x44 || aggregatedRemb[23] != 0x44) {
+        std::cerr << "Aggregated REMB should keep lower bitrate across subscribers\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberBSocket);
+        CloseSocket(subscriberASocket);
+        return false;
+    }
+
+    const std::vector<uint8_t> nackFromSubscriberA = {
+        0x81, 0xCD, 0x00, 0x03,
+        0x99, 0x99, 0x99, 0x99,
+        0x55, 0x55, 0x55, 0x55,
+        0x00, 0x30, 0x00, 0x00,
+    };
+    if (!SendUdpPacket(subscriberASocket, addRsp.udp_port(), nackFromSubscriberA.data(), nackFromSubscriberA.size())) {
+        std::cerr << "SendUdpPacket NACK from subscriber A failed\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberBSocket);
+        CloseSocket(subscriberASocket);
+        return false;
+    }
+
+    std::vector<uint8_t> retransmitToA;
+    if (!ReceiveUdpPacket(subscriberASocket, &retransmitToA, 1000)) {
+        std::cerr << "Expected retransmit packet on subscriber A endpoint\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberBSocket);
+        CloseSocket(subscriberASocket);
+        return false;
+    }
+    if (retransmitToA.size() != videoPacket.size() ||
+        retransmitToA[2] != 0x00 || retransmitToA[3] != 0x30 ||
+        retransmitToA[8] != 0x55 || retransmitToA[9] != 0x55 ||
+        retransmitToA[10] != 0x55 || retransmitToA[11] != 0x55) {
+        std::cerr << "NACK retransmit should match subscriber A rewrite path\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberBSocket);
+        CloseSocket(subscriberASocket);
+        return false;
+    }
+
+    std::vector<uint8_t> unexpectedRetransmitToB;
+    if (ReceiveUdpPacket(subscriberBSocket, &unexpectedRetransmitToB, 150)) {
+        std::cerr << "NACK from subscriber A should not retransmit to subscriber B\n";
+        CloseSocket(senderSocket);
+        CloseSocket(subscriberBSocket);
+        CloseSocket(subscriberASocket);
+        return false;
+    }
+
+    CloseSocket(senderSocket);
+    CloseSocket(subscriberBSocket);
+    CloseSocket(subscriberASocket);
+    return true;
+}
+
+bool TestMediaIngressRebindPublisherSsrc() {
+    auto roomManager = std::make_shared<sfu::RoomManager>();
+    sfu::RpcService service(roomManager);
+
+    sfu_rpc::CreateRoomReq createReq;
+    createReq.set_meeting_id("room-rebind");
+    createReq.set_max_publishers(2);
+    std::vector<uint8_t> payload;
+    if (!SerializeMessage(createReq, &payload)) {
+        std::cerr << "Serialize create request failed\n";
+        return false;
+    }
+
+    std::vector<uint8_t> responseBytes;
+    if (!service.Dispatch(sfu::RpcMethod::kCreateRoom, payload.data(), payload.size(), &responseBytes)) {
+        std::cerr << "Dispatch create failed\n";
+        return false;
+    }
+
+    uint16_t subscriberPort = 0;
+    SocketHandle subscriberSocket = kInvalidSocket;
+    if (!CreateBoundUdpSocket(&subscriberSocket, &subscriberPort)) {
+        std::cerr << "CreateBoundUdpSocket failed\n";
+        return false;
+    }
+
+    auto room = roomManager->GetRoomShared("room-rebind");
+    if (!room) {
+        std::cerr << "Room should exist before rebind test\n";
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    auto subscriber = std::make_shared<sfu::Subscriber>("bob", "127.0.0.1:" + std::to_string(subscriberPort), 0x22222222U, 0);
+    if (!room->AddSubscriber(subscriber)) {
+        std::cerr << "AddSubscriber failed\n";
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    sfu_rpc::AddPublisherReq addReq;
+    addReq.set_meeting_id("room-rebind");
+    addReq.set_user_id("alice");
+    addReq.set_audio_ssrc(0x11111111U);
+    std::vector<uint8_t> addPayload;
+    if (!SerializeMessage(addReq, &addPayload)) {
+        std::cerr << "Serialize add request failed\n";
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    if (!service.Dispatch(sfu::RpcMethod::kAddPublisher, addPayload.data(), addPayload.size(), &responseBytes)) {
+        std::cerr << "Dispatch add failed\n";
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    addReq.set_audio_ssrc(0x33333333U);
+    if (!SerializeMessage(addReq, &addPayload)) {
+        std::cerr << "Serialize rebound add request failed\n";
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+    if (!service.Dispatch(sfu::RpcMethod::kAddPublisher, addPayload.data(), addPayload.size(), &responseBytes)) {
+        std::cerr << "Dispatch rebound add failed\n";
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    SocketHandle sendSocket = kInvalidSocket;
+    uint16_t senderPort = 0;
+    if (!CreateBoundUdpSocket(&sendSocket, &senderPort)) {
+        std::cerr << "CreateBoundUdpSocket for sender failed\n";
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    std::vector<uint8_t> oldPacket = {
+        0x80, 0x60,
+        0x00, 0x10,
+        0x00, 0x00, 0x00, 0x20,
+        0x11, 0x11, 0x11, 0x11,
+        0x01
+    };
+    if (!SendUdpPacket(sendSocket, service.MediaPort(), oldPacket.data(), oldPacket.size())) {
+        std::cerr << "SendUdpPacket old SSRC failed\n";
+        CloseSocket(sendSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+    std::vector<uint8_t> forwardedPacket;
+    if (ReceiveUdpPacket(subscriberSocket, &forwardedPacket, 250)) {
+        std::cerr << "Old SSRC should not be forwarded after rebind\n";
+        CloseSocket(sendSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    std::vector<uint8_t> newPacket = {
+        0x80, 0x60,
+        0x00, 0x11,
+        0x00, 0x00, 0x00, 0x21,
+        0x33, 0x33, 0x33, 0x33,
+        0x02
+    };
+    if (!SendUdpPacket(sendSocket, service.MediaPort(), newPacket.data(), newPacket.size())) {
+        std::cerr << "SendUdpPacket new SSRC failed\n";
+        CloseSocket(sendSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+    if (!ReceiveUdpPacket(subscriberSocket, &forwardedPacket)) {
+        std::cerr << "Expected forwarded RTP packet after rebind\n";
+        CloseSocket(sendSocket);
+        CloseSocket(subscriberSocket);
+        return false;
+    }
+
+    CloseSocket(sendSocket);
+    CloseSocket(subscriberSocket);
+    return room->GetPublisher("alice") != nullptr && room->GetPublisher("alice")->AudioSsrc() == 0x33333333U;
+}
+
+bool TestMediaIngressAppliesReceiverReportQuality() {
+    auto roomManager = std::make_shared<sfu::RoomManager>();
+    sfu::RpcService service(roomManager);
+
+    sfu_rpc::CreateRoomReq createReq;
+    createReq.set_meeting_id("room-rr");
+    createReq.set_max_publishers(2);
+    std::vector<uint8_t> payload;
+    if (!SerializeMessage(createReq, &payload)) {
+        std::cerr << "Serialize create request failed\n";
+        return false;
+    }
+
+    std::vector<uint8_t> responseBytes;
+    if (!service.Dispatch(sfu::RpcMethod::kCreateRoom, payload.data(), payload.size(), &responseBytes)) {
+        std::cerr << "Dispatch create failed\n";
+        return false;
+    }
+
+    sfu_rpc::AddPublisherReq addReq;
+    addReq.set_meeting_id("room-rr");
+    addReq.set_user_id("alice");
+    addReq.set_audio_ssrc(0x11111111U);
+    if (!SerializeMessage(addReq, &payload) ||
+        !service.Dispatch(sfu::RpcMethod::kAddPublisher, payload.data(), payload.size(), &responseBytes)) {
+        std::cerr << "Dispatch add failed\n";
+        return false;
+    }
+
+    sfu_rpc::AddPublisherRsp addRsp;
+    if (!ParseMessage(responseBytes, &addRsp) || !addRsp.success() || addRsp.udp_port() == 0) {
+        std::cerr << "AddPublisher should return a live UDP port\n";
+        return false;
+    }
+
+    SocketHandle sendSocket = kInvalidSocket;
+    uint16_t senderPort = 0;
+    if (!CreateBoundUdpSocket(&sendSocket, &senderPort)) {
+        std::cerr << "CreateBoundUdpSocket for sender failed\n";
+        return false;
+    }
+
+    const std::vector<uint8_t> rtpPacket = {
+        0x80, 0x60,
+        0x00, 0x01,
+        0x00, 0x00, 0x00, 0x64,
+        0x11, 0x11, 0x11, 0x11,
+        0xAB, 0xCD, 0xEF
+    };
+    if (!SendUdpPacket(sendSocket, addRsp.udp_port(), rtpPacket.data(), rtpPacket.size())) {
+        std::cerr << "SendUdpPacket RTP failed\n";
+        CloseSocket(sendSocket);
+        return false;
+    }
+
+    const std::vector<uint8_t> srPacket = {
+        0x80, 0xC8, 0x00, 0x06,
+        0x11, 0x11, 0x11, 0x11,
+        0x00, 0x00, 0x00, 0x01,
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x64,
+        0x00, 0x00, 0x00, 0x01,
+        0x00, 0x00, 0x00, 0x03,
+    };
+    if (!SendUdpPacket(sendSocket, addRsp.udp_port(), srPacket.data(), srPacket.size())) {
+        std::cerr << "SendUdpPacket SR failed\n";
+        CloseSocket(sendSocket);
+        return false;
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(40));
+
+    const std::vector<uint8_t> rrPacket = {
+        0x81, 0xC9, 0x00, 0x07,
+        0x22, 0x22, 0x22, 0x22,
+        0x11, 0x11, 0x11, 0x11,
+        0x40, 0x00, 0x00, 0x02,
+        0x00, 0x00, 0x10, 0x00,
+        0x00, 0x00, 0x01, 0xE0,
+        0x00, 0x01, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+    };
+    if (!SendUdpPacket(sendSocket, addRsp.udp_port(), rrPacket.data(), rrPacket.size())) {
+        std::cerr << "SendUdpPacket RR failed\n";
+        CloseSocket(sendSocket);
+        return false;
+    }
+
+    for (int i = 0; i < 20; ++i) {
+        const auto snapshots = service.mediaIngress()->SnapshotPublisherTraffic();
+        if (!snapshots.empty() &&
+            snapshots.front().meetingId == "room-rr" &&
+            snapshots.front().userId == "alice" &&
+            snapshots.front().packetLoss > 0.24F &&
+            snapshots.front().packetLoss < 0.26F &&
+            snapshots.front().jitterMs == 10U &&
+            snapshots.front().rttMs > 0U) {
+            CloseSocket(sendSocket);
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(25));
+    }
+
+    const auto snapshots = service.mediaIngress()->SnapshotPublisherTraffic();
+    if (!snapshots.empty()) {
+        std::cerr << "Receiver Report quality did not reach MediaIngress snapshot"
+                  << " loss=" << snapshots.front().packetLoss
+                  << " jitterMs=" << snapshots.front().jitterMs
+                  << " rttMs=" << snapshots.front().rttMs << "\n";
+    } else {
+        std::cerr << "Receiver Report quality did not reach MediaIngress snapshot\n";
+    }
+    CloseSocket(sendSocket);
+    return false;
+}
+
+bool TestMediaIngressKeepsRttAtZeroWithoutMatchingSenderReport() {
+    auto roomManager = std::make_shared<sfu::RoomManager>();
+    sfu::RpcService service(roomManager);
+
+    sfu_rpc::CreateRoomReq createReq;
+    createReq.set_meeting_id("room-no-sr");
+    createReq.set_max_publishers(2);
+    std::vector<uint8_t> payload;
+    if (!SerializeMessage(createReq, &payload)) {
+        std::cerr << "Serialize create request failed\n";
+        return false;
+    }
+
+    std::vector<uint8_t> responseBytes;
+    if (!service.Dispatch(sfu::RpcMethod::kCreateRoom, payload.data(), payload.size(), &responseBytes)) {
+        std::cerr << "Dispatch create failed\n";
+        return false;
+    }
+
+    sfu_rpc::AddPublisherReq addReq;
+    addReq.set_meeting_id("room-no-sr");
+    addReq.set_user_id("alice");
+    addReq.set_audio_ssrc(0x11111111U);
+    if (!SerializeMessage(addReq, &payload) ||
+        !service.Dispatch(sfu::RpcMethod::kAddPublisher, payload.data(), payload.size(), &responseBytes)) {
+        std::cerr << "Dispatch add failed\n";
+        return false;
+    }
+
+    sfu_rpc::AddPublisherRsp addRsp;
+    if (!ParseMessage(responseBytes, &addRsp) || !addRsp.success() || addRsp.udp_port() == 0) {
+        std::cerr << "AddPublisher should return a live UDP port\n";
+        return false;
+    }
+
+    SocketHandle sendSocket = kInvalidSocket;
+    uint16_t senderPort = 0;
+    if (!CreateBoundUdpSocket(&sendSocket, &senderPort)) {
+        std::cerr << "CreateBoundUdpSocket for sender failed\n";
+        return false;
+    }
+
+    const std::vector<uint8_t> rtpPacket = {
+        0x80, 0x60,
+        0x00, 0x01,
+        0x00, 0x00, 0x00, 0x64,
+        0x11, 0x11, 0x11, 0x11,
+        0xAB, 0xCD, 0xEF
+    };
+    if (!SendUdpPacket(sendSocket, addRsp.udp_port(), rtpPacket.data(), rtpPacket.size())) {
+        std::cerr << "SendUdpPacket RTP failed\n";
+        CloseSocket(sendSocket);
+        return false;
+    }
+
+    const std::vector<uint8_t> rrPacket = {
+        0x81, 0xC9, 0x00, 0x07,
+        0x22, 0x22, 0x22, 0x22,
+        0x11, 0x11, 0x11, 0x11,
+        0x40, 0x00, 0x00, 0x02,
+        0x00, 0x00, 0x10, 0x00,
+        0x00, 0x00, 0x01, 0xE0,
+        0x00, 0x02, 0x00, 0x00,
+        0x00, 0x00, 0x10, 0x00,
+    };
+    if (!SendUdpPacket(sendSocket, addRsp.udp_port(), rrPacket.data(), rrPacket.size())) {
+        std::cerr << "SendUdpPacket RR failed\n";
+        CloseSocket(sendSocket);
+        return false;
+    }
+
+    for (int i = 0; i < 20; ++i) {
+        const auto snapshots = service.mediaIngress()->SnapshotPublisherTraffic();
+        if (!snapshots.empty() &&
+            snapshots.front().meetingId == "room-no-sr" &&
+            snapshots.front().userId == "alice" &&
+            snapshots.front().packetLoss > 0.24F &&
+            snapshots.front().packetLoss < 0.26F &&
+            snapshots.front().jitterMs == 10U &&
+            snapshots.front().rttMs == 0U) {
+            CloseSocket(sendSocket);
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(25));
+    }
+
+    std::cerr << "Receiver Report without matching SR should keep RTT at zero\n";
+    CloseSocket(sendSocket);
+    return false;
+}
+
+bool TestMediaIngressDoesNotMisclassifyRtpAsRtcp() {
+    auto roomManager = std::make_shared<sfu::RoomManager>();
+    sfu::RpcService service(roomManager);
+
+    sfu_rpc::CreateRoomReq createReq;
+    createReq.set_meeting_id("room-mux");
+    createReq.set_max_publishers(2);
+    std::vector<uint8_t> payload;
+    if (!SerializeMessage(createReq, &payload)) {
+        std::cerr << "Serialize create request failed\n";
+        return false;
+    }
+
+    std::vector<uint8_t> responseBytes;
+    if (!service.Dispatch(sfu::RpcMethod::kCreateRoom, payload.data(), payload.size(), &responseBytes)) {
+        std::cerr << "Dispatch create failed\n";
+        return false;
+    }
+
+    sfu_rpc::AddPublisherReq addReq;
+    addReq.set_meeting_id("room-mux");
+    addReq.set_user_id("alice");
+    addReq.set_audio_ssrc(0x11111111U);
+    if (!SerializeMessage(addReq, &payload) ||
+        !service.Dispatch(sfu::RpcMethod::kAddPublisher, payload.data(), payload.size(), &responseBytes)) {
+        std::cerr << "Dispatch add failed\n";
+        return false;
+    }
+
+    sfu_rpc::AddPublisherRsp addRsp;
+    if (!ParseMessage(responseBytes, &addRsp) || !addRsp.success() || addRsp.udp_port() == 0) {
+        std::cerr << "AddPublisher should return a live UDP port\n";
+        return false;
+    }
+
+    SocketHandle sendSocket = kInvalidSocket;
+    uint16_t senderPort = 0;
+    if (!CreateBoundUdpSocket(&sendSocket, &senderPort)) {
+        std::cerr << "CreateBoundUdpSocket for sender failed\n";
+        return false;
+    }
+
+    const std::vector<uint8_t> rtpLikeRtcpPacket = {
+        0x80, 0xC9,
+        0x00, 0x02,
+        0x00, 0x00, 0x00, 0x64,
+        0x11, 0x11, 0x11, 0x11,
+        0xAB, 0xCD, 0xEF
+    };
+    if (!SendUdpPacket(sendSocket, addRsp.udp_port(), rtpLikeRtcpPacket.data(), rtpLikeRtcpPacket.size())) {
+        std::cerr << "SendUdpPacket RTP/PT73 failed\n";
+        CloseSocket(sendSocket);
+        return false;
+    }
+
+    for (int i = 0; i < 20; ++i) {
+        const auto snapshots = service.mediaIngress()->SnapshotPublisherTraffic();
+        if (!snapshots.empty() &&
+            snapshots.front().meetingId == "room-mux" &&
+            snapshots.front().userId == "alice" &&
+            snapshots.front().packetCount > 0) {
+            CloseSocket(sendSocket);
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(25));
+    }
+
+    std::cerr << "RTP packet with RTCP-like byte[1] should still be counted as RTP\n";
+    CloseSocket(sendSocket);
+    return false;
+}
+
+bool TestGetNodeStatusLifecycle() {
+    auto roomManager = std::make_shared<sfu::RoomManager>();
+    sfu::RpcService service(roomManager);
+    service.SetAdvertisedAddress("127.0.0.1:4567");
+
+    sfu_rpc::CreateRoomReq createReq;
+    createReq.set_meeting_id("status-room");
+    createReq.set_max_publishers(4);
+    std::vector<uint8_t> payload;
+    if (!SerializeMessage(createReq, &payload)) {
+        std::cerr << "Serialize create request failed\n";
+        return false;
+    }
+
+    std::vector<uint8_t> responseBytes;
+    if (!service.Dispatch(sfu::RpcMethod::kCreateRoom, payload.data(), payload.size(), &responseBytes)) {
+        std::cerr << "Dispatch create failed\n";
+        return false;
+    }
+
+    sfu_rpc::AddPublisherReq addReq;
+    addReq.set_meeting_id("status-room");
+    addReq.set_user_id("alice");
+    addReq.set_audio_ssrc(0x11111111U);
+    std::vector<uint8_t> addPayload;
+    if (!SerializeMessage(addReq, &addPayload)) {
+        std::cerr << "Serialize add request failed\n";
+        return false;
+    }
+    if (!service.Dispatch(sfu::RpcMethod::kAddPublisher, addPayload.data(), addPayload.size(), &responseBytes)) {
+        std::cerr << "Dispatch add failed\n";
+        return false;
+    }
+
+    if (!service.Dispatch(sfu::RpcMethod::kGetNodeStatus, nullptr, 0, &responseBytes)) {
+        std::cerr << "Dispatch get node status failed\n";
+        return false;
+    }
+
+    sfu_rpc::GetNodeStatusRsp rsp;
+    if (!ParseMessage(responseBytes, &rsp)) {
+        std::cerr << "Parse node status response failed\n";
+        return false;
+    }
+
+    return rsp.success() &&
+           rsp.sfu_address() == "127.0.0.1:4567" &&
+           rsp.media_port() == service.MediaPort() &&
+           rsp.room_count() == 1 &&
+           rsp.publisher_count() == 1;
+}
+
 bool TestServerLoopback() {
     auto roomManager = std::make_shared<sfu::RoomManager>();
     auto service = std::make_shared<sfu::RpcService>(roomManager);
@@ -635,6 +2415,55 @@ bool TestServerLoopback() {
     return roomManager->HasRoom("rpc-room");
 }
 
+bool TestServerLoopbackGetNodeStatus() {
+    auto roomManager = std::make_shared<sfu::RoomManager>();
+    auto service = std::make_shared<sfu::RpcService>(roomManager);
+    sfu::RpcServer server(0, service);
+    if (!server.Start()) {
+        std::cerr << "RpcServer Start failed for get node status\n";
+        return false;
+    }
+
+    SocketHandle socketHandle = kInvalidSocket;
+    if (!ConnectLoopback(server.Port(), &socketHandle)) {
+        std::cerr << "ConnectLoopback failed for get node status\n";
+        server.Stop();
+        return false;
+    }
+
+    sfu::RpcFrame request;
+    request.method = sfu::RpcMethod::kGetNodeStatus;
+    request.kind = sfu::RpcFrameKind::kRequest;
+
+    sfu::RpcFrame response;
+    const bool ok = SendFrameAndReceiveResponse(socketHandle, request, &response);
+    CloseSocket(socketHandle);
+    server.Stop();
+    if (!ok) {
+        std::cerr << "Loopback get node status request failed\n";
+        return false;
+    }
+
+    if (response.method != sfu::RpcMethod::kGetNodeStatus ||
+        response.kind != sfu::RpcFrameKind::kResponse ||
+        response.status != 0) {
+        std::cerr << "Loopback get node status header mismatch\n";
+        return false;
+    }
+
+    sfu_rpc::GetNodeStatusRsp rsp;
+    if (!ParseMessage(response.payload, &rsp)) {
+        std::cerr << "Loopback get node status payload parse failed\n";
+        return false;
+    }
+
+    return rsp.success() &&
+           rsp.sfu_address() == service->AdvertisedAddress() &&
+           rsp.media_port() == service->MediaPort() &&
+           rsp.room_count() == 0 &&
+           rsp.publisher_count() == 0;
+}
+
 } // namespace
 
 int main() {
@@ -647,7 +2476,20 @@ int main() {
                     TestProtobufWireCompatibility() &&
                     TestServiceLifecycle() &&
                     TestMediaIngressRouting() &&
-                    TestServerLoopback();
+                    TestMediaIngressRetransmitsOnNack() &&
+                    TestMediaIngressForwardsPliToPublisher() &&
+                    TestMediaIngressCoalescesFrequentPli() &&
+                    TestMediaIngressForwardsRembToPublisher() &&
+                    TestMediaIngressUsesVideoRewriteAndFeedbackMapping() &&
+                    TestMediaIngressIsolatesFeedbackAcrossPublishers() &&
+                    TestMediaIngressIsolatesFeedbackAcrossSubscribers() &&
+                    TestMediaIngressRebindPublisherSsrc() &&
+                    TestMediaIngressAppliesReceiverReportQuality() &&
+                    TestMediaIngressKeepsRttAtZeroWithoutMatchingSenderReport() &&
+                    TestMediaIngressDoesNotMisclassifyRtpAsRtcp() &&
+                    TestGetNodeStatusLifecycle() &&
+                    TestServerLoopback() &&
+                    TestServerLoopbackGetNodeStatus();
     CleanupSockets();
 
     if (!ok) {
@@ -657,4 +2499,6 @@ int main() {
     std::cout << "sfu_rpc_server_tests passed\n";
     return 0;
 }
+
+
 

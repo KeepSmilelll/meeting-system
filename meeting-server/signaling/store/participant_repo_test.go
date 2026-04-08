@@ -9,7 +9,7 @@ import (
 )
 
 func TestParticipantRepoLifecycle(t *testing.T) {
-	repo := NewParticipantRepo()
+	repo := NewInMemoryParticipantRepo()
 	ctx := context.Background()
 
 	firstJoined := time.Date(2026, 3, 31, 10, 0, 0, 0, time.UTC)
@@ -69,7 +69,7 @@ func TestParticipantRepoLifecycle(t *testing.T) {
 }
 
 func TestParticipantRepoPickNextHostCandidate(t *testing.T) {
-	repo := NewParticipantRepo()
+	repo := NewInMemoryParticipantRepo()
 	ctx := context.Background()
 
 	base := time.Date(2026, 3, 31, 10, 0, 0, 0, time.UTC)
@@ -95,7 +95,7 @@ func TestParticipantRepoPickNextHostCandidate(t *testing.T) {
 }
 
 func TestParticipantRepoEmptyMeeting(t *testing.T) {
-	repo := NewParticipantRepo()
+	repo := NewInMemoryParticipantRepo()
 	ctx := context.Background()
 
 	active, err := repo.ListActiveParticipants(ctx, 9999)

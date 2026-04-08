@@ -38,21 +38,47 @@ func main() {
 	}
 
 	roomStateStore := store.NewRedisRoomStoreWithClient(redisClient)
+	sessionStore := store.NewRedisSessionStoreWithClient(cfg, redisClient)
+	roomEventBus := store.NewRedisRoomEventBusWithClient(cfg, redisClient)
+	nodeEventBus := store.NewRedisNodeEventBusWithClient(cfg, redisClient)
 	tokenManager := auth.NewTokenManager(cfg.JWTSecret, cfg.TokenTTL)
 	limiter := auth.NewRateLimiter(redisClient, 5, 10*time.Minute)
-	sfuClient := signalingSfu.NewClient(cfg.SFURPCAddr, signalingSfu.WithTimeout(cfg.SFURPCTimeout))
-	meetingMirror := handler.NewSFUMeetingMirror(sfuClient)
+	sfuClient := signalingSfu.NewRoutedClient(cfg, roomStateStore, signalingSfu.WithTimeout(cfg.SFURPCTimeout))
 
 	var meetingStore store.MeetingLifecycleStore = memoryStore
 	if mysqlDB != nil {
-		meetingStore = store.NewMeetingLifecycleStore(memoryStore, store.NewMeetingRepo(mysqlDB))
+		meetingStore = store.NewMeetingLifecycleStoreWithParticipantRepo(
+			memoryStore,
+			store.NewMeetingRepo(mysqlDB),
+			store.NewParticipantRepo(mysqlDB),
+		)
 	}
 
-	router := handler.NewRouter(cfg, sessions, memoryStore, meetingStore, roomStateStore, tokenManager, limiter, meetingMirror)
+	router := handler.NewRouter(cfg, sessions, memoryStore, meetingStore, roomStateStore, sessionStore, tokenManager, limiter, sfuClient, nodeEventBus)
 	tcpServer := server.NewTCPServer(cfg, sessions, router)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
+	defer func() {
+		stop()
+		_ = nodeEventBus.Close()
+		_ = roomEventBus.Close()
+	}()
+
+	sessions.SetMeetingFramePublisher(roomEventBus)
+	if err := roomEventBus.Start(ctx, sessions.DeliverMeetingFrame); err != nil {
+		panic(err)
+	}
+	if err := nodeEventBus.Start(ctx, router.OnUserNodeEvent); err != nil {
+		panic(err)
+	}
+
+	if err := signalingSfu.NewReportServer(cfg, roomStateStore).Start(ctx); err != nil {
+		panic(err)
+	}
+	if err := signalingSfu.NewAdminServer(cfg, roomStateStore).Start(ctx); err != nil {
+		panic(err)
+	}
+	signalingSfu.NewNodeStatusMonitor(cfg, roomStateStore, signalingSfu.WithTimeout(cfg.SFURPCTimeout)).Start(ctx)
 
 	if err := tcpServer.Run(ctx); err != nil {
 		panic(err)

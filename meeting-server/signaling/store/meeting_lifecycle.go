@@ -20,33 +20,51 @@ type MeetingLifecycleStore interface {
 	LeaveMeeting(meetingID, userID string) (hostChanged bool, newHost *protocol.Participant, remaining int, err error)
 	IsMeetingHost(meetingID, userID string) (bool, error)
 	HasParticipant(meetingID, userID string) (bool, error)
+	SnapshotMeeting(meetingID string) (*Meeting, []*protocol.Participant, error)
 }
 
 type meetingRepoAPI interface {
 	FindByID(ctx context.Context, meetingID uint64) (*model.Meeting, error)
 	FindByMeetingNo(ctx context.Context, meetingNo string) (*model.Meeting, error)
 	CreateMeeting(ctx context.Context, meeting *model.Meeting) error
-	AddParticipant(ctx context.Context, participant *model.Participant) error
-	MarkParticipantLeft(ctx context.Context, meetingID, userID uint64) error
-	ListActiveParticipants(ctx context.Context, meetingID uint64) ([]model.Participant, error)
 	TransferHost(ctx context.Context, meetingID uint64) (*model.Participant, error)
 	DeleteMeeting(ctx context.Context, meetingID uint64) error
 }
 
+type participantRepoAPI interface {
+	AddParticipant(ctx context.Context, participant *model.Participant) error
+	MarkParticipantLeft(ctx context.Context, meetingID, userID uint64) error
+	ListActiveParticipants(ctx context.Context, meetingID uint64) ([]model.Participant, error)
+}
+
 type repoMeetingStore struct {
-	fallback   *MemoryStore
-	meetingRepo meetingRepoAPI
+	fallback        *MemoryStore
+	meetingRepo     meetingRepoAPI
+	participantRepo participantRepoAPI
 }
 
 func NewMeetingLifecycleStore(fallback *MemoryStore, meetingRepo meetingRepoAPI) MeetingLifecycleStore {
+	return NewMeetingLifecycleStoreWithParticipantRepo(fallback, meetingRepo, nil)
+}
+
+func NewMeetingLifecycleStoreWithParticipantRepo(fallback *MemoryStore, meetingRepo meetingRepoAPI, participantRepo participantRepoAPI) MeetingLifecycleStore {
 	if meetingRepo == nil {
 		return fallback
 	}
-	return &repoMeetingStore{fallback: fallback, meetingRepo: meetingRepo}
+	if participantRepo == nil {
+		if repo, ok := meetingRepo.(participantRepoAPI); ok {
+			participantRepo = repo
+		}
+	}
+	return &repoMeetingStore{
+		fallback:        fallback,
+		meetingRepo:     meetingRepo,
+		participantRepo: participantRepo,
+	}
 }
 
 func (s *repoMeetingStore) CreateMeeting(title, password, hostUserID string, maxParticipants int) (*Meeting, *protocol.Participant, error) {
-	if s == nil || s.meetingRepo == nil {
+	if s == nil || s.meetingRepo == nil || s.participantRepo == nil {
 		return nil, nil, fmt.Errorf("meeting lifecycle store: repo not configured: %w", gorm.ErrInvalidDB)
 	}
 
@@ -86,7 +104,7 @@ func (s *repoMeetingStore) CreateMeeting(title, password, hostUserID string, max
 		MediaState: 0,
 		JoinedAt:   time.Now().UTC(),
 	}
-	if err := s.meetingRepo.AddParticipant(context.Background(), hostParticipant); err != nil {
+	if err := s.participantRepo.AddParticipant(context.Background(), hostParticipant); err != nil {
 		if s.fallback != nil && isInvalidDBError(err) {
 			return s.fallback.CreateMeeting(title, password, hostUserID, maxParticipants)
 		}
@@ -97,7 +115,7 @@ func (s *repoMeetingStore) CreateMeeting(title, password, hostUserID string, max
 }
 
 func (s *repoMeetingStore) JoinMeeting(meetingID, password, userID string) (*Meeting, []*protocol.Participant, *protocol.Participant, error) {
-	if s == nil || s.meetingRepo == nil {
+	if s == nil || s.meetingRepo == nil || s.participantRepo == nil {
 		return nil, nil, nil, fmt.Errorf("meeting lifecycle store: repo not configured: %w", gorm.ErrInvalidDB)
 	}
 
@@ -114,7 +132,7 @@ func (s *repoMeetingStore) JoinMeeting(meetingID, password, userID string) (*Mee
 		return nil, nil, nil, ErrMeetingPassFailed
 	}
 
-	participants, err := s.meetingRepo.ListActiveParticipants(context.Background(), meetingModel.ID)
+	participants, err := s.participantRepo.ListActiveParticipants(context.Background(), meetingModel.ID)
 	if err != nil {
 		if s.fallback != nil && isInvalidDBError(err) {
 			return s.fallback.JoinMeeting(meetingID, password, userID)
@@ -150,7 +168,7 @@ func (s *repoMeetingStore) JoinMeeting(meetingID, password, userID string) (*Mee
 		MediaState: 0,
 		JoinedAt:   time.Now().UTC(),
 	}
-	if err := s.meetingRepo.AddParticipant(context.Background(), joined); err != nil {
+	if err := s.participantRepo.AddParticipant(context.Background(), joined); err != nil {
 		if s.fallback != nil && isInvalidDBError(err) {
 			return s.fallback.JoinMeeting(meetingID, password, userID)
 		}
@@ -165,7 +183,7 @@ func (s *repoMeetingStore) JoinMeeting(meetingID, password, userID string) (*Mee
 }
 
 func (s *repoMeetingStore) LeaveMeeting(meetingID, userID string) (bool, *protocol.Participant, int, error) {
-	if s == nil || s.meetingRepo == nil {
+	if s == nil || s.meetingRepo == nil || s.participantRepo == nil {
 		return false, nil, 0, fmt.Errorf("meeting lifecycle store: repo not configured: %w", gorm.ErrInvalidDB)
 	}
 
@@ -182,14 +200,14 @@ func (s *repoMeetingStore) LeaveMeeting(meetingID, userID string) (bool, *protoc
 		return false, nil, 0, fmt.Errorf("meeting lifecycle store: parse user id: %w", err)
 	}
 
-	if err := s.meetingRepo.MarkParticipantLeft(context.Background(), meetingModel.ID, internalUserID); err != nil {
+	if err := s.participantRepo.MarkParticipantLeft(context.Background(), meetingModel.ID, internalUserID); err != nil {
 		if s.fallback != nil && isNotFoundError(err) {
 			return s.fallback.LeaveMeeting(meetingID, userID)
 		}
 		return false, nil, 0, err
 	}
 
-	active, err := s.meetingRepo.ListActiveParticipants(context.Background(), meetingModel.ID)
+	active, err := s.participantRepo.ListActiveParticipants(context.Background(), meetingModel.ID)
 	if err != nil {
 		return false, nil, 0, err
 	}
@@ -213,7 +231,7 @@ func (s *repoMeetingStore) LeaveMeeting(meetingID, userID string) (bool, *protoc
 }
 
 func (s *repoMeetingStore) IsMeetingHost(meetingID, userID string) (bool, error) {
-	if s == nil || s.meetingRepo == nil {
+	if s == nil || s.meetingRepo == nil || s.participantRepo == nil {
 		return false, fmt.Errorf("meeting lifecycle store: repo not configured: %w", gorm.ErrInvalidDB)
 	}
 
@@ -233,7 +251,7 @@ func (s *repoMeetingStore) IsMeetingHost(meetingID, userID string) (bool, error)
 }
 
 func (s *repoMeetingStore) HasParticipant(meetingID, userID string) (bool, error) {
-	if s == nil || s.meetingRepo == nil {
+	if s == nil || s.meetingRepo == nil || s.participantRepo == nil {
 		return false, fmt.Errorf("meeting lifecycle store: repo not configured: %w", gorm.ErrInvalidDB)
 	}
 
@@ -245,11 +263,32 @@ func (s *repoMeetingStore) HasParticipant(meetingID, userID string) (bool, error
 		return false, err
 	}
 
-	active, err := s.meetingRepo.ListActiveParticipants(context.Background(), meetingModel.ID)
+	active, err := s.participantRepo.ListActiveParticipants(context.Background(), meetingModel.ID)
 	if err != nil {
 		return false, err
 	}
 	return findParticipantByUserID(active, userID, s.lookupUser) != nil, nil
+}
+
+func (s *repoMeetingStore) SnapshotMeeting(meetingID string) (*Meeting, []*protocol.Participant, error) {
+	if s == nil || s.meetingRepo == nil || s.participantRepo == nil {
+		return nil, nil, fmt.Errorf("meeting lifecycle store: repo not configured: %w", gorm.ErrInvalidDB)
+	}
+
+	meetingModel, err := s.meetingRepo.FindByMeetingNo(context.Background(), meetingID)
+	if err != nil {
+		if s.fallback != nil && isNotFoundError(err) {
+			return s.fallback.SnapshotMeeting(meetingID)
+		}
+		return nil, nil, err
+	}
+
+	participants, err := s.loadParticipants(meetingModel.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return meetingFromModel(meetingModel), participants, nil
 }
 
 func (s *repoMeetingStore) lookupUser(userID string) (User, bool) {
@@ -260,7 +299,7 @@ func (s *repoMeetingStore) lookupUser(userID string) (User, bool) {
 }
 
 func (s *repoMeetingStore) loadParticipants(meetingID uint64) ([]*protocol.Participant, error) {
-	participants, err := s.meetingRepo.ListActiveParticipants(context.Background(), meetingID)
+	participants, err := s.participantRepo.ListActiveParticipants(context.Background(), meetingID)
 	if err != nil {
 		return nil, err
 	}
@@ -335,7 +374,7 @@ func findParticipantByUserID(participants []model.Participant, userID string, lo
 	for _, participant := range participants {
 		if participant.UserID == internalUserID {
 			profile, _ := lookup(userID)
-		return participantFromProfile(userID, profile, participant.Role == 1)
+			return participantFromProfile(userID, profile, participant.Role == 1)
 		}
 	}
 	return nil
@@ -348,9 +387,3 @@ func isInvalidDBError(err error) bool {
 func isNotFoundError(err error) bool {
 	return err != nil && errors.Is(err, gorm.ErrRecordNotFound)
 }
-
-
-
-
-
-

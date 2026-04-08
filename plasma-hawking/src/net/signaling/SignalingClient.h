@@ -34,8 +34,10 @@ public:
     void joinMeeting(const QString& meetingId, const QString& password);
     void leaveMeeting();
     void sendChat(int type, const QString& content, const QString& replyToId = {});
-    void sendMediaOffer(const QString& targetUserId, const QString& sdp);
-    void sendMediaAnswer(const QString& targetUserId, const QString& sdp);
+    void sendMediaOffer(const QString& targetUserId, const QString& sdp, quint32 audioSsrc = 0, quint32 videoSsrc = 0);
+    void sendMediaAnswer(const QString& targetUserId, const QString& sdp, quint32 audioSsrc = 0, quint32 videoSsrc = 0);
+    void sendMediaMuteToggle(int mediaType, bool muted);
+    void sendMediaScreenShare(bool sharing);
 
 signals:
     void connectedChanged(bool connected);

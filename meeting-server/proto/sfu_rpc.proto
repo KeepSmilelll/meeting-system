@@ -43,6 +43,34 @@ message RemovePublisherRsp {
   bool success = 1;
 }
 
+message GetNodeStatusReq {
+  bool probe = 1;
+}
+
+message GetNodeStatusRsp {
+  bool success = 1;
+  string sfu_address = 2;
+  uint32 media_port = 3;
+  uint32 room_count = 4;
+  uint32 publisher_count = 5;
+  uint64 packet_count = 6;
+}
+
+message ReportNodeStatusReq {
+  string node_id = 1;
+  string rpc_address = 2;
+  string sfu_address = 3;
+  uint32 max_meetings = 4;
+  uint32 media_port = 5;
+  uint32 room_count = 6;
+  uint32 publisher_count = 7;
+  uint64 packet_count = 8;
+}
+
+message ReportNodeStatusRsp {
+  bool success = 1;
+}
+
 message QualityReport {
   string meeting_id = 1;
   string user_id = 2;

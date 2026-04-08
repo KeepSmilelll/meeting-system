@@ -26,11 +26,12 @@ const (
 	MeetParticipantLeave SignalType = 0x020D
 	MeetHostChanged      SignalType = 0x020E
 
-	MediaOffer        SignalType = 0x0301
-	MediaAnswer       SignalType = 0x0302
-	MediaIceCandidate SignalType = 0x0303
-	MediaMuteToggle   SignalType = 0x0304
-	MediaScreenShare  SignalType = 0x0305
+	MediaOffer             SignalType = 0x0301
+	MediaAnswer            SignalType = 0x0302
+	MediaIceCandidate      SignalType = 0x0303
+	MediaMuteToggle        SignalType = 0x0304
+	MediaScreenShare       SignalType = 0x0305
+	MediaRouteStatusNotify SignalType = 0x0306
 
 	ChatSendReq    SignalType = 0x0401
 	ChatSendRsp    SignalType = 0x0402

@@ -4404,6 +4404,8 @@ class MediaOffer final :
   enum : int {
     kTargetUserIdFieldNumber = 1,
     kSdpFieldNumber = 2,
+    kAudioSsrcFieldNumber = 3,
+    kVideoSsrcFieldNumber = 4,
   };
   // string target_user_id = 1;
   void clear_target_user_id();
@@ -4433,6 +4435,24 @@ class MediaOffer final :
   std::string* _internal_mutable_sdp();
   public:
 
+  // uint32 audio_ssrc = 3;
+  void clear_audio_ssrc();
+  uint32_t audio_ssrc() const;
+  void set_audio_ssrc(uint32_t value);
+  private:
+  uint32_t _internal_audio_ssrc() const;
+  void _internal_set_audio_ssrc(uint32_t value);
+  public:
+
+  // uint32 video_ssrc = 4;
+  void clear_video_ssrc();
+  uint32_t video_ssrc() const;
+  void set_video_ssrc(uint32_t value);
+  private:
+  uint32_t _internal_video_ssrc() const;
+  void _internal_set_video_ssrc(uint32_t value);
+  public:
+
   // @@protoc_insertion_point(class_scope:meeting.MediaOffer)
  private:
   class _Internal;
@@ -4442,6 +4462,8 @@ class MediaOffer final :
   typedef void DestructorSkippable_;
   ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr target_user_id_;
   ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr sdp_;
+  uint32_t audio_ssrc_;
+  uint32_t video_ssrc_;
   mutable ::PROTOBUF_NAMESPACE_ID::internal::CachedSize _cached_size_;
   friend struct ::TableStruct_signaling_2eproto;
 };
@@ -4571,6 +4593,8 @@ class MediaAnswer final :
   enum : int {
     kTargetUserIdFieldNumber = 1,
     kSdpFieldNumber = 2,
+    kAudioSsrcFieldNumber = 3,
+    kVideoSsrcFieldNumber = 4,
   };
   // string target_user_id = 1;
   void clear_target_user_id();
@@ -4600,6 +4624,24 @@ class MediaAnswer final :
   std::string* _internal_mutable_sdp();
   public:
 
+  // uint32 audio_ssrc = 3;
+  void clear_audio_ssrc();
+  uint32_t audio_ssrc() const;
+  void set_audio_ssrc(uint32_t value);
+  private:
+  uint32_t _internal_audio_ssrc() const;
+  void _internal_set_audio_ssrc(uint32_t value);
+  public:
+
+  // uint32 video_ssrc = 4;
+  void clear_video_ssrc();
+  uint32_t video_ssrc() const;
+  void set_video_ssrc(uint32_t value);
+  private:
+  uint32_t _internal_video_ssrc() const;
+  void _internal_set_video_ssrc(uint32_t value);
+  public:
+
   // @@protoc_insertion_point(class_scope:meeting.MediaAnswer)
  private:
   class _Internal;
@@ -4609,6 +4651,8 @@ class MediaAnswer final :
   typedef void DestructorSkippable_;
   ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr target_user_id_;
   ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr sdp_;
+  uint32_t audio_ssrc_;
+  uint32_t video_ssrc_;
   mutable ::PROTOBUF_NAMESPACE_ID::internal::CachedSize _cached_size_;
   friend struct ::TableStruct_signaling_2eproto;
 };
@@ -9377,6 +9421,46 @@ inline void MediaOffer::set_allocated_sdp(std::string* sdp) {
   // @@protoc_insertion_point(field_set_allocated:meeting.MediaOffer.sdp)
 }
 
+// uint32 audio_ssrc = 3;
+inline void MediaOffer::clear_audio_ssrc() {
+  audio_ssrc_ = 0u;
+}
+inline uint32_t MediaOffer::_internal_audio_ssrc() const {
+  return audio_ssrc_;
+}
+inline uint32_t MediaOffer::audio_ssrc() const {
+  // @@protoc_insertion_point(field_get:meeting.MediaOffer.audio_ssrc)
+  return _internal_audio_ssrc();
+}
+inline void MediaOffer::_internal_set_audio_ssrc(uint32_t value) {
+  
+  audio_ssrc_ = value;
+}
+inline void MediaOffer::set_audio_ssrc(uint32_t value) {
+  _internal_set_audio_ssrc(value);
+  // @@protoc_insertion_point(field_set:meeting.MediaOffer.audio_ssrc)
+}
+
+// uint32 video_ssrc = 4;
+inline void MediaOffer::clear_video_ssrc() {
+  video_ssrc_ = 0u;
+}
+inline uint32_t MediaOffer::_internal_video_ssrc() const {
+  return video_ssrc_;
+}
+inline uint32_t MediaOffer::video_ssrc() const {
+  // @@protoc_insertion_point(field_get:meeting.MediaOffer.video_ssrc)
+  return _internal_video_ssrc();
+}
+inline void MediaOffer::_internal_set_video_ssrc(uint32_t value) {
+  
+  video_ssrc_ = value;
+}
+inline void MediaOffer::set_video_ssrc(uint32_t value) {
+  _internal_set_video_ssrc(value);
+  // @@protoc_insertion_point(field_set:meeting.MediaOffer.video_ssrc)
+}
+
 // -------------------------------------------------------------------
 
 // MediaAnswer
@@ -9481,6 +9565,46 @@ inline void MediaAnswer::set_allocated_sdp(std::string* sdp) {
   }
 #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
   // @@protoc_insertion_point(field_set_allocated:meeting.MediaAnswer.sdp)
+}
+
+// uint32 audio_ssrc = 3;
+inline void MediaAnswer::clear_audio_ssrc() {
+  audio_ssrc_ = 0u;
+}
+inline uint32_t MediaAnswer::_internal_audio_ssrc() const {
+  return audio_ssrc_;
+}
+inline uint32_t MediaAnswer::audio_ssrc() const {
+  // @@protoc_insertion_point(field_get:meeting.MediaAnswer.audio_ssrc)
+  return _internal_audio_ssrc();
+}
+inline void MediaAnswer::_internal_set_audio_ssrc(uint32_t value) {
+  
+  audio_ssrc_ = value;
+}
+inline void MediaAnswer::set_audio_ssrc(uint32_t value) {
+  _internal_set_audio_ssrc(value);
+  // @@protoc_insertion_point(field_set:meeting.MediaAnswer.audio_ssrc)
+}
+
+// uint32 video_ssrc = 4;
+inline void MediaAnswer::clear_video_ssrc() {
+  video_ssrc_ = 0u;
+}
+inline uint32_t MediaAnswer::_internal_video_ssrc() const {
+  return video_ssrc_;
+}
+inline uint32_t MediaAnswer::video_ssrc() const {
+  // @@protoc_insertion_point(field_get:meeting.MediaAnswer.video_ssrc)
+  return _internal_video_ssrc();
+}
+inline void MediaAnswer::_internal_set_video_ssrc(uint32_t value) {
+  
+  video_ssrc_ = value;
+}
+inline void MediaAnswer::set_video_ssrc(uint32_t value) {
+  _internal_set_video_ssrc(value);
+  // @@protoc_insertion_point(field_set:meeting.MediaAnswer.video_ssrc)
 }
 
 // -------------------------------------------------------------------

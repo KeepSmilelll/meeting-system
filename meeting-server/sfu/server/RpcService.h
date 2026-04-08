@@ -31,6 +31,7 @@ public:
     bool HandleDestroyRoom(const sfu_rpc::DestroyRoomReq& req, sfu_rpc::DestroyRoomRsp* rsp) const;
     bool HandleAddPublisher(const sfu_rpc::AddPublisherReq& req, sfu_rpc::AddPublisherRsp* rsp) const;
     bool HandleRemovePublisher(const sfu_rpc::RemovePublisherReq& req, sfu_rpc::RemovePublisherRsp* rsp) const;
+    bool HandleGetNodeStatus(const sfu_rpc::GetNodeStatusReq& req, sfu_rpc::GetNodeStatusRsp* rsp) const;
 
     bool Dispatch(RpcMethod method, const uint8_t* payload, std::size_t len, std::vector<uint8_t>* responsePayload) const;
 

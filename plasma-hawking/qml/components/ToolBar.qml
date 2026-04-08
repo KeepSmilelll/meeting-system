@@ -31,6 +31,12 @@ Controls.Pane {
             onClicked: root.controller.toggleVideo()
         }
 
+        Controls.Button {
+            text: root.controller.screenSharing ? "Stop share" : "Share screen"
+            enabled: root.controller.inMeeting
+            onClicked: root.controller.toggleScreenSharing()
+        }
+
         Item {
             Layout.fillWidth: true
         }

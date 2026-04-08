@@ -9,6 +9,16 @@ namespace media {
 
 class BandwidthEstimator {
 public:
+    struct Config {
+        uint32_t minBitrateKbps{64};
+        uint32_t maxBitrateKbps{2500};
+        uint32_t initialBitrateKbps{300};
+        uint32_t sampleWindowMs{500};
+    };
+
+    explicit BandwidthEstimator(Config config = {});
+
+    void reset();
     void onPacketSent(std::size_t bytes);
     void onReceiverReport(uint8_t fractionLost, uint32_t rttMs);
 
@@ -18,7 +28,9 @@ public:
 
 private:
     void refreshWindowLocked(std::chrono::steady_clock::time_point now) const;
+    uint32_t clampBitrateLocked(uint32_t bitrateKbps) const;
 
+    Config m_config;
     mutable std::mutex m_mutex;
     mutable std::chrono::steady_clock::time_point m_windowStart{std::chrono::steady_clock::now()};
     mutable std::size_t m_windowBytes{0};

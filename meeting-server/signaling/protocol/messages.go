@@ -5,6 +5,7 @@ import "meeting-server/signaling/protocol/pb"
 const (
 	OK                  int32 = 0
 	ErrInvalidParam     int32 = 1001
+	ErrInternal         int32 = 1002
 	ErrAuthFailed       int32 = 2001
 	ErrTokenExpired     int32 = 2002
 	ErrRateLimited      int32 = 2003
@@ -46,6 +47,7 @@ type (
 	MediaIceCandidateBody          = pb.MediaIceCandidate
 	MediaMuteToggleBody            = pb.MediaMuteToggle
 	MediaScreenShareBody           = pb.MediaScreenShare
+	MediaRouteStatusNotifyBody     = pb.AuthKickNotify
 	ChatSendReqBody                = pb.ChatSendReq
 	ChatSendRspBody                = pb.ChatSendRsp
 	ChatRecvNotifyBody             = pb.ChatRecvNotify

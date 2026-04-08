@@ -103,6 +103,19 @@ std::size_t RoomManager::RoomCount() const {
     return rooms_.size();
 }
 
+std::size_t RoomManager::PublisherCount() const {
+    std::shared_lock lock(mutex_);
+    std::size_t count = 0;
+    for (const auto& [meetingId, room] : rooms_) {
+        (void)meetingId;
+        if (!room) {
+            continue;
+        }
+        count += room->PublisherCount();
+    }
+    return count;
+}
+
 std::vector<std::string> RoomManager::GetRoomIds() const {
     std::shared_lock lock(mutex_);
     std::vector<std::string> ids;

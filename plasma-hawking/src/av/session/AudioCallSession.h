@@ -4,7 +4,9 @@
 #include "av/codec/AudioDecoder.h"
 #include "av/codec/AudioEncoder.h"
 #include "av/render/AudioPlayer.h"
+#include "net/media/BandwidthEstimator.h"
 #include "net/media/JitterBuffer.h"
+#include "net/media/RTCPHandler.h"
 #include "net/media/RTPReceiver.h"
 #include "net/media/RTPSender.h"
 
@@ -56,6 +58,9 @@ public:
 
     void setPeer(const std::string& address, uint16_t port);
     uint16_t localPort() const;
+    uint32_t audioSsrc() const;
+    uint32_t lastRttMs() const;
+    uint32_t targetBitrateBps() const;
     bool isRunning() const;
     std::string lastError() const;
 
@@ -64,6 +69,12 @@ public:
     std::shared_ptr<av::sync::AVSync> clock() const;
 
 private:
+    struct SenderReportLedger {
+        uint32_t ssrc{0};
+        uint32_t compactNtp{0};
+        std::chrono::steady_clock::time_point observedAt{};
+    };
+
 #ifdef _WIN32
     bool openSocketLocked();
     void closeSocketLocked();
@@ -73,6 +84,14 @@ private:
     bool encodeAndSend(av::codec::AudioEncoder& encoder, const av::capture::AudioFrame& frame, const sockaddr_in& peer, av::codec::EncodedAudioFrame* sentFrame = nullptr);
     void drainReceivedPackets();
     void queueDecodedFrameForPlayback(av::capture::AudioFrame frame);
+    bool sendSenderReportLocked(const sockaddr_in& peer, uint32_t rtpTimestamp);
+    bool sendReceiverReportLocked(const sockaddr_in& peer, uint32_t remoteSsrc, uint32_t lastSenderReport, uint32_t delaySinceLastSenderReport);
+    bool handleRtcpPacketLocked(const uint8_t* data, std::size_t len, const sockaddr_in& from);
+    static bool looksLikeRtcp(const uint8_t* data, std::size_t len);
+    static uint64_t currentNtpTimestamp();
+    static uint32_t compactNtpFromTimestamp(uint64_t ntpTimestamp);
+    static uint32_t compactNtpFromElapsed(std::chrono::steady_clock::duration elapsed);
+    static uint32_t compactNtpToMs(uint32_t compactNtp);
     void setErrorLocked(std::string message);
 #endif
 
@@ -82,6 +101,8 @@ private:
     av::codec::AudioDecoder m_decoder;
     media::RTPSender m_sender;
     media::RTPReceiver m_receiver;
+    media::BandwidthEstimator m_audioBwe{media::BandwidthEstimator::Config{16U, 64U, 32U, 500U}};
+    media::RTCPHandler m_rtcpHandler;
     media::JitterBuffer m_jitter;
     av::render::AudioPlayer m_player;
     av::capture::AudioFrame m_playoutAssembler;
@@ -92,11 +113,18 @@ private:
     std::string m_lastError;
     std::atomic<bool> m_running{false};
     std::atomic<bool> m_captureMuted{false};
+    std::atomic<uint32_t> m_lastRttMs{0};
+    std::atomic<uint32_t> m_targetBitrateBps{32000};
+    std::atomic<uint32_t> m_lastReceivedSequence{0};
+    std::atomic<uint32_t> m_sentPacketCount{0};
+    std::atomic<uint32_t> m_sentOctetCount{0};
 
 #ifdef _WIN32
     SOCKET m_socket{INVALID_SOCKET};
     sockaddr_in m_peer{};
     bool m_peerValid{false};
+    SenderReportLedger m_localSenderReport{};
+    SenderReportLedger m_remoteSenderReport{};
 #endif
 };
 
@@ -146,6 +174,14 @@ inline bool av::session::AudioCallSession::start() {
     m_jitter.clear();
     m_sender.setSequence(0);
     m_sender.setSSRC(static_cast<uint32_t>(std::random_device{}()));
+    m_lastRttMs.store(0, std::memory_order_release);
+    m_targetBitrateBps.store(static_cast<uint32_t>(m_config.bitrate), std::memory_order_release);
+    m_lastReceivedSequence.store(0, std::memory_order_release);
+    m_sentPacketCount.store(0, std::memory_order_release);
+    m_sentOctetCount.store(0, std::memory_order_release);
+    m_audioBwe.reset();
+    m_localSenderReport = {};
+    m_remoteSenderReport = {};
 
     if (!m_capture.start() || !m_player.start()) {
         m_capture.stop();
@@ -260,6 +296,18 @@ inline uint16_t av::session::AudioCallSession::localPort() const {
 #endif
 }
 
+inline uint32_t av::session::AudioCallSession::audioSsrc() const {
+    return m_sender.ssrc();
+}
+
+inline uint32_t av::session::AudioCallSession::lastRttMs() const {
+    return m_lastRttMs.load(std::memory_order_acquire);
+}
+
+inline uint32_t av::session::AudioCallSession::targetBitrateBps() const {
+    return m_targetBitrateBps.load(std::memory_order_acquire);
+}
+
 inline bool av::session::AudioCallSession::isRunning() const {
     return m_running.load(std::memory_order_acquire);
 }
@@ -350,6 +398,52 @@ inline bool av::session::AudioCallSession::resolvePeerLocked(sockaddr_in& outPee
     return true;
 }
 
+inline bool av::session::AudioCallSession::looksLikeRtcp(const uint8_t* data, std::size_t len) {
+    if (data == nullptr || len < 4) {
+        return false;
+    }
+
+    const uint8_t version = static_cast<uint8_t>((data[0] >> 6) & 0x03);
+    if (version != 2) {
+        return false;
+    }
+
+    const uint8_t packetType = data[1];
+    return packetType >= 192U && packetType <= 223U;
+}
+
+inline uint64_t av::session::AudioCallSession::currentNtpTimestamp() {
+    constexpr uint64_t kUnixToNtpEpochOffset = 2208988800ULL;
+
+    const auto now = std::chrono::system_clock::now().time_since_epoch();
+    const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(now);
+    const auto nanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(now - seconds).count();
+    const uint64_t ntpSeconds = kUnixToNtpEpochOffset + static_cast<uint64_t>(seconds.count());
+    const uint64_t ntpFraction = (static_cast<uint64_t>(nanoseconds) << 32U) / 1000000000ULL;
+    return (ntpSeconds << 32U) | ntpFraction;
+}
+
+inline uint32_t av::session::AudioCallSession::compactNtpFromTimestamp(uint64_t ntpTimestamp) {
+    return static_cast<uint32_t>((ntpTimestamp >> 16U) & 0xFFFFFFFFULL);
+}
+
+inline uint32_t av::session::AudioCallSession::compactNtpFromElapsed(std::chrono::steady_clock::duration elapsed) {
+    const auto micros = std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count();
+    if (micros <= 0) {
+        return 0;
+    }
+
+    return static_cast<uint32_t>((static_cast<uint64_t>(micros) * 65536ULL) / 1000000ULL);
+}
+
+inline uint32_t av::session::AudioCallSession::compactNtpToMs(uint32_t compactNtp) {
+    if (compactNtp == 0) {
+        return 0;
+    }
+
+    return static_cast<uint32_t>(((static_cast<uint64_t>(compactNtp) * 1000ULL) + 65535ULL) / 65536ULL);
+}
+
 inline bool av::session::AudioCallSession::encodeAndSend(av::codec::AudioEncoder& encoder, const av::capture::AudioFrame& frame, const sockaddr_in& peer, av::codec::EncodedAudioFrame* sentFrame) {
     if (sentFrame != nullptr) {
         *sentFrame = {};
@@ -391,10 +485,161 @@ inline bool av::session::AudioCallSession::encodeAndSend(av::codec::AudioEncoder
         setErrorLocked("sendto failed");
         return false;
     }
+    m_sentPacketCount.fetch_add(1, std::memory_order_relaxed);
+    m_sentOctetCount.fetch_add(static_cast<uint32_t>(encoded.payload.size()), std::memory_order_relaxed);
+    m_audioBwe.onPacketSent(encoded.payload.size());
     if (sentFrame != nullptr) {
         *sentFrame = std::move(encoded);
     }
     return true;
+}
+
+inline bool av::session::AudioCallSession::sendSenderReportLocked(const sockaddr_in& peer, uint32_t rtpTimestamp) {
+    if (m_socket == INVALID_SOCKET || rtpTimestamp == 0 || m_sentPacketCount.load(std::memory_order_relaxed) == 0) {
+        return false;
+    }
+
+    const auto now = std::chrono::steady_clock::now();
+    if (m_localSenderReport.compactNtp != 0 &&
+        now > m_localSenderReport.observedAt &&
+        (now - m_localSenderReport.observedAt) < std::chrono::milliseconds(500)) {
+        return false;
+    }
+
+    media::RTCPSenderReport report{};
+    report.senderSsrc = m_sender.ssrc();
+    report.ntpTimestamp = currentNtpTimestamp();
+    report.rtpTimestamp = rtpTimestamp;
+    report.packetCount = m_sentPacketCount.load(std::memory_order_relaxed);
+    report.octetCount = m_sentOctetCount.load(std::memory_order_relaxed);
+
+    const auto packet = m_rtcpHandler.buildSenderReport(report);
+    if (packet.empty()) {
+        setErrorLocked("RTCP SR build failed");
+        return false;
+    }
+
+    const int sent = ::sendto(m_socket,
+                              reinterpret_cast<const char*>(packet.data()),
+                              static_cast<int>(packet.size()),
+                              0,
+                              reinterpret_cast<const sockaddr*>(&peer),
+                              sizeof(peer));
+    if (sent != static_cast<int>(packet.size())) {
+        setErrorLocked("sendto RTCP SR failed");
+        return false;
+    }
+
+    m_localSenderReport = SenderReportLedger{
+        report.senderSsrc,
+        compactNtpFromTimestamp(report.ntpTimestamp),
+        now,
+    };
+    return true;
+}
+
+inline bool av::session::AudioCallSession::sendReceiverReportLocked(const sockaddr_in& peer,
+                                                                    uint32_t remoteSsrc,
+                                                                    uint32_t lastSenderReport,
+                                                                    uint32_t delaySinceLastSenderReport) {
+    if (m_socket == INVALID_SOCKET || remoteSsrc == 0 || lastSenderReport == 0) {
+        return false;
+    }
+
+    media::RTCPReceiverReport report{};
+    report.receiverSsrc = m_sender.ssrc();
+    report.reportBlocks.push_back(media::RTCPReportBlock{
+        remoteSsrc,
+        0,
+        0,
+        m_lastReceivedSequence.load(std::memory_order_relaxed),
+        0,
+        lastSenderReport,
+        delaySinceLastSenderReport,
+    });
+
+    const auto packet = m_rtcpHandler.buildReceiverReport(report);
+    if (packet.empty()) {
+        setErrorLocked("RTCP RR build failed");
+        return false;
+    }
+
+    const int sent = ::sendto(m_socket,
+                              reinterpret_cast<const char*>(packet.data()),
+                              static_cast<int>(packet.size()),
+                              0,
+                              reinterpret_cast<const sockaddr*>(&peer),
+                              sizeof(peer));
+    if (sent != static_cast<int>(packet.size())) {
+        setErrorLocked("sendto RTCP RR failed");
+        return false;
+    }
+
+    return true;
+}
+
+inline bool av::session::AudioCallSession::handleRtcpPacketLocked(const uint8_t* data, std::size_t len, const sockaddr_in& from) {
+    std::vector<media::RTCPPacketSlice> slices;
+    if (!m_rtcpHandler.parseCompoundPacket(data, len, slices)) {
+        return false;
+    }
+
+    bool handled = false;
+    const auto now = std::chrono::steady_clock::now();
+    for (const auto& slice : slices) {
+        if (m_rtcpHandler.isSenderReport(slice.header)) {
+            media::RTCPSenderReport report{};
+            if (!m_rtcpHandler.parseSenderReport(data + slice.offset, slice.size, report)) {
+                continue;
+            }
+
+            m_remoteSenderReport = SenderReportLedger{
+                report.senderSsrc,
+                compactNtpFromTimestamp(report.ntpTimestamp),
+                now,
+            };
+            const uint32_t dlsr = compactNtpFromElapsed(std::chrono::steady_clock::now() - m_remoteSenderReport.observedAt);
+            handled = sendReceiverReportLocked(from, report.senderSsrc, m_remoteSenderReport.compactNtp, dlsr) || handled;
+            continue;
+        }
+
+        if (m_rtcpHandler.isReceiverReport(slice.header)) {
+            media::RTCPReceiverReport report{};
+            if (!m_rtcpHandler.parseReceiverReport(data + slice.offset, slice.size, report)) {
+                continue;
+            }
+
+            for (const auto& block : report.reportBlocks) {
+                if (block.sourceSsrc != m_sender.ssrc() ||
+                    block.lastSenderReport == 0 ||
+                    m_localSenderReport.compactNtp == 0 ||
+                    block.lastSenderReport != m_localSenderReport.compactNtp ||
+                    now <= m_localSenderReport.observedAt) {
+                    continue;
+                }
+
+                const uint32_t arrivalCompactNtp =
+                    m_localSenderReport.compactNtp + compactNtpFromElapsed(now - m_localSenderReport.observedAt);
+                const uint64_t reflectedDelay =
+                    static_cast<uint64_t>(block.lastSenderReport) + static_cast<uint64_t>(block.delaySinceLastSenderReport);
+                if (static_cast<uint64_t>(arrivalCompactNtp) <= reflectedDelay) {
+                    continue;
+                }
+
+                const uint32_t rttCompact =
+                    static_cast<uint32_t>(static_cast<uint64_t>(arrivalCompactNtp) - reflectedDelay);
+                const uint32_t rttMs = compactNtpToMs(rttCompact);
+                m_lastRttMs.store(rttMs, std::memory_order_release);
+                m_audioBwe.onReceiverReport(block.fractionLost, rttMs);
+                const uint32_t estimatedKbps = m_audioBwe.estimateBitrateKbps();
+                const uint32_t estimatedBps = std::max<uint32_t>(16000U, std::min<uint32_t>(64000U, estimatedKbps * 1000U));
+                m_targetBitrateBps.store(estimatedBps, std::memory_order_release);
+                handled = true;
+            }
+        }
+    }
+
+    return handled;
 }
 
 inline void av::session::AudioCallSession::drainReceivedPackets() {
@@ -504,6 +749,14 @@ inline void av::session::AudioCallSession::sendLoop() {
             continue;
         }
 
+        const uint32_t targetBitrate = m_targetBitrateBps.load(std::memory_order_acquire);
+        if (targetBitrate >= 16000U && static_cast<int>(targetBitrate) != encoder.bitrate()) {
+            if (!encoder.configure(m_config.sampleRate, m_config.channels, static_cast<int>(targetBitrate))) {
+                setErrorLocked("audio encoder reconfigure failed");
+                continue;
+            }
+        }
+
         const int encoderFrameSamples = encoder.frameSamples() > 0 ? encoder.frameSamples() : m_config.frameSamples;
         const std::size_t chunkSamples = static_cast<std::size_t>(encoderFrameSamples) * static_cast<std::size_t>(m_config.channels);
         if (encoderFrameSamples <= 0 || chunkSamples == 0 || (frame.samples.size() % chunkSamples) != 0) {
@@ -526,6 +779,10 @@ inline void av::session::AudioCallSession::sendLoop() {
             if (!encodeAndSend(encoder, chunk, peer, &sentFrame)) {
                 sendFailed = true;
                 break;
+            }
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                (void)sendSenderReportLocked(peer, static_cast<uint32_t>(sentFrame.pts));
             }
             if (!loggedFirstSentFrame && !sentFrame.payload.empty()) {
                 qInfo().noquote() << "[audio-session] first RTP sent pts=" << sentFrame.pts << "samples=" << sentFrame.frameSamples;
@@ -559,11 +816,19 @@ inline void av::session::AudioCallSession::recvLoop() {
             continue;
         }
 
+        if (looksLikeRtcp(buffer, static_cast<std::size_t>(received))) {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            (void)handleRtcpPacketLocked(buffer, static_cast<std::size_t>(received), from);
+            continue;
+        }
+
         media::RTPPacket packet;
         if (!m_receiver.parsePacket(buffer, static_cast<std::size_t>(received), packet)) {
             setErrorLocked("RTP parse failed");
             continue;
         }
+
+        m_lastReceivedSequence.store(packet.header.sequenceNumber, std::memory_order_release);
 
         if (!m_jitter.push(packet)) {
             setErrorLocked("jitter push failed");
@@ -625,16 +890,32 @@ inline bool av::session::runAudioCallSessionLoopbackSelfCheck(std::string* error
 
     av::capture::AudioFrame played;
     const bool gotPlayed = session.waitForPlayedFrame(played, std::chrono::milliseconds(5000));
+    uint32_t observedRttMs = 0;
+    for (int i = 0; i < 40 && observedRttMs == 0; ++i) {
+        observedRttMs = session.lastRttMs();
+        if (observedRttMs != 0) {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    const uint32_t observedTargetBitrate = session.targetBitrateBps();
     const bool ok = gotPlayed &&
                     played.sampleRate == 48000 &&
                     played.channels == 1 &&
-                    played.samples.size() == static_cast<std::size_t>(frameSamples);
+                    played.samples.size() == static_cast<std::size_t>(frameSamples) &&
+                    observedRttMs > 0 &&
+                    observedTargetBitrate >= 16000U &&
+                    observedTargetBitrate <= 64000U;
 
     if (!ok && error != nullptr) {
         if (!session.lastError().empty()) {
             *error = session.lastError();
         } else if (!gotPlayed) {
             *error = "playback timeout";
+        } else if (observedRttMs == 0) {
+            *error = "rtcp rtt timeout";
+        } else if (observedTargetBitrate < 16000U || observedTargetBitrate > 64000U) {
+            *error = "audio bwe bitrate out of range";
         } else {
             *error = "unexpected decoded frame shape";
         }
@@ -646,6 +927,9 @@ inline bool av::session::runAudioCallSessionLoopbackSelfCheck(std::string* error
     return false;
 #endif
 }
+
+
+
 
 
 

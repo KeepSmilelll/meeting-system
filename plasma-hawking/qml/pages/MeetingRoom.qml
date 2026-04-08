@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls as Controls
 import QtQuick.Layouts
+import MeetingApp
 import "../components"
 
 Item {
@@ -68,6 +69,13 @@ Item {
                         horizontalAlignment: Text.AlignRight
                         font.pixelSize: 12
                     }
+
+                    Controls.Label {
+                        text: root.controller.screenSharing ? "Screen sharing" : "Screen idle"
+                        color: root.controller.screenSharing ? "#38bdf8" : "#94a3b8"
+                        horizontalAlignment: Text.AlignRight
+                        font.pixelSize: 12
+                    }
                 }
             }
         }
@@ -130,37 +138,59 @@ Item {
                             color: "#111827"
                             border.color: "#1f2937"
 
-                            ColumnLayout {
+                            Item {
                                 anchors.fill: parent
-                                anchors.margins: 20
-                                spacing: 10
 
-                                Controls.Label {
-                                    text: root.controller.inMeeting ? "Room active" : "Waiting for participants"
-                                    color: "#f8fafc"
-                                    font.pixelSize: 24
-                                    font.bold: true
+                                VideoRenderer {
+                                    anchors.fill: parent
+                                    anchors.margins: 1
+                                    frameSource: root.controller.remoteScreenFrameSource
+                                    visible: root.controller.inMeeting
                                 }
 
-                                Controls.Label {
-                                    text: root.controller.audioMuted ? "Audio muted" : "Audio live"
-                                    color: root.controller.audioMuted ? "#f87171" : "#22c55e"
-                                    font.pixelSize: 13
+                                Rectangle {
+                                    anchors.fill: parent
+                                    color: "#660b1220"
                                 }
 
-                                Controls.Label {
-                                    text: root.controller.videoMuted ? "Camera muted" : "Camera live"
-                                    color: root.controller.videoMuted ? "#f87171" : "#22c55e"
-                                    font.pixelSize: 13
-                                }
+                                ColumnLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: 20
+                                    spacing: 10
 
-                                Controls.Label {
-                                    text: root.controller.participants.length > 0 ? "Participants in room: " + root.controller.participants.length : "No participants yet."
-                                    color: "#cbd5e1"
-                                    font.pixelSize: 12
-                                }
+                                    Controls.Label {
+                                        text: root.controller.hasActiveShare
+                                                  ? ("Watching " + root.controller.activeShareDisplayName)
+                                                  : (root.controller.inMeeting ? "Remote screen stage" : "Waiting for participants")
+                                        color: "#f8fafc"
+                                        font.pixelSize: 24
+                                        font.bold: true
+                                    }
 
-                                Item { Layout.fillHeight: true }
+                                    Controls.Label {
+                                        text: root.controller.hasActiveShare
+                                                  ? "Stage is locked to the selected remote sharer"
+                                                  : (root.controller.screenSharing
+                                                         ? "Local screen share sender active"
+                                                         : "Renderer is waiting for remote screen packets")
+                                        color: root.controller.hasActiveShare || root.controller.screenSharing ? "#38bdf8" : "#94a3b8"
+                                        font.pixelSize: 13
+                                    }
+
+                                    Controls.Label {
+                                        text: root.controller.audioMuted ? "Audio muted" : "Audio live"
+                                        color: root.controller.audioMuted ? "#f87171" : "#22c55e"
+                                        font.pixelSize: 13
+                                    }
+
+                                    Controls.Label {
+                                        text: root.controller.participants.length > 0 ? "Participants in room: " + root.controller.participants.length : "No participants yet."
+                                        color: "#cbd5e1"
+                                        font.pixelSize: 12
+                                    }
+
+                                    Item { Layout.fillHeight: true }
+                                }
                             }
                         }
                     }
@@ -213,26 +243,48 @@ Item {
                             color: "#111827"
                             border.color: "#1f2937"
 
-                            ColumnLayout {
+                            Item {
                                 anchors.fill: parent
-                                anchors.margins: 20
-                                spacing: 10
 
-                                Controls.Label {
-                                    text: root.controller.inMeeting ? "Room active" : "Waiting for participants"
-                                    color: "#f8fafc"
-                                    font.pixelSize: 24
-                                    font.bold: true
+                                VideoRenderer {
+                                    anchors.fill: parent
+                                    anchors.margins: 1
+                                    frameSource: root.controller.remoteScreenFrameSource
+                                    visible: root.controller.inMeeting
                                 }
 
-                                Controls.Label {
-                                    text: root.controller.inMeeting ? "Media rendering will appear here." : "Create or join a meeting to enter the room."
-                                    color: "#94a3b8"
-                                    font.pixelSize: 12
-                                    wrapMode: Text.WordWrap
+                                Rectangle {
+                                    anchors.fill: parent
+                                    color: "#660b1220"
                                 }
 
-                                Item { Layout.fillHeight: true }
+                                ColumnLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: 20
+                                    spacing: 10
+
+                                    Controls.Label {
+                                        text: root.controller.hasActiveShare
+                                                  ? ("Watching " + root.controller.activeShareDisplayName)
+                                                  : (root.controller.inMeeting ? "Remote screen stage" : "Waiting for participants")
+                                        color: "#f8fafc"
+                                        font.pixelSize: 24
+                                        font.bold: true
+                                    }
+
+                                    Controls.Label {
+                                        text: root.controller.hasActiveShare
+                                                  ? "Remote screen frames follow the selected sharer."
+                                                  : (root.controller.inMeeting
+                                                         ? "Remote screen frames render here when packets arrive."
+                                                         : "Create or join a meeting to enter the room.")
+                                        color: "#94a3b8"
+                                        font.pixelSize: 12
+                                        wrapMode: Text.WordWrap
+                                    }
+
+                                    Item { Layout.fillHeight: true }
+                                }
                             }
                         }
                     }

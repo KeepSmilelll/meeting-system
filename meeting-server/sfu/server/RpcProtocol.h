@@ -11,6 +11,9 @@ enum class RpcMethod : uint16_t {
     kDestroyRoom = 2,
     kAddPublisher = 3,
     kRemovePublisher = 4,
+    kGetNodeStatus = 5,
+    kReportNodeStatus = 6,
+    kQualityReport = 7,
 };
 
 enum class RpcFrameKind : uint8_t {

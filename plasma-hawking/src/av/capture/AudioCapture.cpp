@@ -8,6 +8,7 @@
 #include <QCoreApplication>
 #include <QDebug>
 #include <QIODevice>
+#include <QtGlobal>
 
 #include <algorithm>
 #include <cmath>
@@ -31,6 +32,10 @@ namespace {
 constexpr int kTargetSampleRate = 48000;
 constexpr int kTargetChannels = 1;
 constexpr int kTargetFrameSamples = 960;
+
+bool allowSyntheticCapture() {
+    return qEnvironmentVariableIntValue("MEETING_SYNTHETIC_AUDIO") != 0;
+}
 
 QAudioFormat chooseFormat(const QAudioDevice& device) {
     QAudioFormat format;
@@ -99,6 +104,11 @@ struct AudioCapture::Impl {
 
         device = QMediaDevices::defaultAudioInput();
         if (device.isNull()) {
+            if (allowSyntheticCapture()) {
+                qWarning().noquote() << "[audio-capture] synthetic mode: no default audio input";
+                running = true;
+                return;
+            }
             error = "no default audio input";
             return;
         }

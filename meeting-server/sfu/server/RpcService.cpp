@@ -117,6 +117,22 @@ bool RpcService::HandleRemovePublisher(const sfu_rpc::RemovePublisherReq& req, s
     return true;
 }
 
+bool RpcService::HandleGetNodeStatus(const sfu_rpc::GetNodeStatusReq& req, sfu_rpc::GetNodeStatusRsp* rsp) const {
+    (void)req;
+
+    if (rsp == nullptr) {
+        return false;
+    }
+
+    rsp->set_success(roomManager_ != nullptr);
+    rsp->set_sfu_address(advertisedAddress_);
+    rsp->set_media_port(MediaPort());
+    rsp->set_room_count(roomManager_ ? static_cast<uint32_t>(roomManager_->RoomCount()) : 0U);
+    rsp->set_publisher_count(roomManager_ ? static_cast<uint32_t>(roomManager_->PublisherCount()) : 0U);
+    rsp->set_packet_count(mediaIngress_ ? static_cast<uint64_t>(mediaIngress_->PacketCount()) : 0ULL);
+    return true;
+}
+
 bool RpcService::Dispatch(RpcMethod method, const uint8_t* payload, std::size_t len, std::vector<uint8_t>* responsePayload) const {
     if (responsePayload == nullptr) {
         return false;
@@ -165,6 +181,17 @@ bool RpcService::Dispatch(RpcMethod method, const uint8_t* payload, std::size_t 
             req.ParseFromArray(payload, static_cast<int>(len));
         }
         if (!HandleRemovePublisher(req, &rsp)) {
+            return false;
+        }
+        return SerializeMessage(rsp, responsePayload);
+    }
+    case RpcMethod::kGetNodeStatus: {
+        sfu_rpc::GetNodeStatusReq req;
+        sfu_rpc::GetNodeStatusRsp rsp;
+        if (payload != nullptr && len > 0) {
+            req.ParseFromArray(payload, static_cast<int>(len));
+        }
+        if (!HandleGetNodeStatus(req, &rsp)) {
             return false;
         }
         return SerializeMessage(rsp, responsePayload);

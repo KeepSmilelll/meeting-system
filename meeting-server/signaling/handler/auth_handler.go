@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"meeting-server/signaling/auth"
+	"meeting-server/signaling/config"
 	"meeting-server/signaling/protocol"
 	"meeting-server/signaling/server"
 	"meeting-server/signaling/store"
@@ -10,14 +11,17 @@ import (
 )
 
 type AuthHandler struct {
-	sessions *server.SessionManager
-	store    *store.MemoryStore
-	tokens   *auth.TokenManager
-	limiter  *auth.RateLimiter
+	cfg          config.Config
+	sessions     *server.SessionManager
+	store        *store.MemoryStore
+	tokens       *auth.TokenManager
+	limiter      *auth.RateLimiter
+	sessionStore store.SessionStore
+	nodeBus      store.UserEventPublisher
 }
 
-func NewAuthHandler(sessions *server.SessionManager, memStore *store.MemoryStore, tokens *auth.TokenManager, limiter *auth.RateLimiter) *AuthHandler {
-	return &AuthHandler{sessions: sessions, store: memStore, tokens: tokens, limiter: limiter}
+func NewAuthHandler(cfg config.Config, sessions *server.SessionManager, memStore *store.MemoryStore, tokens *auth.TokenManager, limiter *auth.RateLimiter, sessionStore store.SessionStore, nodeBus store.UserEventPublisher) *AuthHandler {
+	return &AuthHandler{cfg: cfg, sessions: sessions, store: memStore, tokens: tokens, limiter: limiter, sessionStore: sessionStore, nodeBus: nodeBus}
 }
 
 func (h *AuthHandler) HandleLogin(session *server.Session, payload []byte) {
@@ -45,9 +49,16 @@ func (h *AuthHandler) HandleLogin(session *server.Session, payload []byte) {
 		return
 	}
 
+	ctx := context.Background()
+	var existingPresence *store.SessionPresence
+	if h.sessionStore != nil {
+		existingPresence, _ = h.sessionStore.Get(ctx, user.ID)
+	}
 	h.sessions.BindUser(session, user.ID)
 	session.SetState(server.StateAuthenticated)
 	session.SetMeetingID("")
+	syncSessionPresence(ctx, h.cfg, h.sessionStore, session)
+	h.kickRemoteExistingSession(ctx, existingPresence, session.ID)
 
 	_ = session.Send(protocol.AuthLoginRsp, &protocol.AuthLoginRspBody{
 		Success:     true,
@@ -98,11 +109,37 @@ func (h *AuthHandler) authenticateWithToken(username, token string) (store.User,
 
 func (h *AuthHandler) HandleLogout(session *server.Session, payload []byte) {
 	_ = payload
+	if session.MeetingID() != "" {
+		session.MarkLogoutClose()
+	}
+	clearSessionPresence(context.Background(), h.sessionStore, session)
 	_ = session.Send(protocol.AuthLogoutRsp, &protocol.AuthLogoutRspBody{Success: true})
 	session.Close()
 }
 
 func (h *AuthHandler) HandleHeartbeat(session *server.Session, payload []byte) {
 	_ = payload
+	syncSessionPresence(context.Background(), h.cfg, h.sessionStore, session)
 	_ = session.Send(protocol.AuthHeartbeatRsp, &protocol.AuthHeartbeatRspBody{ServerTimestamp: time.Now().UnixMilli()})
+}
+
+func (h *AuthHandler) OnSessionClosed(session *server.Session) {
+	clearSessionPresence(context.Background(), h.sessionStore, session)
+}
+
+func (h *AuthHandler) kickRemoteExistingSession(ctx context.Context, existing *store.SessionPresence, newSessionID uint64) {
+	if h == nil || h.nodeBus == nil || existing == nil {
+		return
+	}
+	if existing.NodeID == "" || existing.NodeID == h.cfg.NodeID || existing.SessionID == 0 || existing.SessionID == newSessionID {
+		return
+	}
+
+	_ = h.nodeBus.PublishUserControl(ctx, store.UserNodeEvent{
+		TargetNodeID:    existing.NodeID,
+		TargetUserID:    existing.UserID,
+		TargetSessionID: existing.SessionID,
+		Frame:           protocol.EncodeFrame(protocol.AuthKickNotify, mustMarshalProto(&protocol.AuthKickNotifyBody{Reason: "账号在其他设备登录"})),
+		Close:           true,
+	})
 }

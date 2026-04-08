@@ -33,6 +33,7 @@ public:
 
     bool HasRoom(const std::string& meetingId) const;
     std::size_t RoomCount() const;
+    std::size_t PublisherCount() const;
     std::vector<std::string> GetRoomIds() const;
 
 private:

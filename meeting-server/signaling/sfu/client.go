@@ -49,6 +49,7 @@ type Client interface {
 	DestroyRoom(ctx context.Context, req *pb.DestroyRoomReq) (*pb.DestroyRoomRsp, error)
 	AddPublisher(ctx context.Context, req *pb.AddPublisherReq) (*pb.AddPublisherRsp, error)
 	RemovePublisher(ctx context.Context, req *pb.RemovePublisherReq) (*pb.RemovePublisherRsp, error)
+	GetNodeStatus(ctx context.Context, req *pb.GetNodeStatusReq) (*pb.GetNodeStatusRsp, error)
 }
 
 type Option func(*clientOptions)
@@ -115,6 +116,10 @@ func (disabledClient) RemovePublisher(context.Context, *pb.RemovePublisherReq) (
 	return &pb.RemovePublisherRsp{Success: false}, ErrDisabled
 }
 
+func (disabledClient) GetNodeStatus(context.Context, *pb.GetNodeStatusReq) (*pb.GetNodeStatusRsp, error) {
+	return &pb.GetNodeStatusRsp{Success: false}, ErrDisabled
+}
+
 type tcpClient struct {
 	address string
 	opts    clientOptions
@@ -123,10 +128,13 @@ type tcpClient struct {
 type rpcMethod uint16
 
 const (
-	methodCreateRoom      rpcMethod = 1
-	methodDestroyRoom     rpcMethod = 2
-	methodAddPublisher    rpcMethod = 3
-	methodRemovePublisher rpcMethod = 4
+	methodCreateRoom       rpcMethod = 1
+	methodDestroyRoom      rpcMethod = 2
+	methodAddPublisher     rpcMethod = 3
+	methodRemovePublisher  rpcMethod = 4
+	methodGetNodeStatus    rpcMethod = 5
+	methodReportNodeStatus rpcMethod = 6
+	methodQualityReport    rpcMethod = 7
 )
 
 type wireHeader struct {
@@ -163,6 +171,14 @@ func (c *tcpClient) AddPublisher(ctx context.Context, req *pb.AddPublisherReq) (
 func (c *tcpClient) RemovePublisher(ctx context.Context, req *pb.RemovePublisherReq) (*pb.RemovePublisherRsp, error) {
 	rsp := &pb.RemovePublisherRsp{}
 	if err := c.call(ctx, methodRemovePublisher, req, rsp); err != nil {
+		return rsp, err
+	}
+	return rsp, nil
+}
+
+func (c *tcpClient) GetNodeStatus(ctx context.Context, req *pb.GetNodeStatusReq) (*pb.GetNodeStatusRsp, error) {
+	rsp := &pb.GetNodeStatusRsp{}
+	if err := c.call(ctx, methodGetNodeStatus, req, rsp); err != nil {
 		return rsp, err
 	}
 	return rsp, nil

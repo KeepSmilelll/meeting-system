@@ -134,11 +134,15 @@ message MeetHostChangedNotify {
 message MediaOffer {
   string target_user_id = 1;
   string sdp = 2;
+  uint32 audio_ssrc = 3;
+  uint32 video_ssrc = 4;
 }
 
 message MediaAnswer {
   string target_user_id = 1;
   string sdp = 2;
+  uint32 audio_ssrc = 3;
+  uint32 video_ssrc = 4;
 }
 
 message MediaIceCandidate {
@@ -208,3 +212,4 @@ message FileCompleteNotify {
   bool success = 2;
   string file_hash = 3;
 }
+

@@ -8,19 +8,30 @@ import (
 	"time"
 
 	"meeting-server/signaling/model"
+
+	"gorm.io/gorm"
 )
 
-// ParticipantRepo keeps participant lifecycle records in-memory.
-// It mirrors the repository style used by MeetingRepo so the future DB-backed
-// wiring can be added without changing the call sites.
+// ParticipantRepo persists participant lifecycle records.
+// Without a DB it falls back to the in-memory implementation used by unit tests.
 type ParticipantRepo struct {
+	db           *gorm.DB
 	mu           sync.RWMutex
 	nextID       uint64
 	participants map[uint64]map[uint64]*model.Participant
 }
 
-func NewParticipantRepo() *ParticipantRepo {
+func NewParticipantRepo(db *gorm.DB) *ParticipantRepo {
+	return newParticipantRepo(db)
+}
+
+func NewInMemoryParticipantRepo() *ParticipantRepo {
+	return newParticipantRepo(nil)
+}
+
+func newParticipantRepo(db *gorm.DB) *ParticipantRepo {
 	return &ParticipantRepo{
+		db:           db,
 		nextID:       1,
 		participants: make(map[uint64]map[uint64]*model.Participant),
 	}
@@ -38,6 +49,18 @@ func (r *ParticipantRepo) AddParticipant(ctx context.Context, participant *model
 	}
 	if participant.MeetingID == 0 || participant.UserID == 0 {
 		return fmt.Errorf("participant repo: add participant meeting=%d user=%d: %w", participant.MeetingID, participant.UserID, errInvalidData)
+	}
+
+	if r.db != nil {
+		if participant.JoinedAt.IsZero() {
+			participant.JoinedAt = time.Now().UTC()
+		}
+		participant.LeftAt = nil
+
+		if err := r.db.WithContext(ctx).Create(participant).Error; err != nil {
+			return fmt.Errorf("participant repo: add participant meeting=%d user=%d: %w", participant.MeetingID, participant.UserID, err)
+		}
+		return nil
 	}
 
 	r.mu.Lock()
@@ -75,6 +98,21 @@ func (r *ParticipantRepo) MarkParticipantLeft(ctx context.Context, meetingID, us
 		return fmt.Errorf("participant repo: mark participant left meeting=%d user=%d: %w", meetingID, userID, errInvalidData)
 	}
 
+	if r.db != nil {
+		leftAt := time.Now().UTC()
+		tx := r.db.WithContext(ctx).
+			Model(&model.Participant{}).
+			Where("meeting_id = ? AND user_id = ? AND left_at IS NULL", meetingID, userID).
+			Updates(map[string]any{"left_at": leftAt})
+		if tx.Error != nil {
+			return fmt.Errorf("participant repo: mark participant left meeting=%d user=%d: %w", meetingID, userID, tx.Error)
+		}
+		if tx.RowsAffected == 0 {
+			return fmt.Errorf("participant repo: mark participant left meeting=%d user=%d: %w", meetingID, userID, gorm.ErrRecordNotFound)
+		}
+		return nil
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -102,6 +140,18 @@ func (r *ParticipantRepo) ListActiveParticipants(ctx context.Context, meetingID 
 	}
 	if meetingID == 0 {
 		return nil, fmt.Errorf("participant repo: list active participants meeting=%d: %w", meetingID, errInvalidData)
+	}
+
+	if r.db != nil {
+		participants := make([]model.Participant, 0)
+		err := r.db.WithContext(ctx).
+			Where("meeting_id = ? AND left_at IS NULL", meetingID).
+			Order("joined_at ASC, id ASC").
+			Find(&participants).Error
+		if err != nil {
+			return nil, fmt.Errorf("participant repo: list active participants meeting=%d: %w", meetingID, err)
+		}
+		return participants, nil
 	}
 
 	r.mu.RLock()
@@ -141,6 +191,17 @@ func (r *ParticipantRepo) FindActiveParticipant(ctx context.Context, meetingID, 
 		return nil, fmt.Errorf("participant repo: find active participant meeting=%d user=%d: %w", meetingID, userID, errInvalidData)
 	}
 
+	if r.db != nil {
+		var participant model.Participant
+		err := r.db.WithContext(ctx).
+			Where("meeting_id = ? AND user_id = ? AND left_at IS NULL", meetingID, userID).
+			First(&participant).Error
+		if err != nil {
+			return nil, fmt.Errorf("participant repo: find active participant meeting=%d user=%d: %w", meetingID, userID, err)
+		}
+		return cloneParticipantRecord(&participant), nil
+	}
+
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -172,6 +233,12 @@ func (r *ParticipantRepo) PickNextHostCandidate(ctx context.Context, meetingID u
 
 func (r *ParticipantRepo) requireRepo() error {
 	if r == nil {
+		return errInvalidRepo
+	}
+	if r.db != nil {
+		return nil
+	}
+	if r.participants == nil {
 		return errInvalidRepo
 	}
 	return nil

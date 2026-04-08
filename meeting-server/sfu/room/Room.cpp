@@ -33,13 +33,21 @@ bool Room::AddPublisher(PublisherPtr publisher) {
         return false;
     }
 
+    const auto userId = publisher->UserId();
+
     std::unique_lock lock(mutex_);
+    const auto it = publishers_.find(userId);
+    if (it != publishers_.end()) {
+        it->second = std::move(publisher);
+        return true;
+    }
+
     if (maxPublishers_ != 0 && publishers_.size() >= maxPublishers_) {
         return false;
     }
 
-    const auto [it, inserted] = publishers_.emplace(publisher->UserId(), std::move(publisher));
-    return inserted && it->second != nullptr;
+    const auto [insertedIt, inserted] = publishers_.emplace(userId, std::move(publisher));
+    return inserted && insertedIt->second != nullptr;
 }
 
 bool Room::RemovePublisher(const std::string& userId) {
@@ -183,3 +191,6 @@ std::vector<std::string> Room::KeysOf(const SubscriberMap& values) {
 }
 
 } // namespace sfu
+
+
+
