@@ -3,22 +3,45 @@
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QEventLoop>
+#include <QFileInfo>
+#include <QHostAddress>
+#include <QtMultimedia/QCameraDevice>
+#include <QtMultimedia/QMediaDevices>
 #include <QProcess>
 #include <QProcessEnvironment>
+#include <QStandardPaths>
 #include <QTemporaryDir>
+#include <QTcpServer>
 #include <QTcpSocket>
 #include <QThread>
 #include <QStringList>
 #include <QDebug>
 
 #include "app/MeetingController.h"
+#include "av/codec/VideoEncoder.h"
+#include "av/render/VideoFrameStore.h"
 
 namespace {
 
-constexpr quint16 kServerPort = 18443;
 
 struct ControllerProbe {
     QStringList infoMessages;
+};
+
+struct VideoSmokeDiagnostics {
+    bool hostVideoSignalReady{false};
+    bool guestVideoSignalReady{false};
+    bool hostVideoOfferSent{false};
+    bool guestVideoAnswerSent{false};
+    bool hostVideoDegraded{false};
+    bool guestVideoDegraded{false};
+    bool guestDecodedFrameReady{false};
+};
+
+struct SignalingStageDiagnostics {
+    bool loginReady{false};
+    bool hostCreateReady{false};
+    bool guestJoinReady{false};
 };
 
 bool waitForCondition(QCoreApplication& app, const std::function<bool()>& condition, int timeoutMs) {
@@ -34,14 +57,40 @@ bool waitForCondition(QCoreApplication& app, const std::function<bool()>& condit
     return condition();
 }
 
-bool canConnectToServer() {
+quint16 reserveLocalPort() {
+    QTcpServer socket;
+    if (!socket.listen(QHostAddress::LocalHost, 0)) {
+        return 0;
+    }
+    return socket.serverPort();
+}
+
+bool canConnectToServer(quint16 serverPort) {
+    if (serverPort == 0) {
+        return false;
+    }
+
     QTcpSocket socket;
-    socket.connectToHost(QStringLiteral("127.0.0.1"), kServerPort);
+    socket.connectToHost(QStringLiteral("127.0.0.1"), serverPort);
     const bool connected = socket.waitForConnected(200);
     if (connected) {
         socket.disconnectFromHost();
     }
     return connected;
+}
+
+bool canEncodeVideoForRuntimeSmoke() {
+    av::codec::VideoEncoder encoder;
+    return encoder.configure(640, 360, 5, 500 * 1000);
+}
+
+bool useSyntheticCameraForRuntimeSmoke() {
+    const QByteArray value = qgetenv("MEETING_RUNTIME_SMOKE_SYNTHETIC_CAMERA");
+    return value.isEmpty() || value != "0";
+}
+
+bool hasVideoInputDevices() {
+    return !QMediaDevices::videoInputs().isEmpty();
 }
 
 QString collectedOutput(QProcess& process) {
@@ -59,28 +108,152 @@ bool containsMessage(const QStringList& messages, const QString& needle) {
     return false;
 }
 
+bool hasVideoNegotiationEvidence(const QStringList& messages) {
+    return containsMessage(messages, QStringLiteral("Video offer sent")) ||
+           containsMessage(messages, QStringLiteral("Video answer sent")) ||
+           containsMessage(messages, QStringLiteral("Video endpoint ready"));
+}
+
+bool hasCameraSourceEvidence(const QStringList& messages, bool syntheticFallback) {
+    return containsMessage(messages, syntheticFallback
+                                       ? QStringLiteral("Video camera source: synthetic-fallback")
+                                       : QStringLiteral("Video camera source: real-device"));
+}
+
+bool hasDecodedVideoFrame(av::render::VideoFrameStore* frameStore) {
+    if (frameStore == nullptr) {
+        return false;
+    }
+
+    av::codec::DecodedVideoFrame frame;
+    if (!frameStore->snapshot(frame)) {
+        return false;
+    }
+
+    return frame.width > 0 && frame.height > 0 && !frame.yPlane.empty() && !frame.uvPlane.empty();
+}
+
+VideoSmokeDiagnostics collectVideoSmokeDiagnostics(const ControllerProbe& hostProbe,
+                                                   const ControllerProbe& guestProbe,
+                                                   av::render::VideoFrameStore* guestRemoteVideoFrameStore) {
+    VideoSmokeDiagnostics diagnostics;
+    diagnostics.hostVideoSignalReady = hasVideoNegotiationEvidence(hostProbe.infoMessages);
+    diagnostics.guestVideoSignalReady = hasVideoNegotiationEvidence(guestProbe.infoMessages);
+    diagnostics.hostVideoOfferSent = containsMessage(hostProbe.infoMessages, QStringLiteral("Video offer sent"));
+    diagnostics.guestVideoAnswerSent = containsMessage(guestProbe.infoMessages, QStringLiteral("Video answer sent"));
+    diagnostics.hostVideoDegraded = containsMessage(hostProbe.infoMessages,
+                                                    QStringLiteral("Video encoder unavailable"));
+    diagnostics.guestVideoDegraded = containsMessage(guestProbe.infoMessages,
+                                                     QStringLiteral("Video encoder unavailable"));
+    diagnostics.guestDecodedFrameReady = hasDecodedVideoFrame(guestRemoteVideoFrameStore);
+    return diagnostics;
+}
+
+QString formatVideoSmokeDiagnostics(const VideoSmokeDiagnostics& diagnostics) {
+    return QStringLiteral("video-diagnostics: host_signal=%1 guest_signal=%2 host_offer=%3 guest_answer=%4 host_degraded=%5 guest_degraded=%6 guest_decoded=%7")
+        .arg(diagnostics.hostVideoSignalReady ? 1 : 0)
+        .arg(diagnostics.guestVideoSignalReady ? 1 : 0)
+        .arg(diagnostics.hostVideoOfferSent ? 1 : 0)
+        .arg(diagnostics.guestVideoAnswerSent ? 1 : 0)
+        .arg(diagnostics.hostVideoDegraded ? 1 : 0)
+        .arg(diagnostics.guestVideoDegraded ? 1 : 0)
+        .arg(diagnostics.guestDecodedFrameReady ? 1 : 0);
+}
+
+QString inferVideoFailureBucket(const VideoSmokeDiagnostics& diagnostics) {
+    if (diagnostics.hostVideoDegraded || diagnostics.guestVideoDegraded) {
+        return QStringLiteral("likely-module=video-encoder");
+    }
+    if (!diagnostics.hostVideoSignalReady || !diagnostics.guestVideoSignalReady) {
+        return QStringLiteral("likely-module=signaling-or-negotiation");
+    }
+    if (!diagnostics.guestDecodedFrameReady) {
+        return QStringLiteral("likely-module=media-transport-or-decoder");
+    }
+    return QStringLiteral("likely-module=unknown");
+}
+
+QString formatSignalingStageDiagnostics(const SignalingStageDiagnostics& diagnostics) {
+    return QStringLiteral("signaling-stage: login=%1 host_create=%2 guest_join=%3")
+        .arg(diagnostics.loginReady ? 1 : 0)
+        .arg(diagnostics.hostCreateReady ? 1 : 0)
+        .arg(diagnostics.guestJoinReady ? 1 : 0);
+}
+
+QString inferSignalingFailureStage(const SignalingStageDiagnostics& diagnostics) {
+    if (!diagnostics.loginReady) {
+        return QStringLiteral("likely-stage=login");
+    }
+    if (!diagnostics.hostCreateReady) {
+        return QStringLiteral("likely-stage=create-meeting");
+    }
+    if (!diagnostics.guestJoinReady) {
+        return QStringLiteral("likely-stage=join-meeting");
+    }
+    return QStringLiteral("likely-stage=post-join-negotiation");
+}
+
+QString resolveGoExecutable() {
+    const QString found = QStandardPaths::findExecutable(QStringLiteral("go"));
+    if (!found.isEmpty()) {
+        return found;
+    }
+
+    const QString fallback = QStringLiteral("D:/go-env/go/bin/go.exe");
+    if (QFileInfo::exists(fallback)) {
+        return fallback;
+    }
+
+    return QStringLiteral("go");
+}
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
     QCoreApplication app(argc, argv);
     qputenv("MEETING_SYNTHETIC_AUDIO", "1");
+    qputenv("MEETING_SYNTHETIC_SCREEN", "1");
+    const bool syntheticCamera = useSyntheticCameraForRuntimeSmoke();
+    if (syntheticCamera) {
+        qputenv("MEETING_SYNTHETIC_CAMERA", "1");
+    } else {
+        qunsetenv("MEETING_SYNTHETIC_CAMERA");
+    }
 
+    if (!syntheticCamera && !hasVideoInputDevices()) {
+        qInfo().noquote() << "SKIP no camera device available for real-camera mode";
+        return 77;
+    }
+
+    const quint16 serverPort = reserveLocalPort();
+    if (serverPort == 0) {
+        qCritical().noquote() << "failed to reserve signaling listen port";
+        qCritical().noquote() << "likely-stage=bootstrap_port_reserve";
+        qCritical().noquote() << "likely-module=runtime-bootstrap";
+        return 1;
+    }
     QTemporaryDir tempDir;
     if (!tempDir.isValid()) {
         qCritical().noquote() << "failed to create temporary directory";
+        qCritical().noquote() << "likely-stage=bootstrap_tempdir";
+        qCritical().noquote() << "likely-module=runtime-bootstrap";
         return 1;
     }
 
     QProcess server;
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-    env.insert(QStringLiteral("SIGNALING_LISTEN_ADDR"), QStringLiteral("127.0.0.1:%1").arg(kServerPort));
+    env.insert(QStringLiteral("SIGNALING_LISTEN_ADDR"), QStringLiteral("127.0.0.1:%1").arg(serverPort));
     env.insert(QStringLiteral("SIGNALING_ENABLE_REDIS"), QStringLiteral("false"));
     env.insert(QStringLiteral("SIGNALING_MYSQL_DSN"), QString());
     server.setProcessEnvironment(env);
     server.setWorkingDirectory(QStringLiteral("D:/meeting/meeting-server/signaling"));
-    server.start(QStringLiteral("go"), {QStringLiteral("run"), QStringLiteral(".")});
+    const QString goExecutable = resolveGoExecutable();
+    server.start(goExecutable, {QStringLiteral("run"), QStringLiteral(".")});
     if (!server.waitForStarted(10000)) {
-        qCritical().noquote() << "failed to start signaling server";
+        qCritical().noquote() << "failed to start signaling server with" << goExecutable
+                              << "error:" << server.errorString();
+        qCritical().noquote() << "likely-stage=signaling_server_start";
+        qCritical().noquote() << "likely-module=signaling-or-negotiation";
         return 1;
     }
 
@@ -92,8 +265,10 @@ int main(int argc, char* argv[]) {
         }
     };
 
-    if (!waitForCondition(app, [] { return canConnectToServer(); }, 20000)) {
+    if (!waitForCondition(app, [serverPort] { return canConnectToServer(serverPort); }, 20000)) {
         qCritical().noquote() << "signaling server did not start listening\n" << collectedOutput(server);
+        qCritical().noquote() << "likely-stage=signaling_server_listen";
+        qCritical().noquote() << "likely-module=signaling-or-negotiation";
         stopServer();
         return 1;
     }
@@ -112,8 +287,20 @@ int main(int argc, char* argv[]) {
         guestProbe.infoMessages.push_back(message);
     });
 
-    hostController.setServerEndpoint(QStringLiteral("127.0.0.1"), kServerPort);
-    guestController.setServerEndpoint(QStringLiteral("127.0.0.1"), kServerPort);
+    auto* hostRemoteVideoFrameStore = qobject_cast<av::render::VideoFrameStore*>(hostController.remoteVideoFrameSource());
+    auto* guestRemoteVideoFrameStore = qobject_cast<av::render::VideoFrameStore*>(guestController.remoteVideoFrameSource());
+    if (hostRemoteVideoFrameStore == nullptr || guestRemoteVideoFrameStore == nullptr) {
+        qCritical().noquote() << "runtime smoke failed to acquire remote video frame stores";
+        qCritical().noquote() << "likely-stage=client_frame_source_init";
+        qCritical().noquote() << "likely-module=media-transport-or-decoder";
+        qCritical().noquote() << collectedOutput(server);
+        stopServer();
+        return 1;
+    }
+
+    hostController.setServerEndpoint(QStringLiteral("127.0.0.1"), serverPort);
+    guestController.setServerEndpoint(QStringLiteral("127.0.0.1"), serverPort);
+    SignalingStageDiagnostics signalingStageDiagnostics;
 
     hostController.login(QStringLiteral("demo"), QStringLiteral("demo"));
     guestController.login(QStringLiteral("alice"), QStringLiteral("alice"));
@@ -122,23 +309,29 @@ int main(int argc, char* argv[]) {
             return hostController.loggedIn() && guestController.loggedIn();
         }, 10000)) {
         qCritical().noquote() << "login smoke failed";
+        qCritical().noquote() << formatSignalingStageDiagnostics(signalingStageDiagnostics);
+        qCritical().noquote() << inferSignalingFailureStage(signalingStageDiagnostics);
         qCritical().noquote() << "host status:" << hostController.statusText();
         qCritical().noquote() << "guest status:" << guestController.statusText();
         qCritical().noquote() << collectedOutput(server);
         stopServer();
         return 1;
     }
+    signalingStageDiagnostics.loginReady = true;
 
     hostController.createMeeting(QStringLiteral("runtime-smoke"), QString(), 2);
     if (!waitForCondition(app, [&hostController] {
             return hostController.inMeeting() && !hostController.meetingId().isEmpty();
         }, 10000)) {
         qCritical().noquote() << "host createMeeting smoke failed";
+        qCritical().noquote() << formatSignalingStageDiagnostics(signalingStageDiagnostics);
+        qCritical().noquote() << inferSignalingFailureStage(signalingStageDiagnostics);
         qCritical().noquote() << "host status:" << hostController.statusText();
         qCritical().noquote() << collectedOutput(server);
         stopServer();
         return 1;
     }
+    signalingStageDiagnostics.hostCreateReady = true;
 
     guestController.joinMeeting(hostController.meetingId(), QString());
     if (!waitForCondition(app, [&hostController, &guestController] {
@@ -148,12 +341,15 @@ int main(int argc, char* argv[]) {
                    guestController.participants().size() >= 2;
         }, 10000)) {
         qCritical().noquote() << "guest joinMeeting smoke failed";
+        qCritical().noquote() << formatSignalingStageDiagnostics(signalingStageDiagnostics);
+        qCritical().noquote() << inferSignalingFailureStage(signalingStageDiagnostics);
         qCritical().noquote() << "host status:" << hostController.statusText();
         qCritical().noquote() << "guest status:" << guestController.statusText();
         qCritical().noquote() << collectedOutput(server);
         stopServer();
         return 1;
     }
+    signalingStageDiagnostics.guestJoinReady = true;
 
     if (!waitForCondition(app, [&hostProbe, &guestProbe] {
             return (containsMessage(hostProbe.infoMessages, QStringLiteral("Audio offer sent")) ||
@@ -161,7 +357,91 @@ int main(int argc, char* argv[]) {
                    (containsMessage(guestProbe.infoMessages, QStringLiteral("Audio answer sent")) ||
                     containsMessage(guestProbe.infoMessages, QStringLiteral("Video answer sent")));
         }, 15000)) {
+        const VideoSmokeDiagnostics diagnostics =
+            collectVideoSmokeDiagnostics(hostProbe, guestProbe, guestRemoteVideoFrameStore);
         qCritical().noquote() << "media negotiation smoke failed";
+        qCritical().noquote() << formatSignalingStageDiagnostics(signalingStageDiagnostics);
+        qCritical().noquote() << inferSignalingFailureStage(signalingStageDiagnostics);
+        qCritical().noquote() << formatVideoSmokeDiagnostics(diagnostics);
+        qCritical().noquote() << inferVideoFailureBucket(diagnostics);
+        qCritical().noquote() << "host messages:" << hostProbe.infoMessages.join(QStringLiteral(" | "));
+        qCritical().noquote() << "guest messages:" << guestProbe.infoMessages.join(QStringLiteral(" | "));
+        qCritical().noquote() << collectedOutput(server);
+        stopServer();
+        return 1;
+    }
+
+
+    const QString expectedCameraSource = syntheticCamera
+        ? QStringLiteral("synthetic-fallback")
+        : QStringLiteral("real-device");
+    if (!waitForCondition(app, [&hostProbe, &guestProbe, syntheticCamera] {
+            return hasCameraSourceEvidence(hostProbe.infoMessages, syntheticCamera) ||
+                   hasCameraSourceEvidence(guestProbe.infoMessages, syntheticCamera);
+        }, 10000)) {
+        qCritical().noquote() << "camera source evidence missing";
+        qCritical().noquote() << "expected camera source:" << expectedCameraSource;
+        qCritical().noquote() << "likely-stage=camera-source-evidence";
+        qCritical().noquote() << "likely-module=video-capture-source";
+        qCritical().noquote() << "host messages:" << hostProbe.infoMessages.join(QStringLiteral(" | "));
+        qCritical().noquote() << "guest messages:" << guestProbe.infoMessages.join(QStringLiteral(" | "));
+        qCritical().noquote() << collectedOutput(server);
+        stopServer();
+        return 1;
+    }
+
+    const bool requireVideoDecodeEvidence = canEncodeVideoForRuntimeSmoke();
+    if (requireVideoDecodeEvidence &&
+        !waitForCondition(app, [&hostProbe, &guestProbe] {
+            return hasVideoNegotiationEvidence(hostProbe.infoMessages) &&
+                   hasVideoNegotiationEvidence(guestProbe.infoMessages);
+        }, 10000)) {
+        const VideoSmokeDiagnostics diagnostics =
+            collectVideoSmokeDiagnostics(hostProbe, guestProbe, guestRemoteVideoFrameStore);
+        qCritical().noquote() << "strict video negotiation smoke failed";
+        qCritical().noquote() << formatSignalingStageDiagnostics(signalingStageDiagnostics);
+        qCritical().noquote() << inferSignalingFailureStage(signalingStageDiagnostics);
+        qCritical().noquote() << formatVideoSmokeDiagnostics(diagnostics);
+        qCritical().noquote() << inferVideoFailureBucket(diagnostics);
+        qCritical().noquote() << "host messages:" << hostProbe.infoMessages.join(QStringLiteral(" | "));
+        qCritical().noquote() << "guest messages:" << guestProbe.infoMessages.join(QStringLiteral(" | "));
+        qCritical().noquote() << collectedOutput(server);
+        stopServer();
+        return 1;
+    }
+
+    if (requireVideoDecodeEvidence &&
+        !waitForCondition(app, [guestRemoteVideoFrameStore] {
+            return hasDecodedVideoFrame(guestRemoteVideoFrameStore);
+        }, 20000)) {
+        const VideoSmokeDiagnostics diagnostics =
+            collectVideoSmokeDiagnostics(hostProbe, guestProbe, guestRemoteVideoFrameStore);
+        qCritical().noquote() << "remote video decode smoke failed";
+        qCritical().noquote() << formatSignalingStageDiagnostics(signalingStageDiagnostics);
+        qCritical().noquote() << inferSignalingFailureStage(signalingStageDiagnostics);
+        qCritical().noquote() << formatVideoSmokeDiagnostics(diagnostics);
+        qCritical().noquote() << inferVideoFailureBucket(diagnostics);
+        qCritical().noquote() << "host messages:" << hostProbe.infoMessages.join(QStringLiteral(" | "));
+        qCritical().noquote() << "guest messages:" << guestProbe.infoMessages.join(QStringLiteral(" | "));
+        qCritical().noquote() << collectedOutput(server);
+        stopServer();
+        return 1;
+    }
+
+    if (!requireVideoDecodeEvidence) {
+        qInfo().noquote() << "runtime smoke skipped strict video decode assertion (encoder unavailable)";
+    }
+
+    if (requireVideoDecodeEvidence &&
+        (containsMessage(hostProbe.infoMessages, QStringLiteral("Video encoder unavailable")) ||
+         containsMessage(guestProbe.infoMessages, QStringLiteral("Video encoder unavailable")))) {
+        const VideoSmokeDiagnostics diagnostics =
+            collectVideoSmokeDiagnostics(hostProbe, guestProbe, guestRemoteVideoFrameStore);
+        qCritical().noquote() << "strict video smoke detected unexpected encoder downgrade";
+        qCritical().noquote() << formatSignalingStageDiagnostics(signalingStageDiagnostics);
+        qCritical().noquote() << inferSignalingFailureStage(signalingStageDiagnostics);
+        qCritical().noquote() << formatVideoSmokeDiagnostics(diagnostics);
+        qCritical().noquote() << inferVideoFailureBucket(diagnostics);
         qCritical().noquote() << "host messages:" << hostProbe.infoMessages.join(QStringLiteral(" | "));
         qCritical().noquote() << "guest messages:" << guestProbe.infoMessages.join(QStringLiteral(" | "));
         qCritical().noquote() << collectedOutput(server);
@@ -171,7 +451,13 @@ int main(int argc, char* argv[]) {
 
     if (containsMessage(hostProbe.infoMessages, QStringLiteral("Failed")) ||
         containsMessage(guestProbe.infoMessages, QStringLiteral("Failed"))) {
+        const VideoSmokeDiagnostics diagnostics =
+            collectVideoSmokeDiagnostics(hostProbe, guestProbe, guestRemoteVideoFrameStore);
         qCritical().noquote() << "runtime smoke observed failure messages";
+        qCritical().noquote() << formatSignalingStageDiagnostics(signalingStageDiagnostics);
+        qCritical().noquote() << inferSignalingFailureStage(signalingStageDiagnostics);
+        qCritical().noquote() << formatVideoSmokeDiagnostics(diagnostics);
+        qCritical().noquote() << inferVideoFailureBucket(diagnostics);
         qCritical().noquote() << "host messages:" << hostProbe.infoMessages.join(QStringLiteral(" | "));
         qCritical().noquote() << "guest messages:" << guestProbe.infoMessages.join(QStringLiteral(" | "));
         qCritical().noquote() << collectedOutput(server);

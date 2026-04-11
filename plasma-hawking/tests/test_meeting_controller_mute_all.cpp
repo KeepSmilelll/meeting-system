@@ -14,6 +14,7 @@
 
 #include "app/MeetingController.h"
 #include "app/MediaSessionManager.h"
+#include "av/render/VideoFrameStore.h"
 #include "net/signaling/SignalingClient.h"
 #include "signaling.pb.h"
 
@@ -50,6 +51,16 @@ bool containsAnyMessage(const QStringList& messages, std::initializer_list<QStri
     return false;
 }
 
+
+av::codec::DecodedVideoFrame makeTestFrame() {
+    av::codec::DecodedVideoFrame frame;
+    frame.width = 2;
+    frame.height = 2;
+    frame.pts = 1;
+    frame.yPlane = {0, 16, 32, 48};
+    frame.uvPlane = {64, 96};
+    return frame;
+}
 bool waitForCondition(QCoreApplication& app, const std::function<bool()>& condition, int timeoutMs) {
     QElapsedTimer timer;
     timer.start();
@@ -79,6 +90,11 @@ int main(int argc, char* argv[]) {
     });
     auto* signalingClient = controller.findChild<signaling::SignalingClient*>();
     assert(signalingClient != nullptr);
+    auto* remoteVideoFrameStore = qobject_cast<av::render::VideoFrameStore*>(controller.remoteVideoFrameSource());
+    assert(remoteVideoFrameStore != nullptr);
+    auto activeVideoPeerUserId = [&controller]() {
+        return controller.activeVideoPeerUserId();
+    };
     assert(QMetaObject::invokeMethod(signalingClient,
                                      "loginFinished",
                                      Qt::DirectConnection,
@@ -214,6 +230,51 @@ int main(int argc, char* argv[]) {
     assert(!controller.hasActiveShare());
     assert(controller.activeShareUserId().isEmpty());
     assert(controller.activeShareDisplayName().isEmpty());
+    assert(activeVideoPeerUserId() == controller.activeAudioPeerUserId());
+    assert(!controller.setActiveShareUserId(QStringLiteral("u1003")));
+    av::codec::DecodedVideoFrame staleVideoFrame;
+    remoteVideoFrameStore->setFrame(makeTestFrame());
+    assert(remoteVideoFrameStore->snapshot(staleVideoFrame));
+    assert(controller.setActiveVideoPeerUserId(QStringLiteral("u1003")));
+    assert(activeVideoPeerUserId() == QStringLiteral("u1003"));
+    assert(!remoteVideoFrameStore->snapshot(staleVideoFrame));
+    assert(!controller.hasActiveShare());
+
+    remoteVideoFrameStore->setFrame(makeTestFrame());
+    assert(remoteVideoFrameStore->snapshot(staleVideoFrame));
+    stateSync.mutable_participants(2)->set_is_video_on(false);
+    assert(emitProtoMessage(signalingClient, kMeetStateSync, stateSync));
+    assert(controller.activeAudioPeerUserId() == QStringLiteral("u1002"));
+    assert(activeVideoPeerUserId() == QStringLiteral("u1002"));
+    assert(!controller.setActiveVideoPeerUserId(QStringLiteral("u1003")));
+    assert(!remoteVideoFrameStore->snapshot(staleVideoFrame));
+
+    infoMessages.clear();
+    meeting::MediaOffer disabledVideoOffer;
+    disabledVideoOffer.set_target_user_id("u1001");
+    disabledVideoOffer.set_sdp(videoOfferBuilder.buildOffer(QStringLiteral("u1001")).toStdString());
+    assert(emitProtoMessage(signalingClient, kMediaOffer, disabledVideoOffer));
+    assert(!infoMessages.contains(QStringLiteral("Video answer sent to u1003")));
+
+    meeting::MediaOffer fallbackVideoOffer;
+    fallbackVideoOffer.set_target_user_id("u1001");
+    fallbackVideoOffer.set_sdp(wrongVideoOfferBuilder.buildOffer(QStringLiteral("u1001")).toStdString());
+    assert(emitProtoMessage(signalingClient, kMediaOffer, fallbackVideoOffer));
+    const bool fallbackVideoMessageObserved = waitForCondition(app, [&infoMessages]() {
+        return containsAnyMessage(infoMessages, {
+            QStringLiteral("Video answer sent to u1002"),
+            QStringLiteral("Video offer sent to u1002"),
+            QStringLiteral("Video endpoint ready for u1002"),
+        });
+    }, 1500);
+    if (!fallbackVideoMessageObserved) {
+        assert(!infoMessages.contains(QStringLiteral("Ignored media offer from unsubscribed peer u1002")));
+    }
+
+    stateSync.mutable_participants(2)->set_is_video_on(true);
+    assert(emitProtoMessage(signalingClient, kMeetStateSync, stateSync));
+    assert(controller.setActiveVideoPeerUserId(QStringLiteral("u1003")));
+    assert(activeVideoPeerUserId() == QStringLiteral("u1003"));
 
     MediaSessionManager audioOfferBuilder;
     audioOfferBuilder.setLocalUserId(QStringLiteral("u1002"));
@@ -276,3 +337,5 @@ int main(int argc, char* argv[]) {
 
     return 0;
 }
+
+

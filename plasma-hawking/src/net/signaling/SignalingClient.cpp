@@ -370,7 +370,10 @@ void SignalingClient::handlePayload(quint16 signalType, const QByteArray& payloa
             return;
         }
 
-        emit mediaOfferReceived(toQtString(offer.target_user_id()), toQtString(offer.sdp()));
+        emit mediaOfferReceived(toQtString(offer.target_user_id()),
+                                toQtString(offer.sdp()),
+                                static_cast<quint32>(offer.audio_ssrc()),
+                                static_cast<quint32>(offer.video_ssrc()));
         return;
     }
     case kMediaAnswer: {
@@ -380,7 +383,10 @@ void SignalingClient::handlePayload(quint16 signalType, const QByteArray& payloa
             return;
         }
 
-        emit mediaAnswerReceived(toQtString(answer.target_user_id()), toQtString(answer.sdp()));
+        emit mediaAnswerReceived(toQtString(answer.target_user_id()),
+                                 toQtString(answer.sdp()),
+                                 static_cast<quint32>(answer.audio_ssrc()),
+                                 static_cast<quint32>(answer.video_ssrc()));
         return;
     }
     case kChatSendRsp: {
@@ -430,5 +436,7 @@ void SignalingClient::sendRawFrame(quint16 signalType, const std::string& payloa
 }
 
 }  // namespace signaling
+
+
 
 

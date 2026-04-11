@@ -95,6 +95,7 @@ std::vector<uint8_t> buildNackPacket(uint32_t senderSsrc, uint32_t mediaSsrc, ui
 int main(int argc, char* argv[]) {
     QCoreApplication app(argc, argv);
     qputenv("MEETING_SYNTHETIC_SCREEN", QByteArrayLiteral("1"));
+    qputenv("MEETING_SYNTHETIC_CAMERA", QByteArrayLiteral("1"));
 
     av::session::ScreenShareSessionConfig senderConfig{};
     senderConfig.localAddress = "127.0.0.1";
@@ -123,8 +124,10 @@ int main(int argc, char* argv[]) {
     assert(sender.localPort() != 0);
 
     sender.setPeer("127.0.0.1", receiver.localPort());
+    receiver.setPeer("127.0.0.1", sender.localPort());
     assert(sender.setSharingEnabled(true));
     assert(sender.videoSsrc() != 0);
+    const uint32_t screenSsrc = sender.videoSsrc();
 
     const bool packetsSent = waitForCondition(app, [&sender]() {
         return sender.sentPacketCount() > 0;
@@ -159,13 +162,70 @@ int main(int argc, char* argv[]) {
         assert(frameDecoded);
         assert(decodedWidth == 640);
         assert(decodedHeight == 360);
+
+        receiver.setExpectedRemoteVideoSsrc(screenSsrc + 1U);
+        const uint64_t filteredReceiveBase = receiver.receivedPacketCount();
+        const uint64_t filteredSendBase = sender.sentPacketCount();
+
+        const bool senderStillSending = waitForCondition(app, [&sender, filteredSendBase]() {
+            return sender.sentPacketCount() > filteredSendBase + 5;
+        }, 3000);
+        assert(senderStillSending);
+
+        const bool receivedUnexpectedSsrc = waitForCondition(app, [&receiver, filteredReceiveBase]() {
+            return receiver.receivedPacketCount() > filteredReceiveBase;
+        }, 800);
+        assert(!receivedUnexpectedSsrc);
+
+        receiver.setExpectedRemoteVideoSsrc(screenSsrc);
+        const bool receiveRecovered = waitForCondition(app, [&receiver, filteredReceiveBase]() {
+            return receiver.receivedPacketCount() > filteredReceiveBase;
+        }, 5000);
+        assert(receiveRecovered);
+    }
+
+    assert(sender.setSharingEnabled(false));
+
+    const uint64_t cameraSentBase = sender.sentPacketCount();
+    const uint64_t cameraRecvBase = receiver.receivedPacketCount();
+    decodedFrameReady = false;
+    const bool cameraEnabled = sender.setCameraSendingEnabled(true);
+    assert(cameraEnabled);
+    assert(sender.cameraSendingEnabled());
+    assert(sender.videoSsrc() != 0);
+    const uint32_t cameraSsrc = sender.videoSsrc();
+    receiver.setExpectedRemoteVideoSsrc(cameraSsrc);
+
+    const bool cameraPacketsSent = waitForCondition(app, [&sender, cameraSentBase]() {
+        return sender.sentPacketCount() > cameraSentBase;
+    }, 5000);
+    const std::string cameraError = sender.lastError();
+    const bool cameraEncoderUnavailable = !cameraPacketsSent &&
+                                          cameraError.find("video encoder configure failed") != std::string::npos;
+    assert(cameraPacketsSent || cameraEncoderUnavailable);
+    if (cameraPacketsSent) {
+        const bool cameraPacketsReceived = waitForCondition(app, [&receiver, cameraRecvBase]() {
+            return receiver.receivedPacketCount() > cameraRecvBase;
+        }, 5000);
+        assert(cameraPacketsReceived);
+        const bool cameraFrameDecoded = waitForCondition(app, [&decodedFrameReady]() {
+            return decodedFrameReady;
+        }, 5000);
+        assert(cameraFrameDecoded);
+    }
+
+    assert(sender.setCameraSendingEnabled(false));
+    assert(!sender.cameraSendingEnabled());
+
+    if (!packetsSent) {
+        sender.stop();
+        receiver.stop();
+        return 0;
     }
 
     QUdpSocket feedbackSocket;
     assert(feedbackSocket.bind(QHostAddress::LocalHost, 0));
 
-    const uint32_t screenSsrc = sender.videoSsrc();
-    assert(screenSsrc != 0);
 
     const auto pliPacket = buildPliPacket(0x33333333U, screenSsrc);
     const qint64 pliSent = feedbackSocket.writeDatagram(reinterpret_cast<const char*>(pliPacket.data()),
@@ -242,3 +302,4 @@ int main(int argc, char* argv[]) {
     receiver.stop();
     return 0;
 }
+

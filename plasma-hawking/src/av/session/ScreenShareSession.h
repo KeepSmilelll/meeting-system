@@ -24,6 +24,11 @@
 #pragma comment(lib, "Ws2_32.lib")
 #endif
 
+namespace av::capture {
+class CameraCapture;
+class ScreenCapture;
+}
+
 namespace av::session {
 
 struct ScreenShareSessionConfig {
@@ -49,9 +54,15 @@ public:
 
     bool setSharingEnabled(bool enabled);
     bool sharingEnabled() const;
+    bool setCameraSendingEnabled(bool enabled);
+    bool cameraSendingEnabled() const;
+    void setExpectedRemoteVideoSsrc(uint32_t ssrc);
+    uint32_t expectedRemoteVideoSsrc() const;
 
     void setPeer(const std::string& address, uint16_t port);
     void setDecodedFrameCallback(std::function<void(av::codec::DecodedVideoFrame)> callback);
+    void setErrorCallback(std::function<void(std::string)> callback);
+    void setCameraSourceCallback(std::function<void(bool syntheticFallback)> callback);
     uint16_t localPort() const;
     uint32_t videoSsrc() const;
     bool isRunning() const;
@@ -67,13 +78,19 @@ public:
     uint32_t appliedBitrateBps() const;
 
 private:
+    struct CameraFrameRelay;
+
 #ifdef _WIN32
     bool openSocketLocked();
     void closeSocketLocked();
     bool resolvePeerLocked(sockaddr_in& outPeer) const;
     void setErrorLocked(std::string message);
-    void startCaptureLocked();
+    bool startCaptureLocked();
     void stopCaptureLocked();
+    bool startCameraCaptureLocked();
+    void stopCameraFallbackCaptureLocked();
+    void stopCameraCaptureLocked();
+    bool shouldAcceptSenderLocked(const sockaddr_in& from) const;
     void sendLoop();
     void recvLoop();
     bool handleRtcpFeedbackLocked(const uint8_t* data, std::size_t len);
@@ -89,8 +106,11 @@ private:
     std::thread m_recvThread;
     std::string m_lastError;
     std::function<void(av::codec::DecodedVideoFrame)> m_decodedFrameCallback;
+    std::function<void(std::string)> m_errorCallback;
+    std::function<void(bool)> m_cameraSourceCallback;
     std::atomic<bool> m_running{false};
     std::atomic<bool> m_sharingEnabled{false};
+    std::atomic<bool> m_cameraSendingEnabled{false};
     std::atomic<uint64_t> m_sentPacketCount{0};
     std::atomic<uint64_t> m_receivedPacketCount{0};
     std::atomic<uint64_t> m_keyframeRequestCount{0};
@@ -101,7 +121,11 @@ private:
     std::atomic<uint32_t> m_lastBitrateApplyDelayMs{0};
     std::atomic<uint64_t> m_targetBitrateUpdatedAtMs{0};
     std::atomic<bool> m_forceKeyFramePending{false};
-    std::unique_ptr<av::capture::ScreenCapture> m_capture;
+    std::atomic<uint32_t> m_expectedRemoteVideoSsrc{0};
+    std::shared_ptr<av::capture::ScreenCapture> m_capture;
+    std::unique_ptr<av::capture::CameraCapture> m_cameraCapture;
+    std::shared_ptr<av::capture::ScreenCapture> m_cameraFallbackCapture;
+    std::shared_ptr<CameraFrameRelay> m_cameraRelay;
     av::codec::VideoDecoder m_decoder;
     media::RTPSender m_sender;
     media::RTPReceiver m_receiver;
@@ -117,3 +141,11 @@ private:
 };
 
 }  // namespace av::session
+
+
+
+
+
+
+
+

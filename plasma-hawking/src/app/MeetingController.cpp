@@ -10,6 +10,7 @@
 #include "av/session/AudioCallSession.h"
 #include "av/session/ScreenShareSession.h"
 #include "av/render/VideoFrameStore.h"
+#include "av/sync/AVSync.h"
 #include <QByteArray>
 #include <QDateTime>
 #include <QDebug>
@@ -17,11 +18,14 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkInterface>
+#include <QProcessEnvironment>
 #include <QTimer>
 #include <QtGlobal>
 
+#include <algorithm>
 #include <limits>
 #include <memory>
+#include <vector>
 #include "signaling.pb.h"
 
 namespace {
@@ -42,7 +46,102 @@ constexpr int kScreenWidth = 1280;
 constexpr int kScreenHeight = 720;
 constexpr int kScreenFrameRate = 5;
 constexpr int kScreenBitrate = 1500 * 1000;
+constexpr int kMaxVideoLeadMsForSyncDrop = 1200;
+constexpr int kMaxVideoLagMsForSyncDrop = 1500;
+constexpr int kMaxVideoRenderDelayMsForSync = 250;
+constexpr int kDefaultMaxRemoteVideoRenderQueueDepth = 8;
+constexpr int kDefaultMaxAudioDrivenRenderDelayMs = 120;
+constexpr int kDefaultMaxVideoFramesPerDrain = 2;
+constexpr int kDefaultMinVideoCadenceMs = 12;
+constexpr int kDefaultMaxVideoCadenceMs = 80;
 
+struct VideoRenderTuning {
+    int maxRemoteQueueDepth{kDefaultMaxRemoteVideoRenderQueueDepth};
+    int maxAudioDrivenRenderDelayMs{kDefaultMaxAudioDrivenRenderDelayMs};
+    int maxVideoFramesPerDrain{kDefaultMaxVideoFramesPerDrain};
+    int minVideoCadenceMs{kDefaultMinVideoCadenceMs};
+    int maxVideoCadenceMs{kDefaultMaxVideoCadenceMs};
+};
+
+int readBoundedEnvInt(const QProcessEnvironment& env,
+                      const QString& name,
+                      int fallback,
+                      int minValue,
+                      int maxValue) {
+    const QString raw = env.value(name).trimmed();
+    if (raw.isEmpty()) {
+        return fallback;
+    }
+
+    bool ok = false;
+    const int parsed = raw.toInt(&ok);
+    if (!ok) {
+        return fallback;
+    }
+    return std::clamp(parsed, minValue, maxValue);
+}
+
+const VideoRenderTuning& videoRenderTuning() {
+    static const VideoRenderTuning tuning = [] {
+        VideoRenderTuning value;
+        const QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        value.maxRemoteQueueDepth = readBoundedEnvInt(env,
+                                                      QStringLiteral("MEETING_VIDEO_RENDER_QUEUE_DEPTH"),
+                                                      kDefaultMaxRemoteVideoRenderQueueDepth,
+                                                      2,
+                                                      32);
+        value.maxAudioDrivenRenderDelayMs = readBoundedEnvInt(env,
+                                                               QStringLiteral("MEETING_VIDEO_AUDIO_DRIVEN_MAX_DELAY_MS"),
+                                                               kDefaultMaxAudioDrivenRenderDelayMs,
+                                                               10,
+                                                               500);
+        value.maxVideoFramesPerDrain = readBoundedEnvInt(env,
+                                                         QStringLiteral("MEETING_VIDEO_MAX_FRAMES_PER_DRAIN"),
+                                                         kDefaultMaxVideoFramesPerDrain,
+                                                         1,
+                                                         8);
+        value.minVideoCadenceMs = readBoundedEnvInt(env,
+                                                    QStringLiteral("MEETING_VIDEO_MIN_CADENCE_MS"),
+                                                    kDefaultMinVideoCadenceMs,
+                                                    1,
+                                                    100);
+        value.maxVideoCadenceMs = readBoundedEnvInt(env,
+                                                    QStringLiteral("MEETING_VIDEO_MAX_CADENCE_MS"),
+                                                    kDefaultMaxVideoCadenceMs,
+                                                    value.minVideoCadenceMs,
+                                                    200);
+        if (value.maxVideoCadenceMs < value.minVideoCadenceMs) {
+            value.maxVideoCadenceMs = value.minVideoCadenceMs;
+        }
+        return value;
+    }();
+    return tuning;
+}
+
+bool shouldDropRemoteVideoFrameByAudioClock(const av::codec::DecodedVideoFrame& frame,
+                                            const std::shared_ptr<av::sync::AVSync>& clock) {
+    if (!clock) {
+        return false;
+    }
+
+    return av::sync::AVSync::shouldDropVideoFrameByAudioClock(frame.pts,
+                                                               clock->audioPts(),
+                                                               clock->sampleRate(),
+                                                               kMaxVideoLeadMsForSyncDrop,
+                                                               kMaxVideoLagMsForSyncDrop);
+}
+
+int suggestRemoteVideoRenderDelayMsByAudioClock(const av::codec::DecodedVideoFrame& frame,
+                                                 const std::shared_ptr<av::sync::AVSync>& clock) {
+    if (!clock) {
+        return 0;
+    }
+
+    return av::sync::AVSync::suggestVideoRenderDelayMsByAudioClock(frame.pts,
+                                                                    clock->audioPts(),
+                                                                    clock->sampleRate(),
+                                                                    kMaxVideoRenderDelayMsForSync);
+}
 QString toQtString(const std::string& s) {
     return QString::fromUtf8(s.data(), static_cast<int>(s.size()));
 }
@@ -123,7 +222,8 @@ MeetingController::MeetingController(const QString& databasePath, QObject* paren
     , m_callLogRepository(std::make_unique<CallLogRepository>(databasePath))
     , m_signaling(new signaling::SignalingClient(this))
     , m_reconnector(new signaling::Reconnector(this))
-    , m_heartbeatTimer(new QTimer(this)) {
+    , m_heartbeatTimer(new QTimer(this))
+    , m_videoRenderTimer(new QTimer(this)) {
     m_reconnector->configure(1000, 30000);
 
     m_serverHost = m_userManager->serverHost();
@@ -138,9 +238,15 @@ MeetingController::MeetingController(const QString& databasePath, QObject* paren
         }
     });
 
+    m_videoRenderTimer->setSingleShot(true);
+    connect(m_videoRenderTimer, &QTimer::timeout, this, [this]() {
+        drainRemoteVideoRenderQueue();
+    });
+
     m_audioSessionManager = std::make_unique<MediaSessionManager>();
     m_mediaSessionManager = std::make_unique<MediaSessionManager>();
     m_remoteScreenFrameStore = std::make_unique<av::render::VideoFrameStore>();
+    m_remoteVideoFrameStore = std::make_unique<av::render::VideoFrameStore>();
     connect(m_audioSessionManager.get(), &MediaSessionManager::remoteEndpointReady, this,
             [this](const QString& peerUserId, const QString& host, quint16 port, int payloadType, bool offer) {
         if (!m_audioSessionManager || peerUserId.isEmpty()) {
@@ -161,8 +267,9 @@ MeetingController::MeetingController(const QString& databasePath, QObject* paren
         m_audioSessionManager->setPayloadType(payloadType > 0 ? payloadType : 111);
 
         if (offer) {
-            if (!m_audioAnswerSent) {
-                m_audioAnswerSent = true;
+            if (!m_audioAnswerSentPeers.contains(peerUserId)) {
+                m_audioAnswerSentPeers.insert(peerUserId);
+                m_audioOfferSentPeers.remove(peerUserId);
                 m_audioNegotiationStarted = true;
                 const QString answer = m_audioSessionManager->buildAnswer(peerUserId);
                 const quint32 audioSsrc = m_audioCallSession ? m_audioCallSession->audioSsrc() : 0;
@@ -191,13 +298,15 @@ MeetingController::MeetingController(const QString& databasePath, QObject* paren
 
         m_videoPeerUserId = peerUserId;
         m_screenShareSession->setPeer(host.toStdString(), port);
+        m_screenShareSession->setExpectedRemoteVideoSsrc(remoteVideoSsrcForPeer(peerUserId));
 
-        if (offer && !m_videoAnswerSent) {
-            m_videoAnswerSent = true;
+        if (offer && !m_videoAnswerSentPeers.contains(peerUserId)) {
+            m_videoAnswerSentPeers.insert(peerUserId);
+            m_videoOfferSentPeers.remove(peerUserId);
             m_videoNegotiationStarted = true;
             updateVideoSessionSettings();
             const QString answer = m_mediaSessionManager->buildAnswer(peerUserId);
-            const quint32 videoSsrc = (m_screenSharing && m_screenShareSession) ? m_screenShareSession->videoSsrc() : 0;
+            const quint32 videoSsrc = currentVideoSsrc();
             m_signaling->sendMediaAnswer(peerUserId, answer, 0, videoSsrc);
             emit infoMessage(QStringLiteral("Video answer sent to %1").arg(peerUserId));
             return;
@@ -435,11 +544,11 @@ MeetingController::MeetingController(const QString& databasePath, QObject* paren
     });
 
     connect(m_signaling, &signaling::SignalingClient::mediaOfferReceived, this,
-            [this](const QString& targetUserId, const QString& sdp) {
+            [this](const QString& targetUserId, const QString& sdp, quint32 audioSsrc, quint32 videoSsrc) {
         if (!m_inMeeting || (!targetUserId.isEmpty() && targetUserId != m_userId)) {
             return;
         }
-
+        Q_UNUSED(audioSsrc)
         maybeStartMediaNegotiation();
         if (!m_audioSessionManager || !m_mediaSessionManager) {
             return;
@@ -456,11 +565,21 @@ MeetingController::MeetingController(const QString& databasePath, QObject* paren
             emit infoMessage(QStringLiteral("Failed to process media offer"));
             return;
         }
+        if (describedPeerUserId.isEmpty() || describedPeerUserId == m_userId) {
+            return;
+        }
+
+        if (videoSsrc != 0U) {
+            m_remoteVideoSsrcByPeer.insert(describedPeerUserId, videoSsrc);
+        } else {
+            m_remoteVideoSsrcByPeer.remove(describedPeerUserId);
+        }
+        updateExpectedRemoteVideoSsrcForCurrentPeer();
 
         const QString audioPeerUserId = currentAudioPeerUserId();
         const QString videoPeerUserId = currentVideoPeerUserId();
-        const bool allowAudio = hasAudio && !audioPeerUserId.isEmpty() && describedPeerUserId == audioPeerUserId;
-        const bool allowVideo = hasVideo && !videoPeerUserId.isEmpty() && describedPeerUserId == videoPeerUserId;
+        const bool allowAudio = hasAudio && (audioPeerUserId.isEmpty() || describedPeerUserId == audioPeerUserId);
+        const bool allowVideo = hasVideo && (videoPeerUserId.isEmpty() || describedPeerUserId == videoPeerUserId);
 
         const bool audioHandled = allowAudio && m_audioSessionManager->handleRemoteOffer(describedPeerUserId, sdp);
         const bool videoHandled = allowVideo && m_mediaSessionManager->handleRemoteOffer(describedPeerUserId, sdp);
@@ -473,11 +592,11 @@ MeetingController::MeetingController(const QString& databasePath, QObject* paren
     });
 
     connect(m_signaling, &signaling::SignalingClient::mediaAnswerReceived, this,
-            [this](const QString& targetUserId, const QString& sdp) {
+            [this](const QString& targetUserId, const QString& sdp, quint32 audioSsrc, quint32 videoSsrc) {
         if (!m_inMeeting || (!targetUserId.isEmpty() && targetUserId != m_userId)) {
             return;
         }
-
+        Q_UNUSED(audioSsrc)
         maybeStartMediaNegotiation();
         if (!m_audioSessionManager || !m_mediaSessionManager) {
             return;
@@ -494,11 +613,21 @@ MeetingController::MeetingController(const QString& databasePath, QObject* paren
             emit infoMessage(QStringLiteral("Failed to process media answer"));
             return;
         }
+        if (describedPeerUserId.isEmpty() || describedPeerUserId == m_userId) {
+            return;
+        }
+
+        if (videoSsrc != 0U) {
+            m_remoteVideoSsrcByPeer.insert(describedPeerUserId, videoSsrc);
+        } else {
+            m_remoteVideoSsrcByPeer.remove(describedPeerUserId);
+        }
+        updateExpectedRemoteVideoSsrcForCurrentPeer();
 
         const QString audioPeerUserId = currentAudioPeerUserId();
         const QString videoPeerUserId = currentVideoPeerUserId();
-        const bool allowAudio = hasAudio && !audioPeerUserId.isEmpty() && describedPeerUserId == audioPeerUserId;
-        const bool allowVideo = hasVideo && !videoPeerUserId.isEmpty() && describedPeerUserId == videoPeerUserId;
+        const bool allowAudio = hasAudio && (audioPeerUserId.isEmpty() || describedPeerUserId == audioPeerUserId);
+        const bool allowVideo = hasVideo && (videoPeerUserId.isEmpty() || describedPeerUserId == videoPeerUserId);
 
         const bool audioHandled = allowAudio && m_audioSessionManager->handleRemoteAnswer(describedPeerUserId, sdp);
         const bool videoHandled = allowVideo && m_mediaSessionManager->handleRemoteAnswer(describedPeerUserId, sdp);
@@ -555,6 +684,10 @@ QString MeetingController::activeShareUserId() const {
     return m_activeShareUserId;
 }
 
+QString MeetingController::activeVideoPeerUserId() const {
+    return m_activeVideoPeerUserId;
+}
+
 QString MeetingController::activeShareDisplayName() const {
     return m_activeShareDisplayName;
 }
@@ -565,6 +698,10 @@ bool MeetingController::hasActiveShare() const {
 
 QObject* MeetingController::remoteScreenFrameSource() const {
     return m_remoteScreenFrameStore.get();
+}
+
+QObject* MeetingController::remoteVideoFrameSource() const {
+    return m_remoteVideoFrameStore.get();
 }
 
 QString MeetingController::username() const {
@@ -741,6 +878,10 @@ void MeetingController::toggleVideo() {
     if (m_signaling->isConnected()) {
         m_signaling->sendMediaMuteToggle(1, m_videoMuted);
     }
+    if (!m_videoMuted) {
+        maybeStartMediaNegotiation();
+    }
+    updateVideoSessionSettings();
     syncLocalParticipantMediaState();
     emit videoMutedChanged();
 }
@@ -754,6 +895,11 @@ void MeetingController::toggleScreenSharing() {
     if (nextSharing) {
         setScreenSharing(true);
         maybeStartMediaNegotiation();
+        if (m_screenShareSession && !m_screenShareSession->setCameraSendingEnabled(false)) {
+            setScreenSharing(false);
+            emit infoMessage(QStringLiteral("Failed to stop camera sending"));
+            return;
+        }
         if (m_screenShareSession && !m_screenShareSession->setSharingEnabled(true)) {
             setScreenSharing(false);
             emit infoMessage(QStringLiteral("Failed to start screen sharing"));
@@ -766,6 +912,11 @@ void MeetingController::toggleScreenSharing() {
         }
         setScreenSharing(false);
         maybeStartMediaNegotiation();
+        if (m_screenShareSession && !m_screenShareSession->setCameraSendingEnabled(!m_videoMuted)) {
+            emit infoMessage(QStringLiteral("Failed to %1 camera sending")
+                                 .arg(m_videoMuted ? QStringLiteral("stop") : QStringLiteral("start")));
+            return;
+        }
     }
 
     updateVideoSessionSettings();
@@ -773,8 +924,10 @@ void MeetingController::toggleScreenSharing() {
         m_signaling->sendMediaScreenShare(m_screenSharing);
     }
     syncLocalParticipantMediaState();
-    m_videoOfferSent = false;
-    m_videoAnswerSent = false;
+    if (!m_videoPeerUserId.isEmpty()) {
+        m_videoOfferSentPeers.remove(m_videoPeerUserId);
+        m_videoAnswerSentPeers.remove(m_videoPeerUserId);
+    }
     sendVideoOfferToPeer(true);
 }
 
@@ -787,7 +940,7 @@ bool MeetingController::setActiveShareUserId(const QString& userId) {
     QString nextDisplayName;
     bool found = false;
     for (const auto& participant : m_participantModel->items()) {
-        if (participant.userId != normalized || !participant.sharing || participant.userId == m_userId) {
+        if (participant.userId != normalized || participant.userId == m_userId || !participant.sharing) {
             continue;
         }
 
@@ -803,6 +956,37 @@ bool MeetingController::setActiveShareUserId(const QString& userId) {
     m_activeShareUserId = normalized;
     m_activeShareDisplayName = nextDisplayName;
     emit activeShareChanged();
+    updateActiveVideoPeerSelection();
+
+    maybeStartMediaNegotiation();
+    sendVideoOfferToPeer(true);
+    return true;
+}
+
+bool MeetingController::setActiveVideoPeerUserId(const QString& userId) {
+    const QString normalized = userId.trimmed();
+    if (normalized.isEmpty() || normalized == m_userId) {
+        return false;
+    }
+
+    bool found = false;
+    for (const auto& participant : m_participantModel->items()) {
+        if (participant.userId == normalized && participant.userId != m_userId && participant.videoOn) {
+            found = true;
+            break;
+        }
+    }
+
+    if (!found) {
+        return false;
+    }
+
+    if (m_videoPeerUserId == normalized && m_activeVideoPeerUserId == normalized) {
+        return true;
+    }
+
+    m_videoPeerUserId = normalized;
+    updateActiveVideoPeerSelection();
 
     maybeStartMediaNegotiation();
     sendVideoOfferToPeer(true);
@@ -963,6 +1147,7 @@ void MeetingController::handleProtobufMessage(quint16 signalType, const QByteArr
             setScreenSharing(participant.sharing);
             if (m_screenShareSession) {
                 m_screenShareSession->setSharingEnabled(m_screenSharing);
+                m_screenShareSession->setCameraSendingEnabled(!m_screenSharing && !m_videoMuted);
             }
             updateAudioSessionSettings();
             updateVideoSessionSettings();
@@ -1021,6 +1206,17 @@ void MeetingController::handleProtobufMessage(quint16 signalType, const QByteArr
             return;
         }
 
+        m_audioOfferSentPeers.remove(userId);
+        m_audioAnswerSentPeers.remove(userId);
+        m_videoOfferSentPeers.remove(userId);
+        m_videoAnswerSentPeers.remove(userId);
+        m_remoteVideoSsrcByPeer.remove(userId);
+        if (m_audioPeerUserId == userId) {
+            m_audioPeerUserId.clear();
+        }
+        if (m_videoPeerUserId == userId) {
+            m_videoPeerUserId.clear();
+        }
         m_participantModel->removeParticipant(userId);
         syncParticipantsChanged();
         emit infoMessage(reason.isEmpty() ? QStringLiteral("Participant left") : reason);
@@ -1152,13 +1348,84 @@ void MeetingController::ensureLocalParticipant(bool host) {
 }
 
 void MeetingController::syncParticipantsChanged() {
+    prunePeerNegotiationState();
     const QString previousActiveShareUserId = m_activeShareUserId;
     emit participantsChanged();
     updateActiveShareSelection();
+    updateActiveVideoPeerSelection();
     maybeStartMediaNegotiation();
     if (previousActiveShareUserId != m_activeShareUserId) {
         sendVideoOfferToPeer(true);
     }
+}
+
+bool MeetingController::hasRemoteParticipant(const QString& userId) const {
+    if (userId.isEmpty() || userId == m_userId) {
+        return false;
+    }
+    for (const auto& participant : m_participantModel->items()) {
+        if (participant.userId == userId && participant.userId != m_userId) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool MeetingController::hasRemoteVideoParticipant(const QString& userId) const {
+    if (userId.isEmpty() || userId == m_userId) {
+        return false;
+    }
+
+    for (const auto& participant : m_participantModel->items()) {
+        if (participant.userId != userId || participant.userId == m_userId) {
+            continue;
+        }
+        return participant.videoOn || participant.sharing;
+    }
+
+    return false;
+}
+
+void MeetingController::prunePeerNegotiationState() {
+    QSet<QString> remoteUsers;
+    for (const auto& participant : m_participantModel->items()) {
+        if (participant.userId.isEmpty() || participant.userId == m_userId) {
+            continue;
+        }
+        remoteUsers.insert(participant.userId);
+    }
+
+    auto pruneSet = [&remoteUsers](QSet<QString>& peers) {
+        for (auto it = peers.begin(); it != peers.end();) {
+            if (!remoteUsers.contains(*it)) {
+                it = peers.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    };
+
+    pruneSet(m_audioOfferSentPeers);
+    pruneSet(m_audioAnswerSentPeers);
+    pruneSet(m_videoOfferSentPeers);
+    pruneSet(m_videoAnswerSentPeers);
+
+    for (auto it = m_remoteVideoSsrcByPeer.begin(); it != m_remoteVideoSsrcByPeer.end();) {
+        if (!remoteUsers.contains(it.key())) {
+            it = m_remoteVideoSsrcByPeer.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    if (!m_audioPeerUserId.isEmpty() && !remoteUsers.contains(m_audioPeerUserId)) {
+        m_audioPeerUserId.clear();
+    }
+    if (!m_videoPeerUserId.isEmpty() && !remoteUsers.contains(m_videoPeerUserId)) {
+        m_videoPeerUserId.clear();
+    }
+
+    updateExpectedRemoteVideoSsrcForCurrentPeer();
 }
 
 void MeetingController::handleSessionKicked(const QString& reason) {
@@ -1214,14 +1481,12 @@ QString MeetingController::currentAudioPeerUserId() const {
         return {};
     }
 
-    const auto participants = m_participantModel->items();
-    for (const auto& participant : participants) {
-        if (participant.userId == m_audioPeerUserId && participant.userId != m_userId) {
-            return participant.userId;
-        }
+    if (hasRemoteParticipant(m_audioPeerUserId)) {
+        return m_audioPeerUserId;
     }
 
     QString firstRemotePeerUserId;
+    const auto participants = m_participantModel->items();
     for (const auto& participant : participants) {
         if (participant.userId.isEmpty() || participant.userId == m_userId) {
             continue;
@@ -1243,13 +1508,60 @@ QString MeetingController::currentVideoPeerUserId() const {
         return m_activeShareUserId;
     }
 
+    if (hasRemoteVideoParticipant(m_videoPeerUserId)) {
+        return m_videoPeerUserId;
+    }
+
     if (m_screenSharing) {
         return currentAudioPeerUserId();
     }
 
-    return {};
+    for (const auto& participant : m_participantModel->items()) {
+        if (participant.userId.isEmpty() || participant.userId == m_userId) {
+            continue;
+        }
+        if (participant.sharing || participant.videoOn) {
+            return participant.userId;
+        }
+    }
+
+    return currentAudioPeerUserId();
 }
 
+quint32 MeetingController::currentVideoSsrc() const {
+    if (!m_screenShareSession) {
+        return 0;
+    }
+
+    if (m_screenShareSession->sharingEnabled() || m_screenShareSession->cameraSendingEnabled()) {
+        return m_screenShareSession->videoSsrc();
+    }
+
+    return 0;
+}
+
+quint32 MeetingController::remoteVideoSsrcForPeer(const QString& peerUserId) const {
+    const QString normalized = peerUserId.trimmed();
+    if (normalized.isEmpty()) {
+        return 0;
+    }
+
+    const auto it = m_remoteVideoSsrcByPeer.constFind(normalized);
+    if (it == m_remoteVideoSsrcByPeer.constEnd()) {
+        return 0;
+    }
+
+    return *it;
+}
+
+void MeetingController::updateExpectedRemoteVideoSsrcForCurrentPeer() {
+    if (!m_screenShareSession) {
+        return;
+    }
+
+    const QString peerUserId = currentVideoPeerUserId();
+    m_screenShareSession->setExpectedRemoteVideoSsrc(remoteVideoSsrcForPeer(peerUserId));
+}
 void MeetingController::updateAudioSessionSettings() {
     if (!m_audioSessionManager) {
         return;
@@ -1288,11 +1600,31 @@ void MeetingController::updateVideoSessionSettings() {
     m_mediaSessionManager->setVideoNegotiationEnabled(true);
     m_mediaSessionManager->setLocalAudioSsrc(0);
     if (m_screenShareSession && m_screenShareSession->isRunning()) {
+        const bool enableSharing = m_screenSharing;
+        const bool enableCamera = !m_screenSharing && !m_videoMuted;
+
+        if (enableSharing) {
+            if (m_screenShareSession->cameraSendingEnabled()) {
+                m_screenShareSession->setCameraSendingEnabled(false);
+            }
+            if (!m_screenShareSession->sharingEnabled()) {
+                m_screenShareSession->setSharingEnabled(true);
+            }
+        } else {
+            if (m_screenShareSession->sharingEnabled()) {
+                m_screenShareSession->setSharingEnabled(false);
+            }
+            if (m_screenShareSession->cameraSendingEnabled() != enableCamera) {
+                m_screenShareSession->setCameraSendingEnabled(enableCamera);
+            }
+        }
+
         const quint16 videoPort = m_screenShareSession->localPort();
         if (videoPort != 0) {
             m_mediaSessionManager->setLocalVideoPort(videoPort);
         }
-        m_mediaSessionManager->setLocalVideoSsrc(m_screenSharing ? m_screenShareSession->videoSsrc() : 0);
+        updateExpectedRemoteVideoSsrcForCurrentPeer();
+        m_mediaSessionManager->setLocalVideoSsrc(currentVideoSsrc());
     } else {
         m_mediaSessionManager->setLocalVideoSsrc(0);
     }
@@ -1331,9 +1663,218 @@ void MeetingController::updateActiveShareSelection() {
     emit activeShareChanged();
 }
 
+void MeetingController::updateActiveVideoPeerSelection() {
+    const bool hadActiveShare = hasActiveShare();
+    const QString previousUserId = m_activeVideoPeerUserId;
+    const QString nextUserId = currentVideoPeerUserId();
+    if (m_activeVideoPeerUserId == nextUserId) {
+        return;
+    }
+
+    m_activeVideoPeerUserId = nextUserId;
+    updateExpectedRemoteVideoSsrcForCurrentPeer();
+    emit activeVideoPeerUserIdChanged();
+    if (!hadActiveShare && previousUserId != nextUserId && m_remoteVideoFrameStore) {
+        invalidateRemoteVideoRenderQueue(true);
+    }
+}
+
+void MeetingController::enqueueRemoteVideoRenderTask(std::function<void()> renderTask,
+                                                     int renderDelayMs,
+                                                     int64_t videoPts90k) {
+    if (!renderTask || !m_videoRenderTimer || !m_remoteVideoFrameStore) {
+        return;
+    }
+
+    const auto& tuning = videoRenderTuning();
+
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    PendingVideoRenderTask task;
+    task.dueAtMs = nowMs + (renderDelayMs > 0 ? renderDelayMs : 0);
+    task.audioDelayDeadlineMs = tuning.maxAudioDrivenRenderDelayMs > 0
+                                  ? task.dueAtMs + tuning.maxAudioDrivenRenderDelayMs
+                                  : 0;
+    task.videoPts90k = videoPts90k;
+    task.enqueueSeq = ++m_videoRenderEnqueueSeq;
+    task.ticket = m_videoRenderTicket;
+    task.render = std::move(renderTask);
+
+    auto insertIt = m_remoteVideoRenderQueue.end();
+    for (auto it = m_remoteVideoRenderQueue.begin(); it != m_remoteVideoRenderQueue.end(); ++it) {
+        if (task.dueAtMs < it->dueAtMs ||
+            (task.dueAtMs == it->dueAtMs && task.enqueueSeq < it->enqueueSeq)) {
+            insertIt = it;
+            break;
+        }
+    }
+    m_remoteVideoRenderQueue.insert(insertIt, std::move(task));
+
+    while (static_cast<int>(m_remoteVideoRenderQueue.size()) > tuning.maxRemoteQueueDepth) {
+        m_remoteVideoRenderQueue.pop_front();
+    }
+
+    drainRemoteVideoRenderQueue();
+}
+
+void MeetingController::drainRemoteVideoRenderQueue() {
+    if (!m_videoRenderTimer) {
+        return;
+    }
+
+    const auto& tuning = videoRenderTuning();
+
+    if (m_remoteVideoRenderQueue.empty()) {
+        m_videoRenderTimer->stop();
+        return;
+    }
+
+    if (!m_remoteVideoFrameStore || hasActiveShare()) {
+        invalidateRemoteVideoRenderQueue(false);
+        return;
+    }
+
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    std::vector<PendingVideoRenderTask> dueTasks;
+    while (!m_remoteVideoRenderQueue.empty()) {
+        const auto& front = m_remoteVideoRenderQueue.front();
+        if (front.dueAtMs > nowMs) {
+            break;
+        }
+
+        dueTasks.push_back(std::move(m_remoteVideoRenderQueue.front()));
+        m_remoteVideoRenderQueue.pop_front();
+    }
+
+    std::stable_sort(dueTasks.begin(), dueTasks.end(),
+                     [](const PendingVideoRenderTask& lhs, const PendingVideoRenderTask& rhs) {
+                         const bool lhsValidPts = lhs.videoPts90k >= 0;
+                         const bool rhsValidPts = rhs.videoPts90k >= 0;
+                         if (lhsValidPts != rhsValidPts) {
+                             return lhsValidPts;
+                         }
+                         if (lhsValidPts && lhs.videoPts90k != rhs.videoPts90k) {
+                             return lhs.videoPts90k < rhs.videoPts90k;
+                         }
+                         if (lhs.dueAtMs != rhs.dueAtMs) {
+                             return lhs.dueAtMs < rhs.dueAtMs;
+                         }
+                         return lhs.enqueueSeq < rhs.enqueueSeq;
+                     });
+
+    // Keep render latency bounded by dropping older overdue frames when backlog spikes.
+    if (static_cast<int>(dueTasks.size()) > tuning.maxVideoFramesPerDrain) {
+        dueTasks.erase(dueTasks.begin(), dueTasks.end() - tuning.maxVideoFramesPerDrain);
+    }
+
+    auto insertTask = [this](PendingVideoRenderTask&& task) {
+        auto insertIt = m_remoteVideoRenderQueue.end();
+        for (auto it = m_remoteVideoRenderQueue.begin(); it != m_remoteVideoRenderQueue.end(); ++it) {
+            if (task.dueAtMs < it->dueAtMs ||
+                (task.dueAtMs == it->dueAtMs && task.enqueueSeq < it->enqueueSeq)) {
+                insertIt = it;
+                break;
+            }
+        }
+        m_remoteVideoRenderQueue.insert(insertIt, std::move(task));
+    };
+
+    const auto clock = m_audioCallSession ? m_audioCallSession->clock() : std::shared_ptr<av::sync::AVSync>{};
+    std::vector<PendingVideoRenderTask> rescheduledTasks;
+    for (auto& task : dueTasks) {
+        if (task.ticket != m_videoRenderTicket || !task.render) {
+            continue;
+        }
+
+        if (task.videoPts90k >= 0 &&
+            m_lastRenderedVideoPts90k >= 0 &&
+            task.videoPts90k <= m_lastRenderedVideoPts90k) {
+            continue;
+        }
+
+        const qint64 renderCheckMs = QDateTime::currentMSecsSinceEpoch();
+
+        if (clock && task.videoPts90k >= 0) {
+            const int extraDelayMs = av::sync::AVSync::suggestVideoRenderDelayMsByAudioClock(task.videoPts90k,
+                                                                                               clock->audioPts(),
+                                                                                               clock->sampleRate(),
+                                                                                               tuning.maxAudioDrivenRenderDelayMs);
+            if (extraDelayMs > 0) {
+                const qint64 candidateDueAtMs = renderCheckMs + extraDelayMs;
+                if (task.audioDelayDeadlineMs > 0 && candidateDueAtMs >= task.audioDelayDeadlineMs) {
+                    task.dueAtMs = task.audioDelayDeadlineMs;
+                } else {
+                    task.dueAtMs = candidateDueAtMs;
+                    task.enqueueSeq = ++m_videoRenderEnqueueSeq;
+                    rescheduledTasks.push_back(std::move(task));
+                    continue;
+                }
+            }
+        }
+
+        if (task.videoPts90k >= 0 &&
+            m_lastRenderedVideoPts90k >= 0 &&
+            m_lastVideoRenderAtMs > 0) {
+            const int64_t currentVideoMs = av::sync::AVSync::videoPts90kToTimeMs(task.videoPts90k);
+            const int64_t previousVideoMs = av::sync::AVSync::videoPts90kToTimeMs(m_lastRenderedVideoPts90k);
+            if (currentVideoMs >= 0 && previousVideoMs >= 0 && currentVideoMs > previousVideoMs) {
+                int cadenceMs = static_cast<int>(currentVideoMs - previousVideoMs);
+                cadenceMs = std::clamp(cadenceMs, tuning.minVideoCadenceMs, tuning.maxVideoCadenceMs);
+                const qint64 sinceLastRenderMs = renderCheckMs - m_lastVideoRenderAtMs;
+                if (sinceLastRenderMs < cadenceMs) {
+                    task.dueAtMs = renderCheckMs + (cadenceMs - static_cast<int>(sinceLastRenderMs));
+                    task.enqueueSeq = ++m_videoRenderEnqueueSeq;
+                    rescheduledTasks.push_back(std::move(task));
+                    continue;
+                }
+            }
+        }
+
+        task.render();
+        m_lastVideoRenderAtMs = QDateTime::currentMSecsSinceEpoch();
+        if (task.videoPts90k >= 0) {
+            m_lastRenderedVideoPts90k = task.videoPts90k;
+        }
+    }
+
+    for (auto& task : rescheduledTasks) {
+        insertTask(std::move(task));
+    }
+
+    while (static_cast<int>(m_remoteVideoRenderQueue.size()) > tuning.maxRemoteQueueDepth) {
+        m_remoteVideoRenderQueue.pop_front();
+    }
+
+    if (m_remoteVideoRenderQueue.empty()) {
+        m_videoRenderTimer->stop();
+        return;
+    }
+
+    int nextWakeMs = static_cast<int>(m_remoteVideoRenderQueue.front().dueAtMs - QDateTime::currentMSecsSinceEpoch());
+    if (nextWakeMs < 1) {
+        nextWakeMs = 1;
+    }
+    m_videoRenderTimer->start(nextWakeMs);
+}
+void MeetingController::invalidateRemoteVideoRenderQueue(bool clearFrameStore) {
+    ++m_videoRenderTicket;
+    m_remoteVideoRenderQueue.clear();
+    m_lastVideoRenderAtMs = 0;
+    m_lastRenderedVideoPts90k = -1;
+
+    if (m_videoRenderTimer) {
+        m_videoRenderTimer->stop();
+    }
+
+    if (clearFrameStore && m_remoteVideoFrameStore) {
+        m_remoteVideoFrameStore->clear();
+    }
+}
+
 void MeetingController::resetAudioPeerState() {
-    m_audioOfferSent = false;
-    m_audioAnswerSent = false;
+    if (!m_audioPeerUserId.isEmpty()) {
+        m_audioOfferSentPeers.remove(m_audioPeerUserId);
+        m_audioAnswerSentPeers.remove(m_audioPeerUserId);
+    }
     m_audioNegotiationStarted = false;
     m_audioPeerUserId.clear();
 
@@ -1343,13 +1884,22 @@ void MeetingController::resetAudioPeerState() {
 }
 
 void MeetingController::resetVideoPeerState(bool clearRemoteFrame) {
-    m_videoOfferSent = false;
-    m_videoAnswerSent = false;
+    if (!m_videoPeerUserId.isEmpty()) {
+        m_videoOfferSentPeers.remove(m_videoPeerUserId);
+        m_videoAnswerSentPeers.remove(m_videoPeerUserId);
+    }
     m_videoNegotiationStarted = false;
     m_videoPeerUserId.clear();
+    if (m_screenShareSession) {
+        m_screenShareSession->setExpectedRemoteVideoSsrc(0U);
+    }
+    updateActiveVideoPeerSelection();
 
-    if (clearRemoteFrame && m_remoteScreenFrameStore) {
-        m_remoteScreenFrameStore->clear();
+    if (clearRemoteFrame) {
+        invalidateRemoteVideoRenderQueue(true);
+        if (m_remoteScreenFrameStore) {
+            m_remoteScreenFrameStore->clear();
+        }
     }
 
     if (m_mediaSessionManager) {
@@ -1401,11 +1951,20 @@ void MeetingController::setScreenSharing(bool sharing) {
 
     m_screenSharing = sharing;
     emit screenSharingChanged();
+    if (m_screenSharing) {
+        invalidateRemoteVideoRenderQueue(true);
+    }
+    updateActiveVideoPeerSelection();
 }
 
 void MeetingController::resetMediaNegotiation() {
     resetAudioPeerState();
     resetVideoPeerState(true);
+    m_audioOfferSentPeers.clear();
+    m_audioAnswerSentPeers.clear();
+    m_videoOfferSentPeers.clear();
+    m_videoAnswerSentPeers.clear();
+    m_remoteVideoSsrcByPeer.clear();
 
     if (m_audioCallSession) {
         m_audioCallSession->stop();
@@ -1517,12 +2076,78 @@ void MeetingController::maybeStartVideoNegotiation() {
         config.payloadType = static_cast<uint8_t>(kScreenPayloadType);
         m_screenShareSession = std::make_unique<av::session::ScreenShareSession>(config);
         m_screenShareSession->setDecodedFrameCallback([this](av::codec::DecodedVideoFrame frame) {
-            if (!m_remoteScreenFrameStore) {
+            if (!m_remoteScreenFrameStore || !m_remoteVideoFrameStore) {
                 return;
             }
             QMetaObject::invokeMethod(this, [this, frame = std::move(frame)]() mutable {
+                int renderDelayMs = 0;
+                if (m_audioCallSession) {
+                    const auto clock = m_audioCallSession->clock();
+                    if (shouldDropRemoteVideoFrameByAudioClock(frame, clock)) {
+                        return;
+                    }
+                    renderDelayMs = suggestRemoteVideoRenderDelayMsByAudioClock(frame, clock);
+                }
+
+                bool hasActiveScreenShare = false;
+                for (const auto& participant : m_participantModel->items()) {
+                    if (participant.userId == m_activeShareUserId && participant.userId != m_userId && participant.sharing) {
+                        hasActiveScreenShare = true;
+                        break;
+                    }
+                }
+
+                if (hasActiveScreenShare) {
+                    invalidateRemoteVideoRenderQueue(true);
+                    if (m_remoteScreenFrameStore) {
+                        m_remoteScreenFrameStore->setFrame(std::move(frame));
+                    }
+                    return;
+                }
+
                 if (m_remoteScreenFrameStore) {
-                    m_remoteScreenFrameStore->setFrame(std::move(frame));
+                    m_remoteScreenFrameStore->clear();
+                }
+
+                enqueueRemoteVideoRenderTask([this, frame = std::move(frame)]() mutable {
+                    if (!m_remoteVideoFrameStore || hasActiveShare()) {
+                        return;
+                    }
+                    m_remoteVideoFrameStore->setFrame(std::move(frame));
+                }, renderDelayMs, frame.pts);
+            }, Qt::QueuedConnection);
+        });
+        m_screenShareSession->setCameraSourceCallback([this](bool syntheticFallback) {
+            QMetaObject::invokeMethod(this, [this, syntheticFallback]() {
+                emit infoMessage(syntheticFallback
+                                     ? QStringLiteral("Video camera source: synthetic-fallback")
+                                     : QStringLiteral("Video camera source: real-device"));
+            }, Qt::QueuedConnection);
+        });
+        m_screenShareSession->setErrorCallback([this](std::string errorMessage) {
+            const QString errorText = QString::fromStdString(errorMessage);
+            QMetaObject::invokeMethod(this, [this, errorText]() {
+                const bool encoderUnavailable =
+                    errorText.contains(QStringLiteral("video encoder configure failed"), Qt::CaseInsensitive);
+                if (encoderUnavailable) {
+                    emit infoMessage(QStringLiteral("Video encoder unavailable, attempting camera auto-mute downgrade"));
+                } else {
+                    emit infoMessage(QStringLiteral("Video session error: %1").arg(errorText));
+                }
+                if (!m_screenShareSession || !m_inMeeting || m_screenSharing || m_videoMuted) {
+                    return;
+                }
+                if (m_screenShareSession->cameraSendingEnabled()) {
+                    return;
+                }
+
+                m_videoMuted = true;
+                emit videoMutedChanged();
+                syncLocalParticipantMediaState();
+                updateVideoSessionSettings();
+                if (m_signaling && m_signaling->isConnected()) {
+                    m_signaling->sendMediaMuteToggle(1, true);
+                    sendVideoOfferToPeer(true);
                 }
             }, Qt::QueuedConnection);
         });
@@ -1536,12 +2161,19 @@ void MeetingController::maybeStartVideoNegotiation() {
         }
     }
 
-    if (m_screenShareSession && m_screenSharing && !m_screenShareSession->setSharingEnabled(true)) {
-        emit infoMessage(QStringLiteral("Failed to enable screen sharing: %1")
-                             .arg(QString::fromStdString(m_screenShareSession->lastError())));
+    if (m_screenShareSession && m_screenSharing) {
+        if (!m_screenShareSession->setCameraSendingEnabled(false)) {
+            emit infoMessage(QStringLiteral("Failed to stop camera sending: %1")
+                                 .arg(QString::fromStdString(m_screenShareSession->lastError())));
+        }
+        if (!m_screenShareSession->setSharingEnabled(true)) {
+            emit infoMessage(QStringLiteral("Failed to enable screen sharing: %1")
+                                 .arg(QString::fromStdString(m_screenShareSession->lastError())));
+        }
     }
 
     m_videoPeerUserId = peerUserId;
+    updateExpectedRemoteVideoSsrcForCurrentPeer();
     updateVideoSessionSettings();
 
     if (!m_signaling->isConnected()) {
@@ -1561,7 +2193,8 @@ bool MeetingController::sendAudioOfferToPeer(bool force) {
         return false;
     }
 
-    if (!force && (!shouldInitiateOffer(m_currentMeetingHost, m_userId, peerUserId) || m_audioOfferSent)) {
+    if (!force && (!shouldInitiateOffer(m_currentMeetingHost, m_userId, peerUserId) ||
+                   m_audioOfferSentPeers.contains(peerUserId))) {
         return false;
     }
 
@@ -1574,8 +2207,8 @@ bool MeetingController::sendAudioOfferToPeer(bool force) {
 
     const quint32 audioSsrc = m_audioCallSession ? m_audioCallSession->audioSsrc() : 0;
     m_signaling->sendMediaOffer(peerUserId, offer, audioSsrc, 0);
-    m_audioOfferSent = true;
-    m_audioAnswerSent = false;
+    m_audioOfferSentPeers.insert(peerUserId);
+    m_audioAnswerSentPeers.remove(peerUserId);
     emit infoMessage(QStringLiteral("Audio offer sent to %1").arg(peerUserId));
     return true;
 }
@@ -1590,7 +2223,8 @@ bool MeetingController::sendVideoOfferToPeer(bool force) {
         return false;
     }
 
-    if (!force && (!shouldInitiateOffer(m_currentMeetingHost, m_userId, peerUserId) || m_videoOfferSent)) {
+    if (!force && (!shouldInitiateOffer(m_currentMeetingHost, m_userId, peerUserId) ||
+                   m_videoOfferSentPeers.contains(peerUserId))) {
         return false;
     }
 
@@ -1601,15 +2235,13 @@ bool MeetingController::sendVideoOfferToPeer(bool force) {
         return false;
     }
 
-    const quint32 videoSsrc = (m_screenSharing && m_screenShareSession) ? m_screenShareSession->videoSsrc() : 0;
+    const quint32 videoSsrc = currentVideoSsrc();
     m_signaling->sendMediaOffer(peerUserId, offer, 0, videoSsrc);
-    m_videoOfferSent = true;
-    m_videoAnswerSent = false;
+    m_videoOfferSentPeers.insert(peerUserId);
+    m_videoAnswerSentPeers.remove(peerUserId);
     emit infoMessage(QStringLiteral("Video offer sent to %1").arg(peerUserId));
     return true;
 }
-
-
 
 
 

@@ -13,6 +13,19 @@ Item {
 
     readonly property bool wideLayout: width >= 1040
 
+    function videoGridHint() {
+        if (!root.controller.inMeeting) {
+            return "Create or join a meeting to enter the room."
+        }
+        if (root.controller.hasActiveShare) {
+            return "Focused share: " + root.controller.activeShareDisplayName + ". Tap a sharing tile to switch focus."
+        }
+        if (root.controller.participants.length <= 1) {
+            return "Waiting for a remote participant. Your local tile stays visible."
+        }
+        return "1v1 and group tiles stay stable here. Tap a sharing tile to pin it."
+    }
+
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 24
@@ -118,14 +131,15 @@ Item {
                         spacing: 14
 
                         Controls.Label {
-                            text: "Video stage"
+                            text: "Video grid"
                             color: "#e2e8f0"
                             font.pixelSize: 18
                             font.bold: true
                         }
 
                         Controls.Label {
-                            text: root.controller.inMeeting ? "Media rendering will appear here." : "Create or join a meeting to enter the room."
+                            Layout.fillWidth: true
+                            text: root.videoGridHint()
                             color: "#94a3b8"
                             font.pixelSize: 12
                             wrapMode: Text.WordWrap
@@ -137,60 +151,10 @@ Item {
                             radius: 18
                             color: "#111827"
                             border.color: "#1f2937"
-
-                            Item {
+                            VideoGrid {
                                 anchors.fill: parent
-
-                                VideoRenderer {
-                                    anchors.fill: parent
-                                    anchors.margins: 1
-                                    frameSource: root.controller.remoteScreenFrameSource
-                                    visible: root.controller.inMeeting
-                                }
-
-                                Rectangle {
-                                    anchors.fill: parent
-                                    color: "#660b1220"
-                                }
-
-                                ColumnLayout {
-                                    anchors.fill: parent
-                                    anchors.margins: 20
-                                    spacing: 10
-
-                                    Controls.Label {
-                                        text: root.controller.hasActiveShare
-                                                  ? ("Watching " + root.controller.activeShareDisplayName)
-                                                  : (root.controller.inMeeting ? "Remote screen stage" : "Waiting for participants")
-                                        color: "#f8fafc"
-                                        font.pixelSize: 24
-                                        font.bold: true
-                                    }
-
-                                    Controls.Label {
-                                        text: root.controller.hasActiveShare
-                                                  ? "Stage is locked to the selected remote sharer"
-                                                  : (root.controller.screenSharing
-                                                         ? "Local screen share sender active"
-                                                         : "Renderer is waiting for remote screen packets")
-                                        color: root.controller.hasActiveShare || root.controller.screenSharing ? "#38bdf8" : "#94a3b8"
-                                        font.pixelSize: 13
-                                    }
-
-                                    Controls.Label {
-                                        text: root.controller.audioMuted ? "Audio muted" : "Audio live"
-                                        color: root.controller.audioMuted ? "#f87171" : "#22c55e"
-                                        font.pixelSize: 13
-                                    }
-
-                                    Controls.Label {
-                                        text: root.controller.participants.length > 0 ? "Participants in room: " + root.controller.participants.length : "No participants yet."
-                                        color: "#cbd5e1"
-                                        font.pixelSize: 12
-                                    }
-
-                                    Item { Layout.fillHeight: true }
-                                }
+                                anchors.margins: 12
+                                controller: root.controller
                             }
                         }
                     }
@@ -230,10 +194,18 @@ Item {
                         spacing: 14
 
                         Controls.Label {
-                            text: "Video stage"
+                            text: "Video grid"
                             color: "#e2e8f0"
                             font.pixelSize: 18
                             font.bold: true
+                        }
+
+                        Controls.Label {
+                            Layout.fillWidth: true
+                            text: root.videoGridHint()
+                            color: "#94a3b8"
+                            font.pixelSize: 12
+                            wrapMode: Text.WordWrap
                         }
 
                         Rectangle {
@@ -242,49 +214,10 @@ Item {
                             radius: 18
                             color: "#111827"
                             border.color: "#1f2937"
-
-                            Item {
+                            VideoGrid {
                                 anchors.fill: parent
-
-                                VideoRenderer {
-                                    anchors.fill: parent
-                                    anchors.margins: 1
-                                    frameSource: root.controller.remoteScreenFrameSource
-                                    visible: root.controller.inMeeting
-                                }
-
-                                Rectangle {
-                                    anchors.fill: parent
-                                    color: "#660b1220"
-                                }
-
-                                ColumnLayout {
-                                    anchors.fill: parent
-                                    anchors.margins: 20
-                                    spacing: 10
-
-                                    Controls.Label {
-                                        text: root.controller.hasActiveShare
-                                                  ? ("Watching " + root.controller.activeShareDisplayName)
-                                                  : (root.controller.inMeeting ? "Remote screen stage" : "Waiting for participants")
-                                        color: "#f8fafc"
-                                        font.pixelSize: 24
-                                        font.bold: true
-                                    }
-
-                                    Controls.Label {
-                                        text: root.controller.hasActiveShare
-                                                  ? "Remote screen frames follow the selected sharer."
-                                                  : (root.controller.inMeeting
-                                                         ? "Remote screen frames render here when packets arrive."
-                                                         : "Create or join a meeting to enter the room.")
-                                        color: "#94a3b8"
-                                        font.pixelSize: 12
-                                        wrapMode: Text.WordWrap
-                                    }
-
-                                    Item { Layout.fillHeight: true }
-                                }
+                                anchors.margins: 12
+                                controller: root.controller
                             }
                         }
                     }

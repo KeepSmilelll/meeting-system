@@ -61,8 +61,14 @@ signals:
                       const QString& content,
                       const QString& replyToId,
                       qint64 timestamp);
-    void mediaOfferReceived(const QString& targetUserId, const QString& sdp);
-    void mediaAnswerReceived(const QString& targetUserId, const QString& sdp);
+    void mediaOfferReceived(const QString& targetUserId,
+                            const QString& sdp,
+                            quint32 audioSsrc,
+                            quint32 videoSsrc);
+    void mediaAnswerReceived(const QString& targetUserId,
+                             const QString& sdp,
+                             quint32 audioSsrc,
+                             quint32 videoSsrc);
 
     // Forward-compatible escape hatch for unhandled protobuf messages.
     void protobufMessageReceived(quint16 signalType, const QByteArray& payload);
@@ -81,3 +87,5 @@ private:
 };
 
 }  // namespace signaling
+
+

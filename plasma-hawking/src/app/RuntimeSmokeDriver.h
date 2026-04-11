@@ -15,12 +15,16 @@ public:
     void start();
 
 private:
+    QString currentStageTag() const;
+    QString withStageTag(const QString& reason) const;
     void handleInfoMessage(const QString& message);
     void handleLoggedInChanged();
     void handleInMeetingChanged();
     void handleStatusTextChanged();
     void pollMeetingId();
     void pollPeerSuccess();
+    void maybeUpdateVideoEvidence();
+    void maybeCompleteSuccess(const QString& reason);
     void completeSuccess(const QString& reason);
     void fail(const QString& reason);
     bool writeMeetingId(const QString& meetingId);
@@ -45,4 +49,9 @@ private:
     bool m_startedJoin{false};
     bool m_reportedResult{false};
     bool m_waitingPeerSuccess{false};
+    bool m_peerSuccessObserved{false};
+    bool m_requireVideoEvidence{false};
+    QString m_expectedCameraSource;
+    bool m_cameraSourceObserved{false};
+    bool m_videoEvidenceReady{false};
 };

@@ -1,2 +1,3 @@
 #pragma once
-// TODO: implement
+
+#include "ICaptureDevice.h"

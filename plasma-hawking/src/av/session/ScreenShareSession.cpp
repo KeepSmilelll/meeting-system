@@ -1,16 +1,29 @@
 #include "ScreenShareSession.h"
 
+#include "av/capture/CameraCapture.h"
+#include "av/capture/ScreenCapture.h"
+
 #include <QDebug>
+#include <QImage>
+#include <QtGlobal>
 
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <condition_variable>
 #include <cstring>
 #include <functional>
 #include <limits>
 #include <random>
 #include <utility>
 #include <vector>
+
+#ifdef min
+#undef min
+#endif
+#ifdef max
+#undef max
+#endif
 
 namespace av::session {
 namespace {
@@ -121,6 +134,10 @@ uint64_t steadyNowMs() {
             .count());
 }
 
+bool allowSyntheticCameraFallback() {
+    return qEnvironmentVariableIntValue("MEETING_SYNTHETIC_CAMERA") != 0;
+}
+
 struct H264AccessUnitAssembler {
     uint32_t timestamp{0};
     bool hasTimestamp{false};
@@ -195,8 +212,152 @@ struct H264AccessUnitAssembler {
 
 }  // namespace
 
+struct ScreenShareSession::CameraFrameRelay {
+    explicit CameraFrameRelay(int targetWidth, int targetHeight, int targetFrameRate)
+        : width(std::max(2, targetWidth & ~1)),
+          height(std::max(2, targetHeight & ~1)),
+          frameInterval(std::chrono::milliseconds(std::max(1, 1000 / std::max(1, targetFrameRate)))) {}
+
+    uint64_t beginCapture() {
+        const uint64_t nextGeneration = generation.fetch_add(1, std::memory_order_acq_rel) + 1;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            frames.clear();
+            lastAcceptedAt = std::chrono::steady_clock::time_point{};
+        }
+        nextPts.store(0, std::memory_order_release);
+        cv.notify_all();
+        return nextGeneration;
+    }
+
+    void invalidate() {
+        generation.fetch_add(1, std::memory_order_acq_rel);
+        setCameraEnabled(false);
+    }
+
+    void setCameraEnabled(bool enabled) {
+        cameraEnabled.store(enabled, std::memory_order_release);
+        if (!enabled) {
+            std::lock_guard<std::mutex> lock(mutex);
+            frames.clear();
+            lastAcceptedAt = std::chrono::steady_clock::time_point{};
+        }
+        cv.notify_all();
+    }
+
+    void setSharingEnabled(bool enabled) {
+        sharingEnabled.store(enabled, std::memory_order_release);
+        cv.notify_all();
+    }
+
+    bool popFrame(av::capture::ScreenFrame& outFrame, std::chrono::milliseconds timeout) {
+        std::unique_lock<std::mutex> lock(mutex);
+        if (!cv.wait_for(lock, timeout, [this] {
+                return !frames.empty() ||
+                       !cameraEnabled.load(std::memory_order_acquire) ||
+                       sharingEnabled.load(std::memory_order_acquire);
+            })) {
+            return false;
+        }
+        if (frames.empty()) {
+            return false;
+        }
+
+        outFrame = std::move(frames.front());
+        frames.pop_front();
+        return true;
+    }
+
+    void enqueueFrame(uint64_t expectedGeneration, const QVideoFrame& frame) {
+        if (!frame.isValid() ||
+            !cameraEnabled.load(std::memory_order_acquire) ||
+            sharingEnabled.load(std::memory_order_acquire) ||
+            generation.load(std::memory_order_acquire) != expectedGeneration) {
+            return;
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            if (!cameraEnabled.load(std::memory_order_acquire) ||
+                sharingEnabled.load(std::memory_order_acquire) ||
+                generation.load(std::memory_order_acquire) != expectedGeneration) {
+                return;
+            }
+
+            const auto now = std::chrono::steady_clock::now();
+            if (lastAcceptedAt != std::chrono::steady_clock::time_point{} &&
+                now - lastAcceptedAt < frameInterval) {
+                return;
+            }
+            lastAcceptedAt = now;
+        }
+
+        QImage bgra = frame.toImage();
+        if (bgra.isNull()) {
+            return;
+        }
+        if (bgra.format() != QImage::Format_ARGB32) {
+            bgra = bgra.convertToFormat(QImage::Format_ARGB32);
+        }
+        if (bgra.isNull()) {
+            return;
+        }
+        if (bgra.width() != width || bgra.height() != height) {
+            bgra = bgra.scaled(width, height, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+            if (bgra.format() != QImage::Format_ARGB32) {
+                bgra = bgra.convertToFormat(QImage::Format_ARGB32);
+            }
+        }
+        if (bgra.isNull()) {
+            return;
+        }
+
+        av::capture::ScreenFrame converted;
+        converted.width = width;
+        converted.height = height;
+        converted.pts = nextPts.fetch_add(1, std::memory_order_acq_rel);
+
+        const std::size_t lineBytes = static_cast<std::size_t>(width) * 4U;
+        converted.bgra.resize(lineBytes * static_cast<std::size_t>(height));
+        for (int y = 0; y < height; ++y) {
+            std::memcpy(converted.bgra.data() + static_cast<std::size_t>(y) * lineBytes,
+                        bgra.constScanLine(y),
+                        lineBytes);
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            if (!cameraEnabled.load(std::memory_order_acquire) ||
+                sharingEnabled.load(std::memory_order_acquire) ||
+                generation.load(std::memory_order_acquire) != expectedGeneration) {
+                return;
+            }
+            if (frames.size() >= capacity) {
+                frames.pop_front();
+            }
+            frames.push_back(std::move(converted));
+        }
+        cv.notify_one();
+    }
+
+    const int width;
+    const int height;
+    const std::chrono::milliseconds frameInterval;
+    static constexpr std::size_t capacity = 3U;
+
+    std::mutex mutex;
+    std::condition_variable cv;
+    std::deque<av::capture::ScreenFrame> frames;
+    std::chrono::steady_clock::time_point lastAcceptedAt;
+    std::atomic<bool> cameraEnabled{false};
+    std::atomic<bool> sharingEnabled{false};
+    std::atomic<uint64_t> generation{0};
+    std::atomic<int64_t> nextPts{0};
+};
+
 ScreenShareSession::ScreenShareSession(ScreenShareSessionConfig config)
     : m_config(std::move(config)),
+      m_cameraRelay(std::make_shared<CameraFrameRelay>(m_config.width, m_config.height, m_config.frameRate)),
       m_sender(0, 0) {
     m_targetBitrateBps.store(static_cast<uint32_t>(std::max(1000, m_config.bitrate)), std::memory_order_release);
     m_appliedBitrateBps.store(static_cast<uint32_t>(std::max(1000, m_config.bitrate)), std::memory_order_release);
@@ -236,6 +397,14 @@ void ScreenShareSession::stop() {
     }
 
     m_sharingEnabled.store(false, std::memory_order_release);
+    m_cameraSendingEnabled.store(false, std::memory_order_release);
+    m_forceKeyFramePending.store(false, std::memory_order_release);
+    m_expectedRemoteVideoSsrc.store(0U, std::memory_order_release);
+    if (m_cameraRelay) {
+        m_cameraRelay->setSharingEnabled(false);
+        m_cameraRelay->invalidate();
+    }
+
     if (m_sendThread.joinable()) {
         m_sendThread.join();
     }
@@ -243,6 +412,9 @@ void ScreenShareSession::stop() {
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         stopCaptureLocked();
+        stopCameraCaptureLocked();
+        m_sender.setSSRC(0);
+        m_sentPacketCache.clear();
         closeSocketLocked();
     }
     if (m_recvThread.joinable()) {
@@ -261,48 +433,67 @@ bool ScreenShareSession::setSharingEnabled(bool enabled) {
             return true;
         }
 
+        bool startSendThread = false;
         {
             std::lock_guard<std::mutex> lock(m_mutex);
-            m_sender.setSSRC(makeSsrc());
-            m_sender.setSequence(0);
-            startCaptureLocked();
-            if (!m_capture || !m_capture->isRunning()) {
+            if (!startCaptureLocked()) {
                 return false;
+            }
+            if (!m_cameraSendingEnabled.load(std::memory_order_acquire)) {
+                m_sender.setSSRC(makeSsrc());
+                m_sender.setSequence(0);
+                m_sentPacketCache.clear();
+                startSendThread = true;
             }
         }
 
         m_sharingEnabled.store(true, std::memory_order_release);
-        m_keyframeRequestCount.store(0, std::memory_order_release);
-        m_retransmitPacketCount.store(0, std::memory_order_release);
-        m_bitrateReconfigureCount.store(0, std::memory_order_release);
-        m_targetBitrateBps.store(static_cast<uint32_t>(m_config.bitrate), std::memory_order_release);
-        m_appliedBitrateBps.store(static_cast<uint32_t>(m_config.bitrate), std::memory_order_release);
-        m_lastBitrateApplyDelayMs.store(0, std::memory_order_release);
-        m_targetBitrateUpdatedAtMs.store(steadyNowMs(), std::memory_order_release);
-        m_forceKeyFramePending.store(false, std::memory_order_release);
-        {
-            std::lock_guard<std::mutex> lock(m_mutex);
-            m_sentPacketCache.clear();
+        if (m_cameraRelay) {
+            m_cameraRelay->setSharingEnabled(true);
         }
-        if (m_sendThread.joinable()) {
-            m_sendThread.join();
+        m_forceKeyFramePending.store(true, std::memory_order_release);
+        if (startSendThread) {
+            m_keyframeRequestCount.store(0, std::memory_order_release);
+            m_retransmitPacketCount.store(0, std::memory_order_release);
+            m_bitrateReconfigureCount.store(0, std::memory_order_release);
+            m_targetBitrateBps.store(static_cast<uint32_t>(m_config.bitrate), std::memory_order_release);
+            m_appliedBitrateBps.store(static_cast<uint32_t>(m_config.bitrate), std::memory_order_release);
+            m_lastBitrateApplyDelayMs.store(0, std::memory_order_release);
+            m_targetBitrateUpdatedAtMs.store(steadyNowMs(), std::memory_order_release);
+            if (m_sendThread.joinable()) {
+                m_sendThread.join();
+            }
+            m_sendThread = std::thread(&ScreenShareSession::sendLoop, this);
         }
-        m_sendThread = std::thread(&ScreenShareSession::sendLoop, this);
         qInfo().noquote() << "[screen-session] sharing enabled localPort=" << localPort()
                           << "ssrc=" << videoSsrc();
         return true;
     }
 
-    m_sharingEnabled.store(false, std::memory_order_release);
-    m_forceKeyFramePending.store(false, std::memory_order_release);
-    if (m_sendThread.joinable()) {
+    if (!m_sharingEnabled.exchange(false, std::memory_order_acq_rel)) {
+        return true;
+    }
+    if (m_cameraRelay) {
+        m_cameraRelay->setSharingEnabled(false);
+    }
+
+    const bool keepSending = m_cameraSendingEnabled.load(std::memory_order_acquire);
+    if (!keepSending && m_sendThread.joinable()) {
         m_sendThread.join();
     }
+    if (keepSending) {
+        m_forceKeyFramePending.store(true, std::memory_order_release);
+    } else {
+        m_forceKeyFramePending.store(false, std::memory_order_release);
+    }
+
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         stopCaptureLocked();
-        m_sender.setSSRC(0);
-        m_sentPacketCache.clear();
+        if (!keepSending) {
+            m_sender.setSSRC(0);
+            m_sentPacketCache.clear();
+        }
     }
     return true;
 #else
@@ -312,6 +503,97 @@ bool ScreenShareSession::setSharingEnabled(bool enabled) {
 
 bool ScreenShareSession::sharingEnabled() const {
     return m_sharingEnabled.load(std::memory_order_acquire);
+}
+
+bool ScreenShareSession::setCameraSendingEnabled(bool enabled) {
+#ifdef _WIN32
+    if (enabled) {
+        if (!m_running.load(std::memory_order_acquire) && !start()) {
+            return false;
+        }
+        if (m_cameraSendingEnabled.load(std::memory_order_acquire)) {
+            return true;
+        }
+
+        bool startSendThread = false;
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            if (!startCameraCaptureLocked()) {
+                return false;
+            }
+            if (!m_sharingEnabled.load(std::memory_order_acquire)) {
+                m_sender.setSSRC(makeSsrc());
+                m_sender.setSequence(0);
+                m_sentPacketCache.clear();
+                startSendThread = true;
+            }
+        }
+
+        m_cameraSendingEnabled.store(true, std::memory_order_release);
+        if (m_cameraRelay) {
+            m_cameraRelay->setCameraEnabled(true);
+            m_cameraRelay->setSharingEnabled(m_sharingEnabled.load(std::memory_order_acquire));
+        }
+        if (!m_sharingEnabled.load(std::memory_order_acquire)) {
+            m_forceKeyFramePending.store(true, std::memory_order_release);
+        }
+        if (startSendThread) {
+            m_keyframeRequestCount.store(0, std::memory_order_release);
+            m_retransmitPacketCount.store(0, std::memory_order_release);
+            m_bitrateReconfigureCount.store(0, std::memory_order_release);
+            m_targetBitrateBps.store(static_cast<uint32_t>(m_config.bitrate), std::memory_order_release);
+            m_appliedBitrateBps.store(static_cast<uint32_t>(m_config.bitrate), std::memory_order_release);
+            m_lastBitrateApplyDelayMs.store(0, std::memory_order_release);
+            m_targetBitrateUpdatedAtMs.store(steadyNowMs(), std::memory_order_release);
+            if (m_sendThread.joinable()) {
+                m_sendThread.join();
+            }
+            m_sendThread = std::thread(&ScreenShareSession::sendLoop, this);
+        }
+        qInfo().noquote() << "[screen-session] camera sending enabled localPort=" << localPort()
+                          << "ssrc=" << videoSsrc();
+        return true;
+    }
+
+    if (!m_cameraSendingEnabled.exchange(false, std::memory_order_acq_rel)) {
+        return true;
+    }
+    if (m_cameraRelay) {
+        m_cameraRelay->setCameraEnabled(false);
+    }
+
+    const bool keepSending = m_sharingEnabled.load(std::memory_order_acquire);
+    if (!keepSending && m_sendThread.joinable()) {
+        m_sendThread.join();
+    }
+    if (!keepSending) {
+        m_forceKeyFramePending.store(false, std::memory_order_release);
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        stopCameraCaptureLocked();
+        if (!keepSending) {
+            m_sender.setSSRC(0);
+            m_sentPacketCache.clear();
+        }
+    }
+    return true;
+#else
+    return false;
+#endif
+}
+
+bool ScreenShareSession::cameraSendingEnabled() const {
+    return m_cameraSendingEnabled.load(std::memory_order_acquire);
+}
+
+void ScreenShareSession::setExpectedRemoteVideoSsrc(uint32_t ssrc) {
+    m_expectedRemoteVideoSsrc.store(ssrc, std::memory_order_release);
+}
+
+uint32_t ScreenShareSession::expectedRemoteVideoSsrc() const {
+    return m_expectedRemoteVideoSsrc.load(std::memory_order_acquire);
 }
 
 void ScreenShareSession::setPeer(const std::string& address, uint16_t port) {
@@ -337,6 +619,16 @@ void ScreenShareSession::setPeer(const std::string& address, uint16_t port) {
 void ScreenShareSession::setDecodedFrameCallback(std::function<void(av::codec::DecodedVideoFrame)> callback) {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_decodedFrameCallback = std::move(callback);
+}
+
+void ScreenShareSession::setErrorCallback(std::function<void(std::string)> callback) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_errorCallback = std::move(callback);
+}
+
+void ScreenShareSession::setCameraSourceCallback(std::function<void(bool syntheticFallback)> callback) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_cameraSourceCallback = std::move(callback);
 }
 
 uint16_t ScreenShareSession::localPort() const {
@@ -603,9 +895,9 @@ void ScreenShareSession::setErrorLocked(std::string message) {
     qWarning().noquote() << "[screen-session]" << QString::fromStdString(m_lastError);
 }
 
-void ScreenShareSession::startCaptureLocked() {
+bool ScreenShareSession::startCaptureLocked() {
     if (m_capture && m_capture->isRunning()) {
-        return;
+        return true;
     }
 
     av::capture::ScreenCaptureConfig captureConfig{};
@@ -614,11 +906,14 @@ void ScreenShareSession::startCaptureLocked() {
     captureConfig.frameRate = m_config.frameRate;
     captureConfig.ringCapacity = 3;
 
-    m_capture = std::make_unique<av::capture::ScreenCapture>(captureConfig);
-    if (!m_capture->start()) {
+    auto capture = std::make_shared<av::capture::ScreenCapture>(captureConfig);
+    if (!capture->start()) {
         setErrorLocked("screen capture start failed");
-        m_capture.reset();
+        return false;
     }
+
+    m_capture = std::move(capture);
+    return true;
 }
 
 void ScreenShareSession::stopCaptureLocked() {
@@ -628,36 +923,168 @@ void ScreenShareSession::stopCaptureLocked() {
     }
 }
 
+bool ScreenShareSession::startCameraCaptureLocked() {
+    if (!m_cameraRelay) {
+        m_cameraRelay = std::make_shared<CameraFrameRelay>(m_config.width, m_config.height, m_config.frameRate);
+    }
+    if (m_cameraCapture && m_cameraCapture->isRunning()) {
+        return true;
+    }
+    if (m_cameraFallbackCapture && m_cameraFallbackCapture->isRunning()) {
+        return true;
+    }
+
+    const auto startSyntheticFallback = [this]() {
+        av::capture::ScreenCaptureConfig fallbackConfig{};
+        fallbackConfig.targetWidth = m_config.width;
+        fallbackConfig.targetHeight = m_config.height;
+        fallbackConfig.frameRate = m_config.frameRate;
+        fallbackConfig.ringCapacity = 3;
+        auto fallbackCapture = std::make_shared<av::capture::ScreenCapture>(fallbackConfig);
+        if (!fallbackCapture->start()) {
+            setErrorLocked("camera fallback capture start failed");
+            return false;
+        }
+
+        m_cameraCapture.reset();
+        m_cameraFallbackCapture = std::move(fallbackCapture);
+        qInfo().noquote() << "[screen-session] camera fallback synthetic source enabled";
+        if (m_cameraSourceCallback) {
+            m_cameraSourceCallback(true);
+        }
+        return true;
+    };
+
+    if (allowSyntheticCameraFallback()) {
+        m_cameraRelay->invalidate();
+        return startSyntheticFallback();
+    }
+
+    const uint64_t generation = m_cameraRelay->beginCapture();
+    auto cameraCapture = std::make_unique<av::capture::CameraCapture>();
+    std::weak_ptr<CameraFrameRelay> weakRelay = m_cameraRelay;
+    cameraCapture->setFrameCallback([weakRelay, generation](QVideoFrame frame) {
+        if (const auto relay = weakRelay.lock()) {
+            relay->enqueueFrame(generation, frame);
+        }
+    });
+    if (cameraCapture->start()) {
+        m_cameraFallbackCapture.reset();
+        m_cameraCapture = std::move(cameraCapture);
+        if (m_cameraSourceCallback) {
+            m_cameraSourceCallback(false);
+        }
+        return true;
+    }
+
+    cameraCapture->setFrameCallback({});
+    m_cameraRelay->invalidate();
+    setErrorLocked("camera capture start failed");
+    return false;
+}
+
+void ScreenShareSession::stopCameraFallbackCaptureLocked() {
+    if (m_cameraFallbackCapture) {
+        m_cameraFallbackCapture->stop();
+        m_cameraFallbackCapture.reset();
+    }
+}
+
+void ScreenShareSession::stopCameraCaptureLocked() {
+    if (m_cameraRelay) {
+        m_cameraRelay->invalidate();
+    }
+    if (m_cameraCapture) {
+        m_cameraCapture->setFrameCallback({});
+        m_cameraCapture->stop();
+        m_cameraCapture.reset();
+    }
+    stopCameraFallbackCaptureLocked();
+}
+
+bool ScreenShareSession::shouldAcceptSenderLocked(const sockaddr_in& from) const {
+    if (!m_peerValid) {
+        return true;
+    }
+
+    return from.sin_family == AF_INET &&
+           from.sin_port == m_peer.sin_port &&
+           from.sin_addr.s_addr == m_peer.sin_addr.s_addr;
+}
+
 void ScreenShareSession::sendLoop() {
     av::codec::VideoEncoder encoder;
     if (!encoder.configure(m_config.width, m_config.height, m_config.frameRate, m_config.bitrate)) {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        setErrorLocked("video encoder configure failed");
+        std::function<void(std::string)> errorCallback;
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            setErrorLocked("video encoder configure failed");
+            errorCallback = m_errorCallback;
+        }
+        if (errorCallback) {
+            errorCallback("video encoder configure failed");
+        }
         return;
     }
     m_appliedBitrateBps.store(static_cast<uint32_t>(encoder.bitrate()), std::memory_order_release);
 
     bool loggedFirstPacket = false;
-    while (m_running.load(std::memory_order_acquire) && m_sharingEnabled.load(std::memory_order_acquire)) {
-        av::capture::ScreenCapture* capture = nullptr;
+    while (m_running.load(std::memory_order_acquire) &&
+           (m_sharingEnabled.load(std::memory_order_acquire) ||
+            m_cameraSendingEnabled.load(std::memory_order_acquire))) {
+        const bool useScreenSource = m_sharingEnabled.load(std::memory_order_acquire);
+        const bool useCameraSource = !useScreenSource && m_cameraSendingEnabled.load(std::memory_order_acquire);
+
+        std::shared_ptr<av::capture::ScreenCapture> capture;
+        std::shared_ptr<av::capture::ScreenCapture> cameraFallbackCapture;
+        std::shared_ptr<CameraFrameRelay> cameraRelay;
         sockaddr_in peer{};
         bool peerReady = false;
         {
             std::lock_guard<std::mutex> lock(m_mutex);
-            capture = m_capture.get();
+            if (useScreenSource) {
+                capture = m_capture;
+            } else if (useCameraSource) {
+                if (m_cameraCapture && m_cameraCapture->isRunning()) {
+                    cameraRelay = m_cameraRelay;
+                } else if (m_cameraFallbackCapture && m_cameraFallbackCapture->isRunning()) {
+                    cameraFallbackCapture = m_cameraFallbackCapture;
+                }
+            }
             peerReady = m_peerValid;
             if (peerReady) {
                 peer = m_peer;
             }
         }
-        if (capture == nullptr) {
+
+        av::capture::ScreenFrame frame;
+        if (useScreenSource) {
+            if (!capture || !capture->popFrameForEncode(frame, std::chrono::milliseconds(100))) {
+                continue;
+            }
+            if (!m_sharingEnabled.load(std::memory_order_acquire)) {
+                continue;
+            }
+        } else if (useCameraSource) {
+            if (cameraRelay) {
+                if (!cameraRelay->popFrame(frame, std::chrono::milliseconds(100))) {
+                    continue;
+                }
+            } else if (cameraFallbackCapture) {
+                if (!cameraFallbackCapture->popFrameForEncode(frame, std::chrono::milliseconds(100))) {
+                    continue;
+                }
+            } else {
+                break;
+            }
+            if (m_sharingEnabled.load(std::memory_order_acquire) ||
+                !m_cameraSendingEnabled.load(std::memory_order_acquire)) {
+                continue;
+            }
+        } else {
             break;
         }
 
-        av::capture::ScreenFrame frame;
-        if (!capture->popFrameForEncode(frame, std::chrono::milliseconds(100))) {
-            continue;
-        }
         if (!peerReady) {
             continue;
         }
@@ -764,6 +1191,15 @@ void ScreenShareSession::recvLoop() {
             continue;
         }
 
+        bool acceptSender = false;
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            acceptSender = shouldAcceptSenderLocked(from);
+        }
+        if (!acceptSender) {
+            continue;
+        }
+
         if (looksLikeRtcp(buffer.data(), static_cast<std::size_t>(received))) {
             std::lock_guard<std::mutex> lock(m_mutex);
             (void)handleRtcpFeedbackLocked(buffer.data(), static_cast<std::size_t>(received));
@@ -775,6 +1211,11 @@ void ScreenShareSession::recvLoop() {
             continue;
         }
         if (packet.header.payloadType != m_config.payloadType) {
+            continue;
+        }
+
+        const uint32_t expectedRemoteSsrc = m_expectedRemoteVideoSsrc.load(std::memory_order_acquire);
+        if (expectedRemoteSsrc != 0U && packet.header.ssrc != expectedRemoteSsrc) {
             continue;
         }
 
@@ -821,3 +1262,12 @@ void ScreenShareSession::recvLoop() {
 #endif
 
 }  // namespace av::session
+
+
+
+
+
+
+
+
+

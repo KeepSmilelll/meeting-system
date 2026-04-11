@@ -81,6 +81,7 @@ qt_add_executable(meeting_client
     src/app/RuntimeSmokeDriver.cpp
     src/app/UserManager.cpp
     src/av/capture/AudioCapture.cpp
+    src/av/capture/CameraCapture.cpp
     src/av/capture/ScreenCapture.cpp
     src/av/codec/AudioEncoder.cpp
     src/av/codec/AudioDecoder.cpp
@@ -103,6 +104,7 @@ qt_add_executable(meeting_client
     src/net/signaling/Reconnector.cpp
     src/net/media/RTPSender.cpp
     src/net/media/RTPReceiver.cpp
+    src/net/media/BandwidthEstimator.cpp
     src/net/media/JitterBuffer.cpp
     proto/pb/signaling.pb.cc
 )
@@ -144,6 +146,8 @@ qt_add_qml_module(meeting_client
         qml/components/TitleBar.qml
         qml/components/ToolBar.qml
         qml/components/ParticipantPanel.qml
+        qml/components/VideoGrid.qml
+        qml/components/VideoTile.qml
 )
 
 add_executable(test_database
@@ -185,6 +189,7 @@ add_test(NAME test_media_session_manager COMMAND test_media_session_manager)
 add_executable(test_screen_share_session
     tests/test_screen_share_session.cpp
     src/av/capture/ScreenCapture.cpp
+    src/av/capture/CameraCapture.cpp
     src/av/codec/VideoDecoder.cpp
     src/av/codec/VideoEncoder.cpp
     src/av/session/ScreenShareSession.cpp
@@ -196,9 +201,10 @@ target_include_directories(test_screen_share_session PRIVATE
     src
     ${FFMPEG_INCLUDE_DIR}
 )
-
 target_link_libraries(test_screen_share_session PRIVATE
     Qt6::Core
+    Qt6::Gui
+    Qt6::Multimedia
     Qt6::Network
     ${FFMPEG_AVCODEC_LIBRARY}
     ${FFMPEG_AVUTIL_LIBRARY}
@@ -230,6 +236,15 @@ target_link_libraries(test_signaling_client_ssrc PRIVATE
 )
 
 add_test(NAME test_signaling_client_ssrc COMMAND test_signaling_client_ssrc)
+add_executable(test_av_sync
+    tests/test_av_sync.cpp
+)
+
+target_include_directories(test_av_sync PRIVATE
+    src
+)
+
+add_test(NAME test_av_sync COMMAND test_av_sync)
 
 add_executable(test_meeting_controller_mute_all
     tests/test_meeting_controller_mute_all.cpp
@@ -238,6 +253,7 @@ add_executable(test_meeting_controller_mute_all
     src/app/ParticipantListModel.cpp
     src/app/UserManager.cpp
     src/av/capture/AudioCapture.cpp
+    src/av/capture/CameraCapture.cpp
     src/av/capture/ScreenCapture.cpp
     src/av/codec/AudioEncoder.cpp
     src/av/codec/AudioDecoder.cpp
@@ -292,6 +308,7 @@ add_executable(test_meeting_runtime_smoke
     src/app/ParticipantListModel.cpp
     src/app/UserManager.cpp
     src/av/capture/AudioCapture.cpp
+    src/av/capture/CameraCapture.cpp
     src/av/capture/ScreenCapture.cpp
     src/av/codec/AudioEncoder.cpp
     src/av/codec/AudioDecoder.cpp
@@ -341,12 +358,21 @@ add_test(NAME test_meeting_runtime_smoke COMMAND test_meeting_runtime_smoke)
 
 add_executable(test_meeting_client_process_smoke
     tests/test_meeting_client_process_smoke.cpp
+    src/av/codec/VideoEncoder.cpp
+)
+
+target_include_directories(test_meeting_client_process_smoke PRIVATE
+    src
+    ${FFMPEG_INCLUDE_DIR}
 )
 
 target_link_libraries(test_meeting_client_process_smoke PRIVATE
     Qt6::Core
     Qt6::Network
     Qt6::Multimedia
+    ${FFMPEG_AVCODEC_LIBRARY}
+    ${FFMPEG_AVUTIL_LIBRARY}
+    ${FFMPEG_SWSCALE_LIBRARY}
 )
 
 add_dependencies(test_meeting_client_process_smoke meeting_client)
@@ -396,5 +422,8 @@ if(MEETING_BUILD_AUDIO_CODEC_SMOKE)
         message(WARNING "Audio codec smoke target skipped: FFmpeg 7.1 headers/libs not found under ${FFMPEG_ROOT_HINT}.")
     endif()
 endif()
+
+
+
 
 
