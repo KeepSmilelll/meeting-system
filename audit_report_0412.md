@@ -32,6 +32,7 @@
 | 5 | 30min 内存泄露测试 | AV-Eng | Valgrind/AddressSanitizer 跑 30 分钟通话 |
 
 > 进展（2026-04-14）：第 5 项已闭合：`RuntimeSmokeDriver` soak 阶段 + `test_meeting_client_process_smoke` 内存增长门禁 + `scripts/run_m1_audio_leak_soak.ps1` 已落地，且完整 30min 真实音频 soak 已通过（1814.88s）。
+> 进展（2026-04-14）：已启动 Ubuntu 适配分支 `codex/ubuntu-m1-adapt`，客户端音频会话改为 Win/Linux 双平台 socket 主链；待执行 Ubuntu↔Windows 双端真实语音联调后，回填 M1 最终闭合证据。
 
 ### 验收标准
 

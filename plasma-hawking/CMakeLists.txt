@@ -9,7 +9,11 @@ include(CTest)
 
 # Optional FFmpeg smoke target for the Opus audio pipeline.
 option(MEETING_BUILD_AUDIO_CODEC_SMOKE "Build the audio codec smoke test target" ON)
-set(FFMPEG_ROOT_HINT "D:/Setup/ffmpeg-7.1-full_build-shared" CACHE PATH "Local FFmpeg root hint")
+if(WIN32)
+    set(FFMPEG_ROOT_HINT "D:/Setup/ffmpeg-7.1-full_build-shared" CACHE PATH "Optional FFmpeg root hint")
+else()
+    set(FFMPEG_ROOT_HINT "" CACHE PATH "Optional FFmpeg root hint")
+endif()
 
 # Keep protobuf runtime/toolchain aligned with locally provisioned OpenCV libs.
 set(PROTOBUF_INCLUDE_DIR_HINT "D:/openCV/opencv-4.12.0/sources/3rdparty/protobuf/src" CACHE PATH "Local protobuf include dir hint")
@@ -66,11 +70,37 @@ if(EXISTS "${FFMPEG_ROOT_HINT}")
     )
 endif()
 
+if(NOT FFMPEG_INCLUDE_DIR)
+    find_path(FFMPEG_INCLUDE_DIR
+        NAMES libavcodec/avcodec.h
+    )
+endif()
+if(NOT FFMPEG_AVCODEC_LIBRARY)
+    find_library(FFMPEG_AVCODEC_LIBRARY
+        NAMES avcodec libavcodec
+    )
+endif()
+if(NOT FFMPEG_AVUTIL_LIBRARY)
+    find_library(FFMPEG_AVUTIL_LIBRARY
+        NAMES avutil libavutil
+    )
+endif()
+if(NOT FFMPEG_SWRESAMPLE_LIBRARY)
+    find_library(FFMPEG_SWRESAMPLE_LIBRARY
+        NAMES swresample libswresample
+    )
+endif()
+if(NOT FFMPEG_SWSCALE_LIBRARY)
+    find_library(FFMPEG_SWSCALE_LIBRARY
+        NAMES swscale libswscale
+    )
+endif()
+
 find_package(Protobuf REQUIRED)
 qt_standard_project_setup()
 
 if(NOT (FFMPEG_INCLUDE_DIR AND FFMPEG_AVCODEC_LIBRARY AND FFMPEG_AVUTIL_LIBRARY AND FFMPEG_SWRESAMPLE_LIBRARY AND FFMPEG_SWSCALE_LIBRARY))
-    message(FATAL_ERROR "meeting_client requires FFmpeg 7.1 headers/libs under ${FFMPEG_ROOT_HINT}")
+    message(FATAL_ERROR "meeting_client requires FFmpeg 7.1 headers/libs (set FFMPEG_ROOT_HINT or install system FFmpeg development packages)")
 endif()
 
 set(FFMPEG_RUNTIME_DLLS)
