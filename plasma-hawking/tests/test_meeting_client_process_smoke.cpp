@@ -1,4 +1,5 @@
 #include <iostream>
+#include <algorithm>
 
 #include <functional>
 
@@ -19,6 +20,10 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QThread>
+#if defined(Q_OS_WIN)
+#include <windows.h>
+#include <psapi.h>
+#endif
 #include "av/codec/VideoEncoder.h"
 
 namespace {
@@ -88,6 +93,132 @@ bool requireGuestVideoEvidence() {
     }
     return canEncodeVideoForProcessSmoke();
 }
+
+bool requireAudioEvidenceForProcessSmoke(bool syntheticAudio) {
+    const QByteArray configured = qgetenv("MEETING_PROCESS_SMOKE_REQUIRE_AUDIO");
+    if (configured == "1") {
+        return true;
+    }
+    if (configured == "0") {
+        return false;
+    }
+    return !syntheticAudio;
+}
+
+int envIntValue(const char* key, int fallback) {
+    bool ok = false;
+    const int value = qEnvironmentVariable(key).toInt(&ok);
+    return ok ? value : fallback;
+}
+
+int processSmokeSoakDurationMs() {
+    return (std::max)(0, envIntValue("MEETING_PROCESS_SMOKE_SOAK_MS", 0));
+}
+
+int processSmokeTimeoutMs(int soakDurationMs) {
+    const int configured = (std::max)(10000, envIntValue("MEETING_PROCESS_SMOKE_TIMEOUT_MS", 45000));
+    if (soakDurationMs <= 0) {
+        return configured;
+    }
+    return (std::max)(configured, soakDurationMs + 120000);
+}
+
+int runtimeSmokeTimeoutMs(int soakDurationMs) {
+    const int configured = (std::max)(30000, envIntValue("MEETING_PROCESS_SMOKE_RUNTIME_TIMEOUT_MS", 30000));
+    if (soakDurationMs <= 0) {
+        return configured;
+    }
+    return (std::max)(configured, soakDurationMs + 90000);
+}
+
+int processSmokeMaxWorkingSetGrowthMb(int soakDurationMs) {
+    const int fallback = soakDurationMs > 0 ? 256 : 0;
+    return (std::max)(0, envIntValue("MEETING_PROCESS_SMOKE_MAX_WORKING_SET_GROWTH_MB", fallback));
+}
+
+struct ProcessMemoryTracker {
+    QString name;
+    qint64 pid{0};
+    quint64 baselineBytes{0};
+    quint64 peakBytes{0};
+    quint64 lastBytes{0};
+    int samples{0};
+    bool available{false};
+};
+
+#if defined(Q_OS_WIN)
+quint64 queryWorkingSetBytes(qint64 pid) {
+    if (pid <= 0) {
+        return 0;
+    }
+
+    HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ, FALSE, static_cast<DWORD>(pid));
+    if (process == nullptr) {
+        return 0;
+    }
+
+    PROCESS_MEMORY_COUNTERS_EX counters{};
+    const BOOL ok = GetProcessMemoryInfo(process,
+                                         reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&counters),
+                                         sizeof(counters));
+    CloseHandle(process);
+    if (!ok) {
+        return 0;
+    }
+
+    return static_cast<quint64>(counters.WorkingSetSize);
+}
+#else
+quint64 queryWorkingSetBytes(qint64) {
+    return 0;
+}
+#endif
+
+void sampleProcessMemory(ProcessMemoryTracker& tracker, bool allowBaselineCapture = true) {
+    const quint64 workingSetBytes = queryWorkingSetBytes(tracker.pid);
+    if (workingSetBytes == 0) {
+        return;
+    }
+
+    if (tracker.baselineBytes == 0) {
+        if (!allowBaselineCapture) {
+            return;
+        }
+        tracker.baselineBytes = workingSetBytes;
+        tracker.peakBytes = workingSetBytes;
+    }
+
+    tracker.available = true;
+    tracker.lastBytes = workingSetBytes;
+    if (workingSetBytes > tracker.peakBytes) {
+        tracker.peakBytes = workingSetBytes;
+    }
+    tracker.samples += 1;
+}
+
+QString formatProcessMemory(const ProcessMemoryTracker& tracker) {
+    if (!tracker.available) {
+        return QStringLiteral("%1_working_set=unavailable").arg(tracker.name);
+    }
+
+    const auto toMb = [](quint64 bytes) {
+        return static_cast<double>(bytes) / (1024.0 * 1024.0);
+    };
+
+    return QStringLiteral("%1_working_set_mb=base:%2 peak:%3 last:%4 samples:%5")
+        .arg(tracker.name)
+        .arg(QString::number(toMb(tracker.baselineBytes), 'f', 1))
+        .arg(QString::number(toMb(tracker.peakBytes), 'f', 1))
+        .arg(QString::number(toMb(tracker.lastBytes), 'f', 1))
+        .arg(tracker.samples);
+}
+
+bool exceedsWorkingSetGrowth(const ProcessMemoryTracker& tracker, quint64 maxGrowthBytes) {
+    if (!tracker.available || tracker.baselineBytes == 0 || tracker.peakBytes <= tracker.baselineBytes) {
+        return false;
+    }
+    return (tracker.peakBytes - tracker.baselineBytes) > maxGrowthBytes;
+}
 QString readAllOutput(QProcess& process) {
     return QStringLiteral("stdout:\n%1\nstderr:\n%2")
         .arg(QString::fromLocal8Bit(process.readAllStandardOutput()),
@@ -150,6 +281,9 @@ QString inferSmokeFailureStage(const QString& status, const QString& reason) {
     if (normalizedStatus == QStringLiteral("WAITING_CAMERA_SOURCE")) {
         return QStringLiteral("likely-stage=camera-source-evidence");
     }
+    if (normalizedStatus == QStringLiteral("WAITING_AUDIO")) {
+        return QStringLiteral("likely-stage=audio-evidence");
+    }
     if (normalizedReason.contains(QStringLiteral("login"))) {
         return QStringLiteral("likely-stage=login");
     }
@@ -174,6 +308,9 @@ QString inferSmokeFailureBucket(const QString& status, const QString& reason) {
     if (normalizedStatus == QStringLiteral("WAITING_CAMERA_SOURCE")) {
         return QStringLiteral("likely-module=video-capture-source");
     }
+    if (normalizedStatus == QStringLiteral("WAITING_AUDIO")) {
+        return QStringLiteral("likely-module=audio-capture-or-transport");
+    }
     if (normalizedStatus == QStringLiteral("DEGRADED_VIDEO") || normalizedReason.contains(QStringLiteral("encoder"))) {
         return QStringLiteral("likely-module=video-encoder");
     }
@@ -192,11 +329,17 @@ QString inferSmokeFailureBucket(const QString& status, const QString& reason) {
     return QStringLiteral("likely-module=unknown");
 }
 
-bool waitForSuccessfulExit(QCoreApplication& app, QProcess& process, int timeoutMs) {
+bool waitForSuccessfulExit(QCoreApplication& app,
+                           QProcess& process,
+                           int timeoutMs,
+                           const std::function<void()>& tick = {}) {
     QElapsedTimer timer;
     timer.start();
     while (timer.elapsed() < timeoutMs) {
         app.processEvents(QEventLoop::AllEvents, 20);
+        if (tick) {
+            tick();
+        }
         if (process.state() == QProcess::NotRunning) {
             return process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0;
         }
@@ -204,7 +347,6 @@ bool waitForSuccessfulExit(QCoreApplication& app, QProcess& process, int timeout
     }
     return false;
 }
-
 QString resolveGoExecutable() {
     const QString found = QStandardPaths::findExecutable(QStringLiteral("go"));
     if (!found.isEmpty()) {
@@ -234,6 +376,12 @@ int main(int argc, char* argv[]) {
     const bool syntheticAudio = useSyntheticAudio();
     const bool syntheticCamera = useSyntheticCamera();
     const bool requireVideoEvidence = requireGuestVideoEvidence();
+    const bool requireAudioEvidence = requireAudioEvidenceForProcessSmoke(syntheticAudio);
+    const int soakDurationMs = processSmokeSoakDurationMs();
+    const int waitTimeoutMs = processSmokeTimeoutMs(soakDurationMs);
+    const int runtimeTimeoutForClientMs = runtimeSmokeTimeoutMs(soakDurationMs);
+    const int maxWorkingSetGrowthMb = processSmokeMaxWorkingSetGrowthMb(soakDurationMs);
+    const int memoryBaselineDelayMs = (std::max)(0, envIntValue("MEETING_PROCESS_SMOKE_MEMORY_BASELINE_DELAY_MS", soakDurationMs > 0 ? 15000 : 0));
     if (!syntheticAudio && !hasDefaultAudioDevices()) {
         std::cout << "SKIP no default audio input/output available" << std::endl;
         return 77;
@@ -336,11 +484,23 @@ int main(int argc, char* argv[]) {
         env.insert(QStringLiteral("MEETING_SMOKE_MEETING_ID_PATH"), meetingIdPath);
         env.insert(QStringLiteral("MEETING_SMOKE_RESULT_PATH"), resultPath);
         env.insert(QStringLiteral("MEETING_SMOKE_PEER_RESULT_PATH"), peerResultPath);
-        env.insert(QStringLiteral("MEETING_SMOKE_TIMEOUT_MS"), QStringLiteral("30000"));
+        env.insert(QStringLiteral("MEETING_SMOKE_TIMEOUT_MS"), QString::number(runtimeTimeoutForClientMs));
+        if (soakDurationMs > 0) {
+            env.insert(QStringLiteral("MEETING_SMOKE_SOAK_MS"), QString::number(soakDurationMs));
+            env.insert(QStringLiteral("MEETING_SMOKE_SOAK_POLL_INTERVAL_MS"), QStringLiteral("1000"));
+        } else {
+            env.remove(QStringLiteral("MEETING_SMOKE_SOAK_MS"));
+            env.remove(QStringLiteral("MEETING_SMOKE_SOAK_POLL_INTERVAL_MS"));
+        }
         if (requireVideoEvidence && role == QStringLiteral("guest")) {
             env.insert(QStringLiteral("MEETING_SMOKE_REQUIRE_VIDEO"), QStringLiteral("1"));
         } else {
             env.remove(QStringLiteral("MEETING_SMOKE_REQUIRE_VIDEO"));
+        }
+        if (requireAudioEvidence) {
+            env.insert(QStringLiteral("MEETING_SMOKE_REQUIRE_AUDIO"), QStringLiteral("1"));
+        } else {
+            env.remove(QStringLiteral("MEETING_SMOKE_REQUIRE_AUDIO"));
         }
         return env;
     };
@@ -368,8 +528,20 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    const bool hostOk = waitForSuccessfulExit(app, host, 45000);
-    const bool guestOk = waitForSuccessfulExit(app, guest, 45000);
+    ProcessMemoryTracker hostMemory{QStringLiteral("host"), host.processId()};
+    ProcessMemoryTracker guestMemory{QStringLiteral("guest"), guest.processId()};
+    QElapsedTimer memorySamplingTimer;
+    memorySamplingTimer.start();
+    const auto sampleMemory = [&hostMemory, &guestMemory, &memorySamplingTimer, memoryBaselineDelayMs]() {
+        const bool allowBaselineCapture = memorySamplingTimer.elapsed() >= memoryBaselineDelayMs;
+        sampleProcessMemory(hostMemory, allowBaselineCapture);
+        sampleProcessMemory(guestMemory, allowBaselineCapture);
+    };
+
+    sampleMemory();
+    const bool hostOk = waitForSuccessfulExit(app, host, waitTimeoutMs, sampleMemory);
+    const bool guestOk = waitForSuccessfulExit(app, guest, waitTimeoutMs, sampleMemory);
+    sampleMemory();
 
     if (!hostOk || !guestOk) {
         const QString hostResult = readTextFile(hostResultPath);
@@ -378,6 +550,18 @@ int main(int argc, char* argv[]) {
         printFailure(QStringLiteral("video evidence required=%1 encoder available=%2")
                          .arg(requireVideoEvidence ? 1 : 0)
                          .arg(canEncodeVideoForProcessSmoke() ? 1 : 0));
+        printFailure(QStringLiteral("audio evidence required=%1 synthetic_audio=%2")
+                         .arg(requireAudioEvidence ? 1 : 0)
+                         .arg(syntheticAudio ? 1 : 0));
+        printFailure(QStringLiteral("soak_ms=%1 process_timeout_ms=%2 runtime_timeout_ms=%3 max_ws_growth_mb=%4 memory_baseline_delay_ms=%5")
+                         .arg(soakDurationMs)
+                         .arg(waitTimeoutMs)
+                         .arg(runtimeTimeoutForClientMs)
+                         
+                         .arg(maxWorkingSetGrowthMb)
+                         .arg(memoryBaselineDelayMs));
+        printFailure(formatProcessMemory(hostMemory));
+        printFailure(formatProcessMemory(guestMemory));
         printFailure(QStringLiteral("host result status=%1 reason=%2")
                          .arg(resultStatusLine(hostResult), resultReasonLine(hostResult)));
         printFailure(QStringLiteral("guest result status=%1 reason=%2")
@@ -407,7 +591,26 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    if (soakDurationMs > 0 && maxWorkingSetGrowthMb > 0) {
+        const quint64 maxGrowthBytes = static_cast<quint64>(maxWorkingSetGrowthMb) * 1024ULL * 1024ULL;
+        const bool hostGrowthExceeded = exceedsWorkingSetGrowth(hostMemory, maxGrowthBytes);
+        const bool guestGrowthExceeded = exceedsWorkingSetGrowth(guestMemory, maxGrowthBytes);
+        if (hostGrowthExceeded || guestGrowthExceeded) {
+            printFailure(QStringLiteral("process smoke leak guard failed: working set growth exceeded threshold"));
+            printFailure(QStringLiteral("threshold_mb=%1 memory_baseline_delay_ms=%2")
+                         .arg(maxWorkingSetGrowthMb)
+                         .arg(memoryBaselineDelayMs));
+            printFailure(formatProcessMemory(hostMemory));
+            printFailure(formatProcessMemory(guestMemory));
+            stopProcess(server);
+            return 1;
+        }
+    }
+    std::cout << formatProcessMemory(hostMemory).toLocal8Bit().constData() << std::endl;
+    std::cout << formatProcessMemory(guestMemory).toLocal8Bit().constData() << std::endl;
+
     stopProcess(server);
     std::cout << "test_meeting_client_process_smoke passed" << std::endl;
     return 0;
 }
+

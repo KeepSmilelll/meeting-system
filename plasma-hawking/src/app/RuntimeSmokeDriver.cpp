@@ -7,9 +7,11 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QStandardPaths>
 #include <QTextStream>
 #include <QTimer>
 #include <QtGlobal>
+#include <algorithm>
 
 namespace {
 
@@ -28,6 +30,48 @@ int envInt(const char* key, int fallback) {
     return ok ? value : fallback;
 }
 
+bool containsSmokePrefixedSegment(const QString& path) {
+    const QString normalized = QDir::fromNativeSeparators(path);
+    const QStringList segments = normalized.split(QChar('/'), Qt::SkipEmptyParts);
+    for (const auto& segment : segments) {
+        if (segment.startsWith(QStringLiteral("_smoke_"), Qt::CaseInsensitive)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+QString smokeArtifactBaseDir() {
+    QString base = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
+    if (base.trimmed().isEmpty()) {
+        base = QDir::tempPath();
+    }
+
+    QDir dir(base);
+    dir.mkpath(QStringLiteral("meeting-smoke-artifacts"));
+    return dir.filePath(QStringLiteral("meeting-smoke-artifacts"));
+}
+
+QString normalizeSmokeArtifactPath(const QString& rawPath, const QString& fallbackFileName) {
+    const QString trimmed = rawPath.trimmed();
+    if (trimmed.isEmpty()) {
+        return {};
+    }
+
+    const QFileInfo info(trimmed);
+    const QString fileName = info.fileName().isEmpty() ? fallbackFileName : info.fileName();
+    if (containsSmokePrefixedSegment(trimmed)) {
+        return QDir(smokeArtifactBaseDir()).filePath(fileName);
+    }
+
+    if (info.isRelative()) {
+        const QString normalized = QDir::fromNativeSeparators(trimmed);
+        return QDir(smokeArtifactBaseDir()).filePath(normalized);
+    }
+
+    return trimmed;
+}
+
 bool hasDecodedVideoFrame(av::render::VideoFrameStore* frameStore) {
     if (frameStore == nullptr) {
         return false;
@@ -39,6 +83,49 @@ bool hasDecodedVideoFrame(av::render::VideoFrameStore* frameStore) {
     }
 
     return frame.width > 0 && frame.height > 0 && !frame.yPlane.empty() && !frame.uvPlane.empty();
+}
+
+struct AudioSmokeSnapshot {
+    quint64 sentPackets{0};
+    quint64 receivedPackets{0};
+    quint64 playedFrames{0};
+    quint32 rttMs{0};
+    quint32 targetBitrateBps{0};
+};
+
+AudioSmokeSnapshot collectAudioSmokeSnapshot(const MeetingController* controller) {
+    AudioSmokeSnapshot snapshot;
+    if (controller == nullptr) {
+        return snapshot;
+    }
+
+    snapshot.sentPackets = controller->audioSentPacketCount();
+    snapshot.receivedPackets = controller->audioReceivedPacketCount();
+    snapshot.playedFrames = controller->audioPlayedFrameCount();
+    snapshot.rttMs = controller->audioLastRttMs();
+    snapshot.targetBitrateBps = controller->audioTargetBitrateBps();
+    return snapshot;
+}
+
+bool hasAudioEvidence(const AudioSmokeSnapshot& snapshot) {
+    constexpr quint32 kMinAudioBitrateBps = 16000U;
+    constexpr quint32 kMaxAudioBitrateBps = 64000U;
+    return snapshot.sentPackets > 0 &&
+           snapshot.receivedPackets > 0 &&
+           snapshot.playedFrames > 0 &&
+           snapshot.rttMs > 0 &&
+           snapshot.targetBitrateBps >= kMinAudioBitrateBps &&
+           snapshot.targetBitrateBps <= kMaxAudioBitrateBps;
+}
+
+QString formatAudioSmokeSnapshot(const AudioSmokeSnapshot& snapshot, bool evidenceReady) {
+    return QStringLiteral("audio_pipeline=sent:%1,recv:%2,played:%3,rtt_ms:%4,target_bps:%5,evidence:%6")
+        .arg(snapshot.sentPackets)
+        .arg(snapshot.receivedPackets)
+        .arg(snapshot.playedFrames)
+        .arg(snapshot.rttMs)
+        .arg(snapshot.targetBitrateBps)
+        .arg(evidenceReady ? 1 : 0);
 }
 
 QString normalizeExpectedCameraSource(const QString& raw) {
@@ -75,6 +162,10 @@ RuntimeSmokeDriver::RuntimeSmokeDriver(MeetingController* controller, QObject* p
     , m_peerResultPath(envValue("MEETING_SMOKE_PEER_RESULT_PATH"))
     , m_enabled(envFlag("MEETING_RUNTIME_SMOKE"))
     , m_requireVideoEvidence(envFlag("MEETING_SMOKE_REQUIRE_VIDEO"))
+    , m_requireAudioEvidence(envFlag("MEETING_SMOKE_REQUIRE_AUDIO"))
+    , m_disableLocalVideo(envFlag("MEETING_SMOKE_DISABLE_LOCAL_VIDEO"))
+    , m_soakDurationMs(std::max(0, envInt("MEETING_SMOKE_SOAK_MS", 0)))
+    , m_soakPollIntervalMs(std::max(200, envInt("MEETING_SMOKE_SOAK_POLL_INTERVAL_MS", 1000)))
     , m_expectedCameraSource([]() {
         const QString configured = normalizeExpectedCameraSource(envValue("MEETING_SMOKE_EXPECT_CAMERA_SOURCE"));
         if (!configured.isEmpty()) {
@@ -84,7 +175,11 @@ RuntimeSmokeDriver::RuntimeSmokeDriver(MeetingController* controller, QObject* p
             return QStringLiteral("real-device");
         }
         return QString();
-    }()) {}
+    }()) {
+    m_meetingIdPath = normalizeSmokeArtifactPath(m_meetingIdPath, QStringLiteral("meeting_id.txt"));
+    m_resultPath = normalizeSmokeArtifactPath(m_resultPath, QStringLiteral("result.txt"));
+    m_peerResultPath = normalizeSmokeArtifactPath(m_peerResultPath, QStringLiteral("peer.result.txt"));
+}
 
 bool RuntimeSmokeDriver::enabled() const {
     return m_enabled && m_controller != nullptr && (m_role == QStringLiteral("host") || m_role == QStringLiteral("guest"));
@@ -110,6 +205,10 @@ void RuntimeSmokeDriver::start() {
 
         QObject::connect(frameStore, &av::render::VideoFrameStore::frameChanged, this, &RuntimeSmokeDriver::maybeUpdateVideoEvidence);
         maybeUpdateVideoEvidence();
+    }
+
+    if (m_requireAudioEvidence) {
+        QTimer::singleShot(100, this, &RuntimeSmokeDriver::maybeUpdateAudioEvidence);
     }
 
     m_controller->setServerEndpoint(m_host, m_port);
@@ -153,6 +252,10 @@ QString RuntimeSmokeDriver::currentStageTag() const {
         }
     }
 
+    if (m_requireAudioEvidence && !m_audioEvidenceReady) {
+        return QStringLiteral("audio_evidence");
+    }
+
     if (m_requireVideoEvidence && !m_videoEvidenceReady) {
         return QStringLiteral("video_evidence");
     }
@@ -161,17 +264,70 @@ QString RuntimeSmokeDriver::currentStageTag() const {
         return QStringLiteral("camera_source_evidence");
     }
 
+    if (m_soakStarted) {
+        return QStringLiteral("soak_run");
+    }
 
-    if (m_role == QStringLiteral("host") && !m_peerResultPath.isEmpty() && !m_peerSuccessObserved) {
+    if (m_soakDurationMs <= 0 && m_role == QStringLiteral("host") && !m_peerResultPath.isEmpty() && !m_peerSuccessObserved) {
         return QStringLiteral("peer_success_wait");
     }
 
     return QStringLiteral("post_join_negotiation");
 }
 
+QString RuntimeSmokeDriver::videoPipelineSummary() const {
+    const bool includePipeline = m_requireVideoEvidence ||
+                                 !m_expectedCameraSource.isEmpty() ||
+                                 m_videoCameraFrameObserved ||
+                                 m_videoPeerConfiguredObserved ||
+                                 m_videoEncodedPacketObserved ||
+                                 m_videoRtpSentObserved ||
+                                 m_videoRtpReceivedObserved ||
+                                 m_videoFrameDecodedObserved ||
+                                 m_videoEvidenceReady;
+    if (!includePipeline) {
+        return {};
+    }
+
+    return QStringLiteral("video_pipeline=camera_frame:%1,peer:%2,encode:%3,rtp_send:%4,rtp_recv:%5,decode:%6,frame_store:%7")
+        .arg(m_videoCameraFrameObserved ? 1 : 0)
+        .arg(m_videoPeerConfiguredObserved ? 1 : 0)
+        .arg(m_videoEncodedPacketObserved ? 1 : 0)
+        .arg(m_videoRtpSentObserved ? 1 : 0)
+        .arg(m_videoRtpReceivedObserved ? 1 : 0)
+        .arg(m_videoFrameDecodedObserved ? 1 : 0)
+        .arg(m_videoEvidenceReady ? 1 : 0);
+}
+
+QString RuntimeSmokeDriver::audioPipelineSummary() const {
+    const AudioSmokeSnapshot snapshot = collectAudioSmokeSnapshot(m_controller);
+    const bool includePipeline = m_requireAudioEvidence ||
+                                 m_audioEvidenceReady ||
+                                 snapshot.sentPackets > 0 ||
+                                 snapshot.receivedPackets > 0 ||
+                                 snapshot.playedFrames > 0;
+    if (!includePipeline) {
+        return {};
+    }
+
+    return formatAudioSmokeSnapshot(snapshot, m_audioEvidenceReady);
+}
+
 QString RuntimeSmokeDriver::withStageTag(const QString& reason) const {
     const QString normalizedReason = reason.trimmed().isEmpty() ? QStringLiteral("unknown") : reason.trimmed();
-    return QStringLiteral("stage=%1; reason=%2").arg(currentStageTag(), normalizedReason);
+    const QString videoPipeline = videoPipelineSummary();
+    const QString audioPipeline = audioPipelineSummary();
+    QString annotated = QStringLiteral("stage=%1; reason=%2").arg(currentStageTag(), normalizedReason);
+    if (!audioPipeline.isEmpty()) {
+        annotated += QStringLiteral("; %1").arg(audioPipeline);
+    }
+    if (!videoPipeline.isEmpty()) {
+        annotated += QStringLiteral("; %1").arg(videoPipeline);
+    }
+    if (!m_videoEncodeDetail.trimmed().isEmpty()) {
+        annotated += QStringLiteral("; video_encode_detail=%1").arg(m_videoEncodeDetail.trimmed());
+    }
+    return annotated;
 }
 
 void RuntimeSmokeDriver::handleInfoMessage(const QString& message) {
@@ -181,6 +337,36 @@ void RuntimeSmokeDriver::handleInfoMessage(const QString& message) {
         if (!m_pendingSuccessReason.isEmpty()) {
             maybeCompleteSuccess(m_pendingSuccessReason);
         }
+    }
+
+        if (message.contains(QStringLiteral("Video camera frame observed"), Qt::CaseInsensitive)) {
+        m_videoCameraFrameObserved = true;
+    }
+    if (message.contains(QStringLiteral("Video peer configured"), Qt::CaseInsensitive)) {
+        m_videoPeerConfiguredObserved = true;
+    }
+        if (message.contains(QStringLiteral("Video encoded packet observed"), Qt::CaseInsensitive)) {
+        m_videoEncodedPacketObserved = true;
+        m_videoEncodeDetail.clear();
+    }
+    if (message.contains(QStringLiteral("Video encode pending"), Qt::CaseInsensitive)) {
+        if (m_videoEncodeDetail.isEmpty()) {
+            m_videoEncodeDetail = QStringLiteral("pending");
+        }
+    }
+    if (message.contains(QStringLiteral("Video encode error:"), Qt::CaseInsensitive)) {
+        const QString prefix = QStringLiteral("Video encode error:");
+        const int index = message.indexOf(prefix, 0, Qt::CaseInsensitive);
+        m_videoEncodeDetail = index >= 0 ? message.mid(index + prefix.size()).trimmed() : message.trimmed();
+    }
+    if (message.contains(QStringLiteral("Video RTP packet sent"), Qt::CaseInsensitive)) {
+        m_videoRtpSentObserved = true;
+    }
+    if (message.contains(QStringLiteral("Video RTP packet received"), Qt::CaseInsensitive)) {
+        m_videoRtpReceivedObserved = true;
+    }
+    if (message.contains(QStringLiteral("Video frame decoded"), Qt::CaseInsensitive)) {
+        m_videoFrameDecodedObserved = true;
     }
 
     if (isDegradableVideoEncoderFailure(message, m_requireVideoEvidence)) {
@@ -231,7 +417,17 @@ void RuntimeSmokeDriver::handleInMeetingChanged() {
         return;
     }
 
+    if (m_disableLocalVideo && !m_appliedLocalVideoPolicy) {
+        m_appliedLocalVideoPolicy = true;
+        if (!m_controller->videoMuted()) {
+            m_controller->toggleVideo();
+        }
+    }
+
     writeResult(QStringLiteral("IN_MEETING"), m_controller->meetingId());
+    if (m_requireAudioEvidence) {
+        maybeUpdateAudioEvidence();
+    }
     if (m_role == QStringLiteral("host") && !m_meetingIdPath.isEmpty()) {
         if (!writeMeetingId(m_controller->meetingId())) {
             fail(QStringLiteral("failed to publish meeting id"));
@@ -288,6 +484,21 @@ void RuntimeSmokeDriver::pollPeerSuccess() {
     QTimer::singleShot(100, this, &RuntimeSmokeDriver::pollPeerSuccess);
 }
 
+void RuntimeSmokeDriver::maybeUpdateAudioEvidence() {
+    if (m_reportedResult || !m_requireAudioEvidence || m_audioEvidenceReady || !m_controller) {
+        return;
+    }
+
+    const AudioSmokeSnapshot snapshot = collectAudioSmokeSnapshot(m_controller);
+    if (hasAudioEvidence(snapshot)) {
+        m_audioEvidenceReady = true;
+        maybeCompleteSuccess(m_pendingSuccessReason.isEmpty() ? QStringLiteral("audio evidence observed") : m_pendingSuccessReason);
+        return;
+    }
+
+    QTimer::singleShot(100, this, &RuntimeSmokeDriver::maybeUpdateAudioEvidence);
+}
+
 void RuntimeSmokeDriver::maybeUpdateVideoEvidence() {
     if (m_reportedResult || !m_requireVideoEvidence || m_videoEvidenceReady || !m_controller) {
         return;
@@ -309,6 +520,12 @@ void RuntimeSmokeDriver::maybeCompleteSuccess(const QString& reason) {
 
     const QString normalizedReason = reason.trimmed().isEmpty() ? QStringLiteral("success") : reason.trimmed();
 
+    if (m_requireAudioEvidence && !m_audioEvidenceReady) {
+        m_pendingSuccessReason = normalizedReason;
+        writeResult(QStringLiteral("WAITING_AUDIO"), withStageTag(QStringLiteral("audio evidence pending")));
+        return;
+    }
+
     if (m_requireVideoEvidence && !m_videoEvidenceReady) {
         m_pendingSuccessReason = normalizedReason;
         writeResult(QStringLiteral("WAITING_VIDEO"), withStageTag(normalizedReason));
@@ -319,6 +536,11 @@ void RuntimeSmokeDriver::maybeCompleteSuccess(const QString& reason) {
         m_pendingSuccessReason = normalizedReason;
         writeResult(QStringLiteral("WAITING_CAMERA_SOURCE"),
                     withStageTag(QStringLiteral("camera source evidence pending: %1").arg(m_expectedCameraSource)));
+        return;
+    }
+
+    if (m_soakDurationMs > 0) {
+        maybeStartSoak(normalizedReason);
         return;
     }
 
@@ -333,6 +555,59 @@ void RuntimeSmokeDriver::maybeCompleteSuccess(const QString& reason) {
     }
 
     completeSuccess(normalizedReason);
+}
+
+void RuntimeSmokeDriver::maybeStartSoak(const QString& reason) {
+    if (m_reportedResult) {
+        return;
+    }
+
+    if (m_soakDurationMs <= 0) {
+        completeSuccess(reason);
+        return;
+    }
+
+    if (!m_controller || !m_controller->inMeeting()) {
+        fail(QStringLiteral("soak interrupted before start"));
+        return;
+    }
+
+    m_pendingSuccessReason = reason.trimmed().isEmpty() ? QStringLiteral("success") : reason.trimmed();
+    if (m_soakStarted) {
+        return;
+    }
+
+    m_soakStarted = true;
+    m_soakTimer.start();
+    writeResult(QStringLiteral("SOAKING"), withStageTag(QStringLiteral("soak started: %1ms").arg(m_soakDurationMs)));
+    QTimer::singleShot(m_soakPollIntervalMs, this, &RuntimeSmokeDriver::pollSoakProgress);
+}
+
+void RuntimeSmokeDriver::pollSoakProgress() {
+    if (m_reportedResult || !m_soakStarted) {
+        return;
+    }
+
+    if (!m_controller || !m_controller->inMeeting()) {
+        fail(QStringLiteral("soak interrupted: meeting dropped"));
+        return;
+    }
+
+    if (m_requireAudioEvidence) {
+        maybeUpdateAudioEvidence();
+    }
+
+    const qint64 elapsedMs = m_soakTimer.elapsed();
+    if (elapsedMs >= m_soakDurationMs) {
+        completeSuccess(QStringLiteral("%1; soak_ms=%2")
+                            .arg(m_pendingSuccessReason.isEmpty() ? QStringLiteral("success") : m_pendingSuccessReason)
+                            .arg(m_soakDurationMs));
+        return;
+    }
+
+    writeResult(QStringLiteral("SOAKING"),
+                withStageTag(QStringLiteral("soak progress: %1/%2ms").arg(elapsedMs).arg(m_soakDurationMs)));
+    QTimer::singleShot(m_soakPollIntervalMs, this, &RuntimeSmokeDriver::pollSoakProgress);
 }
 
 void RuntimeSmokeDriver::completeSuccess(const QString& reason) {
@@ -427,3 +702,4 @@ QString RuntimeSmokeDriver::readPeerResult() const {
 
     return QString::fromUtf8(file.readAll()).trimmed();
 }
+
