@@ -27,9 +27,70 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #pragma comment(lib, "Ws2_32.lib")
+#elif defined(__linux__)
+#include <arpa/inet.h>
+#include <cerrno>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <unistd.h>
 #endif
 
 namespace av::session {
+
+#if defined(_WIN32)
+using PlatformSocket = SOCKET;
+using PlatformSockLen = int;
+constexpr PlatformSocket kInvalidPlatformSocket = INVALID_SOCKET;
+
+inline int platformInetPton4(const char* address, void* outAddress) {
+    return InetPtonA(AF_INET, address, outAddress);
+}
+
+inline int platformCloseSocket(PlatformSocket socket) {
+    return ::closesocket(socket);
+}
+
+inline int platformLastSocketError() {
+    return WSAGetLastError();
+}
+
+inline bool platformSocketTimeoutOrInterrupt(int errorCode) {
+    return errorCode == WSAETIMEDOUT || errorCode == WSAEINTR;
+}
+
+inline void platformSetSocketRecvTimeout(PlatformSocket socket, int timeoutMs) {
+    DWORD timeout = static_cast<DWORD>(timeoutMs);
+    ::setsockopt(socket, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeout), sizeof(timeout));
+}
+#elif defined(__linux__)
+using PlatformSocket = int;
+using PlatformSockLen = socklen_t;
+constexpr PlatformSocket kInvalidPlatformSocket = -1;
+
+inline int platformInetPton4(const char* address, void* outAddress) {
+    return ::inet_pton(AF_INET, address, outAddress);
+}
+
+inline int platformCloseSocket(PlatformSocket socket) {
+    return ::close(socket);
+}
+
+inline int platformLastSocketError() {
+    return errno;
+}
+
+inline bool platformSocketTimeoutOrInterrupt(int errorCode) {
+    return errorCode == EAGAIN || errorCode == EWOULDBLOCK || errorCode == EINTR;
+}
+
+inline void platformSetSocketRecvTimeout(PlatformSocket socket, int timeoutMs) {
+    timeval timeout{};
+    timeout.tv_sec = timeoutMs / 1000;
+    timeout.tv_usec = (timeoutMs % 1000) * 1000;
+    ::setsockopt(socket, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+}
+#endif
 
 struct AudioCallSessionConfig {
     std::string localAddress{"0.0.0.0"};
@@ -83,7 +144,7 @@ private:
         std::chrono::steady_clock::time_point observedAt{};
     };
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__linux__)
     bool openSocketLocked();
     void closeSocketLocked();
     void sendLoop();
@@ -128,8 +189,8 @@ private:
     std::atomic<uint32_t> m_sentPacketCount{0};
     std::atomic<uint32_t> m_sentOctetCount{0};
 
-#ifdef _WIN32
-    SOCKET m_socket{INVALID_SOCKET};
+#if defined(_WIN32) || defined(__linux__)
+    PlatformSocket m_socket{kInvalidPlatformSocket};
     sockaddr_in m_peer{};
     bool m_peerValid{false};
     SenderReportLedger m_localSenderReport{};
@@ -159,7 +220,7 @@ inline av::session::AudioCallSession::~AudioCallSession() {
 }
 
 inline bool av::session::AudioCallSession::start() {
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__linux__)
     if (m_running.load(std::memory_order_acquire)) {
         return false;
     }
@@ -222,7 +283,7 @@ inline bool av::session::AudioCallSession::start() {
 }
 
 inline void av::session::AudioCallSession::stop() {
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__linux__)
     if (!m_running.exchange(false, std::memory_order_acq_rel) && !m_sendThread.joinable() && !m_recvThread.joinable()) {
         return;
     }
@@ -285,12 +346,12 @@ inline QString av::session::AudioCallSession::preferredOutputDeviceName() const 
 }
 
 inline void av::session::AudioCallSession::setPeer(const std::string& address, uint16_t port) {
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__linux__)
     std::lock_guard<std::mutex> lock(m_mutex);
     m_config.peerAddress = address;
     m_config.peerPort = port;
     m_peerValid = false;
-    if (m_socket != INVALID_SOCKET) {
+    if (m_socket != kInvalidPlatformSocket) {
         sockaddr_in peer{};
         if (resolvePeerLocked(peer)) {
             m_peer = peer;
@@ -305,13 +366,13 @@ inline void av::session::AudioCallSession::setPeer(const std::string& address, u
 }
 
 inline uint16_t av::session::AudioCallSession::localPort() const {
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__linux__)
     std::lock_guard<std::mutex> lock(m_mutex);
-    if (m_socket == INVALID_SOCKET) {
+    if (m_socket == kInvalidPlatformSocket) {
         return 0;
     }
     sockaddr_in addr{};
-    int len = sizeof(addr);
+    PlatformSockLen len = static_cast<PlatformSockLen>(sizeof(addr));
     if (getsockname(m_socket, reinterpret_cast<sockaddr*>(&addr), &len) != 0) {
         return 0;
     }
@@ -366,8 +427,9 @@ inline std::shared_ptr<av::sync::AVSync> av::session::AudioCallSession::clock() 
     return m_player.clock();
 }
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__linux__)
 inline bool av::session::AudioCallSession::openSocketLocked() {
+#ifdef _WIN32
     static std::once_flag wsaInitOnce;
     static int wsaInitStatus = 0;
     std::call_once(wsaInitOnce, [] {
@@ -378,9 +440,10 @@ inline bool av::session::AudioCallSession::openSocketLocked() {
         setErrorLocked("WSAStartup failed");
         return false;
     }
+#endif
 
     m_socket = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-    if (m_socket == INVALID_SOCKET) {
+    if (m_socket == kInvalidPlatformSocket) {
         setErrorLocked("socket() failed");
         return false;
     }
@@ -390,13 +453,13 @@ inline bool av::session::AudioCallSession::openSocketLocked() {
     local.sin_port = htons(m_config.localPort);
     if (m_config.localAddress.empty() || m_config.localAddress == "0.0.0.0") {
         local.sin_addr.s_addr = htonl(INADDR_ANY);
-    } else if (InetPtonA(AF_INET, m_config.localAddress.c_str(), &local.sin_addr) != 1) {
+    } else if (platformInetPton4(m_config.localAddress.c_str(), &local.sin_addr) != 1) {
         setErrorLocked("invalid local address");
         closeSocketLocked();
         return false;
     }
 
-    if (::bind(m_socket, reinterpret_cast<sockaddr*>(&local), sizeof(local)) == SOCKET_ERROR) {
+    if (::bind(m_socket, reinterpret_cast<sockaddr*>(&local), sizeof(local)) != 0) {
         setErrorLocked("bind() failed");
         closeSocketLocked();
         return false;
@@ -408,15 +471,14 @@ inline bool av::session::AudioCallSession::openSocketLocked() {
         m_peerValid = true;
     }
 
-    DWORD timeoutMs = 50;
-    ::setsockopt(m_socket, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeoutMs), sizeof(timeoutMs));
+    platformSetSocketRecvTimeout(m_socket, 50);
     return true;
 }
 
 inline void av::session::AudioCallSession::closeSocketLocked() {
-    if (m_socket != INVALID_SOCKET) {
-        ::closesocket(m_socket);
-        m_socket = INVALID_SOCKET;
+    if (m_socket != kInvalidPlatformSocket) {
+        (void)platformCloseSocket(m_socket);
+        m_socket = kInvalidPlatformSocket;
     }
     m_peerValid = false;
 }
@@ -429,7 +491,7 @@ inline bool av::session::AudioCallSession::resolvePeerLocked(sockaddr_in& outPee
     std::memset(&outPeer, 0, sizeof(outPeer));
     outPeer.sin_family = AF_INET;
     outPeer.sin_port = htons(m_config.peerPort);
-    if (InetPtonA(AF_INET, m_config.peerAddress.c_str(), &outPeer.sin_addr) != 1) {
+    if (platformInetPton4(m_config.peerAddress.c_str(), &outPeer.sin_addr) != 1) {
         return false;
     }
     return true;
@@ -518,7 +580,7 @@ inline bool av::session::AudioCallSession::encodeAndSend(av::codec::AudioEncoder
                               0,
                               reinterpret_cast<const sockaddr*>(&peer),
                               sizeof(peer));
-    if (sent != static_cast<int>(packet.size())) {
+    if (sent < 0 || static_cast<std::size_t>(sent) != packet.size()) {
         setErrorLocked("sendto failed");
         return false;
     }
@@ -532,7 +594,7 @@ inline bool av::session::AudioCallSession::encodeAndSend(av::codec::AudioEncoder
 }
 
 inline bool av::session::AudioCallSession::sendSenderReportLocked(const sockaddr_in& peer, uint32_t rtpTimestamp) {
-    if (m_socket == INVALID_SOCKET || rtpTimestamp == 0 || m_sentPacketCount.load(std::memory_order_relaxed) == 0) {
+    if (m_socket == kInvalidPlatformSocket || rtpTimestamp == 0 || m_sentPacketCount.load(std::memory_order_relaxed) == 0) {
         return false;
     }
 
@@ -562,7 +624,7 @@ inline bool av::session::AudioCallSession::sendSenderReportLocked(const sockaddr
                               0,
                               reinterpret_cast<const sockaddr*>(&peer),
                               sizeof(peer));
-    if (sent != static_cast<int>(packet.size())) {
+    if (sent < 0 || static_cast<std::size_t>(sent) != packet.size()) {
         setErrorLocked("sendto RTCP SR failed");
         return false;
     }
@@ -579,7 +641,7 @@ inline bool av::session::AudioCallSession::sendReceiverReportLocked(const sockad
                                                                     uint32_t remoteSsrc,
                                                                     uint32_t lastSenderReport,
                                                                     uint32_t delaySinceLastSenderReport) {
-    if (m_socket == INVALID_SOCKET || remoteSsrc == 0 || lastSenderReport == 0) {
+    if (m_socket == kInvalidPlatformSocket || remoteSsrc == 0 || lastSenderReport == 0) {
         return false;
     }
 
@@ -607,7 +669,7 @@ inline bool av::session::AudioCallSession::sendReceiverReportLocked(const sockad
                               0,
                               reinterpret_cast<const sockaddr*>(&peer),
                               sizeof(peer));
-    if (sent != static_cast<int>(packet.size())) {
+    if (sent < 0 || static_cast<std::size_t>(sent) != packet.size()) {
         setErrorLocked("sendto RTCP RR failed");
         return false;
     }
@@ -837,7 +899,7 @@ inline void av::session::AudioCallSession::recvLoop() {
     std::uint8_t buffer[1500];
     while (m_running.load(std::memory_order_acquire)) {
         sockaddr_in from{};
-        int fromLen = sizeof(from);
+        PlatformSockLen fromLen = static_cast<PlatformSockLen>(sizeof(from));
         const int received = ::recvfrom(m_socket,
                                         reinterpret_cast<char*>(buffer),
                                         static_cast<int>(sizeof(buffer)),
@@ -845,8 +907,8 @@ inline void av::session::AudioCallSession::recvLoop() {
                                         reinterpret_cast<sockaddr*>(&from),
                                         &fromLen);
         if (received <= 0) {
-            const int err = WSAGetLastError();
-            if (!m_running.load(std::memory_order_acquire) || err == WSAETIMEDOUT || err == WSAEINTR) {
+            const int err = platformLastSocketError();
+            if (!m_running.load(std::memory_order_acquire) || platformSocketTimeoutOrInterrupt(err)) {
                 continue;
             }
             setErrorLocked("recvfrom failed");

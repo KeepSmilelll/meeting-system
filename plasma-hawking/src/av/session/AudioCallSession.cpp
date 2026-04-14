@@ -1,7 +1,7 @@
 #include "AudioCallSession.h"
 
 bool av::session::runAudioCallSessionLoopbackSelfCheck(std::string* error) {
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__linux__)
     AudioCallSessionConfig config{};
     config.peerAddress = "127.0.0.1";
 
