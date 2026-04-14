@@ -29,6 +29,20 @@ func (r *UserRepo) FindByUsername(ctx context.Context, username string) (*model.
 	return &user, nil
 }
 
+func (r *UserRepo) FindByID(ctx context.Context, userID uint64) (*model.User, error) {
+	if r == nil || r.db == nil {
+		return nil, gorm.ErrInvalidDB
+	}
+
+	var user model.User
+	err := r.db.WithContext(ctx).First(&user, "id = ?", userID).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return &user, nil
+}
+
 func (r *UserRepo) Create(ctx context.Context, user *model.User) error {
 	if r == nil || r.db == nil {
 		return gorm.ErrInvalidDB

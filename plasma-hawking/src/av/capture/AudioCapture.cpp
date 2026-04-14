@@ -70,6 +70,37 @@ float clampSample(float value) {
     return value;
 }
 
+QString audioInputDeviceName(const QAudioDevice& device) {
+    const QString description = device.description().trimmed();
+    if (!description.isEmpty()) {
+        return description;
+    }
+    return QString::fromUtf8(device.id()).trimmed();
+}
+
+QAudioDevice resolvePreferredInputDevice(const QString& preferredDeviceName) {
+    const auto inputs = QMediaDevices::audioInputs();
+    if (inputs.isEmpty()) {
+        return {};
+    }
+
+    const QString preferred = preferredDeviceName.trimmed();
+    if (!preferred.isEmpty()) {
+        for (const auto& input : inputs) {
+            const QString name = audioInputDeviceName(input);
+            if (name.compare(preferred, Qt::CaseInsensitive) == 0) {
+                return input;
+            }
+        }
+    }
+
+    const QAudioDevice defaultInput = QMediaDevices::defaultAudioInput();
+    if (!defaultInput.isNull()) {
+        return defaultInput;
+    }
+
+    return inputs.front();
+}
 }  // namespace
 
 struct AudioCapture::Impl {
@@ -102,10 +133,10 @@ struct AudioCapture::Impl {
             return;
         }
 
-        device = QMediaDevices::defaultAudioInput();
+        device = resolvePreferredInputDevice(preferredDeviceName);
         if (device.isNull()) {
             if (allowSyntheticCapture()) {
-                qWarning().noquote() << "[audio-capture] synthetic mode: no default audio input";
+                qWarning().noquote() << "[audio-capture] synthetic mode: no audio input";
                 running = true;
                 return;
             }
@@ -276,6 +307,7 @@ struct AudioCapture::Impl {
     std::unique_ptr<CaptureDevice> captureDevice;
     std::deque<float> pendingSamples;
     QByteArray pendingBytes;
+    QString preferredDeviceName;
     int inputSampleRate{kTargetSampleRate};
     int inputChannels{kTargetChannels};
     int inputBytesPerSample{2};
@@ -309,6 +341,7 @@ bool AudioCapture::start() {
     }
 
     m_impl = std::make_unique<Impl>(this);
+    m_impl->preferredDeviceName = m_preferredDeviceName;
     m_impl->startDevice();
     if (!m_impl->running) {
         m_impl.reset();
@@ -334,6 +367,54 @@ bool AudioCapture::isRunning() const {
     return m_running.load(std::memory_order_relaxed);
 }
 
+QStringList AudioCapture::availableInputDevices() {
+    QStringList names;
+    for (const auto& input : QMediaDevices::audioInputs()) {
+        const QString name = audioInputDeviceName(input);
+        if (!name.isEmpty() && !names.contains(name, Qt::CaseInsensitive)) {
+            names.append(name);
+        }
+    }
+    return names;
+}
+
+bool AudioCapture::setPreferredDeviceName(const QString& deviceName) {
+    const QString normalized = deviceName.trimmed();
+    if (m_preferredDeviceName == normalized) {
+        return true;
+    }
+
+    const QString previousPreferred = m_preferredDeviceName;
+    m_preferredDeviceName = normalized;
+
+    if (!m_impl) {
+        return true;
+    }
+
+    const QString previousImplPreferred = m_impl->preferredDeviceName;
+    m_impl->preferredDeviceName = normalized;
+
+    if (!m_impl->running) {
+        return true;
+    }
+
+    m_impl->stopDevice();
+    m_impl->startDevice();
+    if (m_impl->running) {
+        return true;
+    }
+
+    // Rollback to previous device preference if switching fails.
+    m_preferredDeviceName = previousPreferred;
+    m_impl->stopDevice();
+    m_impl->preferredDeviceName = previousImplPreferred;
+    m_impl->startDevice();
+    return false;
+}
+
+QString AudioCapture::preferredDeviceName() const {
+    return m_preferredDeviceName;
+}
 bool AudioCapture::pushCapturedFrame(AudioFrame frame) {
     if (!isRunning()) {
         return false;
@@ -349,6 +430,7 @@ bool AudioCapture::popFrameForEncode(AudioFrame& outFrame, std::chrono::millisec
 }
 
 }  // namespace av::capture
+
 
 
 

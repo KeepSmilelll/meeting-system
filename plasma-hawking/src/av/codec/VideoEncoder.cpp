@@ -2,12 +2,12 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdlib>
 #include <string>
+#include <vector>
 
 extern "C" {
 #include <libavutil/opt.h>
-#include <libavutil/pixdesc.h>
-#include <libswscale/swscale.h>
 }
 
 namespace av::codec {
@@ -44,13 +44,114 @@ bool codecSupportsPixelFormat(const AVCodec* codec, AVPixelFormat pixelFormat) {
     return false;
 }
 
-}  // namespace
+std::vector<const char*> orderedCodecCandidates() {
+    std::vector<const char*> ordered;
+    const auto pushUnique = [&ordered](const char* candidate) {
+        if (candidate == nullptr || *candidate == '\0') {
+            return;
+        }
+        if (std::find_if(ordered.begin(), ordered.end(),
+                         [candidate](const char* existing) { return std::string(existing) == candidate; }) != ordered.end()) {
+            return;
+        }
+        ordered.push_back(candidate);
+    };
 
-void VideoEncoder::SwsContextDeleter::operator()(SwsContext* ctx) const {
-    if (ctx != nullptr) {
-        sws_freeContext(ctx);
+    pushUnique(std::getenv("MEETING_VIDEO_ENCODER"));
+    for (const char* candidate : kCodecCandidates) {
+        pushUnique(candidate);
     }
+    return ordered;
 }
+
+uint8_t clampToByte(int value) {
+    return static_cast<uint8_t>(std::clamp(value, 0, 255));
+}
+
+uint8_t lumaFromBgra(uint8_t b, uint8_t g, uint8_t r) {
+    const int y = ((66 * static_cast<int>(r)) + (129 * static_cast<int>(g)) + (25 * static_cast<int>(b)) + 128) >> 8;
+    return clampToByte(y + 16);
+}
+
+uint8_t chromaUFromBgra(uint8_t b, uint8_t g, uint8_t r) {
+    const int u = ((-38 * static_cast<int>(r)) - (74 * static_cast<int>(g)) + (112 * static_cast<int>(b)) + 128) >> 8;
+    return clampToByte(u + 128);
+}
+
+uint8_t chromaVFromBgra(uint8_t b, uint8_t g, uint8_t r) {
+    const int v = ((112 * static_cast<int>(r)) - (94 * static_cast<int>(g)) - (18 * static_cast<int>(b)) + 128) >> 8;
+    return clampToByte(v + 128);
+}
+
+bool fillFrameFromBgra(const capture::ScreenFrame& inFrame, AVFrame& outFrame, AVPixelFormat pixelFormat) {
+    if (inFrame.width <= 0 || inFrame.height <= 0 || (inFrame.width % 2) != 0 || (inFrame.height % 2) != 0) {
+        return false;
+    }
+    if (pixelFormat != AV_PIX_FMT_NV12 && pixelFormat != AV_PIX_FMT_YUV420P) {
+        return false;
+    }
+
+    const uint8_t* source = inFrame.bgra.data();
+    const int width = inFrame.width;
+    const int height = inFrame.height;
+    const int sourceStride = width * 4;
+
+    for (int y = 0; y < height; ++y) {
+        const uint8_t* srcRow = source + static_cast<std::ptrdiff_t>(y) * sourceStride;
+        uint8_t* yRow = outFrame.data[0] + static_cast<std::ptrdiff_t>(y) * outFrame.linesize[0];
+        for (int x = 0; x < width; ++x) {
+            const uint8_t* pixel = srcRow + static_cast<std::ptrdiff_t>(x) * 4;
+            yRow[x] = lumaFromBgra(pixel[0], pixel[1], pixel[2]);
+        }
+    }
+
+    for (int y = 0; y < height; y += 2) {
+        const uint8_t* srcRow0 = source + static_cast<std::ptrdiff_t>(y) * sourceStride;
+        const uint8_t* srcRow1 = source + static_cast<std::ptrdiff_t>(std::min(y + 1, height - 1)) * sourceStride;
+
+        uint8_t* uvRowInterleaved = nullptr;
+        uint8_t* uRowPlanar = nullptr;
+        uint8_t* vRowPlanar = nullptr;
+        if (pixelFormat == AV_PIX_FMT_NV12) {
+            uvRowInterleaved = outFrame.data[1] + static_cast<std::ptrdiff_t>(y / 2) * outFrame.linesize[1];
+        } else {
+            uRowPlanar = outFrame.data[1] + static_cast<std::ptrdiff_t>(y / 2) * outFrame.linesize[1];
+            vRowPlanar = outFrame.data[2] + static_cast<std::ptrdiff_t>(y / 2) * outFrame.linesize[2];
+        }
+
+        for (int x = 0; x < width; x += 2) {
+            const uint8_t* p00 = srcRow0 + static_cast<std::ptrdiff_t>(x) * 4;
+            const uint8_t* p01 = srcRow0 + static_cast<std::ptrdiff_t>(std::min(x + 1, width - 1)) * 4;
+            const uint8_t* p10 = srcRow1 + static_cast<std::ptrdiff_t>(x) * 4;
+            const uint8_t* p11 = srcRow1 + static_cast<std::ptrdiff_t>(std::min(x + 1, width - 1)) * 4;
+
+            const int uAvg = (static_cast<int>(chromaUFromBgra(p00[0], p00[1], p00[2])) +
+                              static_cast<int>(chromaUFromBgra(p01[0], p01[1], p01[2])) +
+                              static_cast<int>(chromaUFromBgra(p10[0], p10[1], p10[2])) +
+                              static_cast<int>(chromaUFromBgra(p11[0], p11[1], p11[2])) +
+                              2) /
+                             4;
+            const int vAvg = (static_cast<int>(chromaVFromBgra(p00[0], p00[1], p00[2])) +
+                              static_cast<int>(chromaVFromBgra(p01[0], p01[1], p01[2])) +
+                              static_cast<int>(chromaVFromBgra(p10[0], p10[1], p10[2])) +
+                              static_cast<int>(chromaVFromBgra(p11[0], p11[1], p11[2])) +
+                              2) /
+                             4;
+
+            if (pixelFormat == AV_PIX_FMT_NV12) {
+                uvRowInterleaved[x] = clampToByte(uAvg);
+                uvRowInterleaved[x + 1] = clampToByte(vAvg);
+            } else {
+                uRowPlanar[x / 2] = clampToByte(uAvg);
+                vRowPlanar[x / 2] = clampToByte(vAvg);
+            }
+        }
+    }
+
+    return true;
+}
+
+}  // namespace
 
 VideoEncoder::VideoEncoder() = default;
 
@@ -66,7 +167,7 @@ bool VideoEncoder::configure(int width, int height, int frameRate, int bitrate) 
     width = std::max(2, width);
     height = std::max(2, height);
 
-    for (const char* candidate : kCodecCandidates) {
+    for (const char* candidate : orderedCodecCandidates()) {
         const AVCodec* codec = avcodec_find_encoder_by_name(candidate);
         if (codec == nullptr) {
             continue;
@@ -101,21 +202,6 @@ bool VideoEncoder::configure(int width, int height, int frameRate, int bitrate) 
                 continue;
             }
 
-            SwsContext* sws = sws_getCachedContext(nullptr,
-                                                   width,
-                                                   height,
-                                                   AV_PIX_FMT_BGRA,
-                                                   width,
-                                                   height,
-                                                   outputFormat,
-                                                   SWS_FAST_BILINEAR,
-                                                   nullptr,
-                                                   nullptr,
-                                                   nullptr);
-            if (sws == nullptr) {
-                continue;
-            }
-
             m_width = width;
             m_height = height;
             m_frameRate = frameRate;
@@ -123,7 +209,6 @@ bool VideoEncoder::configure(int width, int height, int frameRate, int bitrate) 
             m_payloadType = kScreenSharePayloadType;
             m_outputPixelFormat = outputFormat;
             m_codecContext = std::move(context);
-            m_swsContext.reset(sws);
             m_codecName = candidate;
             return true;
         }
@@ -183,17 +268,9 @@ bool VideoEncoder::encode(const capture::ScreenFrame& inFrame,
         return false;
     }
 
-    const uint8_t* srcSlices[4] = {inFrame.bgra.data(), nullptr, nullptr, nullptr};
-    const int srcStride[4] = {m_width * 4, 0, 0, 0};
-    if (sws_scale(m_swsContext.get(),
-                  srcSlices,
-                  srcStride,
-                  0,
-                  m_height,
-                  frame->data,
-                  frame->linesize) <= 0) {
+    if (!fillFrameFromBgra(inFrame, *frame, m_outputPixelFormat)) {
         if (error != nullptr) {
-            *error = "sws_scale failed";
+            *error = "BGRA to encoder pixel format conversion failed";
         }
         return false;
     }
@@ -215,6 +292,12 @@ bool VideoEncoder::encode(const capture::ScreenFrame& inFrame,
     }
 
     const int receiveResult = avcodec_receive_packet(m_codecContext.get(), packet.get());
+    if (receiveResult == AVERROR(EAGAIN) || receiveResult == AVERROR_EOF) {
+        if (error != nullptr) {
+            error->clear();
+        }
+        return false;
+    }
     if (receiveResult < 0) {
         if (error != nullptr) {
             *error = "avcodec_receive_packet failed: " + describeAvError(receiveResult);
@@ -260,3 +343,4 @@ uint8_t VideoEncoder::payloadType() const {
 }
 
 }  // namespace av::codec
+

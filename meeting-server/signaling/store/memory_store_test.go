@@ -1,6 +1,51 @@
 package store
 
-import "testing"
+import (
+	"context"
+	"testing"
+
+	"meeting-server/signaling/auth"
+	"meeting-server/signaling/model"
+
+	"gorm.io/gorm"
+)
+
+type fakeUserRepo struct {
+	byUsername map[string]*model.User
+	byID       map[uint64]*model.User
+}
+
+func newFakeUserRepo() *fakeUserRepo {
+	return &fakeUserRepo{
+		byUsername: make(map[string]*model.User),
+		byID:       make(map[uint64]*model.User),
+	}
+}
+
+func (r *fakeUserRepo) FindByUsername(_ context.Context, username string) (*model.User, error) {
+	user, ok := r.byUsername[username]
+	if !ok {
+		return nil, gorm.ErrRecordNotFound
+	}
+	copy := *user
+	return &copy, nil
+}
+
+func (r *fakeUserRepo) FindByID(_ context.Context, userID uint64) (*model.User, error) {
+	user, ok := r.byID[userID]
+	if !ok {
+		return nil, gorm.ErrRecordNotFound
+	}
+	copy := *user
+	return &copy, nil
+}
+
+func (r *fakeUserRepo) Create(_ context.Context, user *model.User) error {
+	copy := *user
+	r.byUsername[copy.Username] = &copy
+	r.byID[copy.ID] = &copy
+	return nil
+}
 
 func TestMeetingLifecycle(t *testing.T) {
 	s := NewMemoryStore()
@@ -37,6 +82,83 @@ func TestMeetingLifecycle(t *testing.T) {
 	}
 	if remaining != 1 {
 		t.Fatalf("expected 1 remaining user, got %d", remaining)
+	}
+}
+
+func TestMemoryStoreDefaultUserUsesArgon2idHash(t *testing.T) {
+	s := NewMemoryStore()
+
+	demo, ok := s.GetUserByID("u1001")
+	if !ok {
+		t.Fatalf("expected default user u1001")
+	}
+	if !auth.IsArgon2idHash(demo.PasswordHash) {
+		t.Fatalf("expected argon2id hash, got %q", demo.PasswordHash)
+	}
+
+	if _, err := s.Authenticate("demo", "demo"); err != nil {
+		t.Fatalf("expected argon2id verification for plain password input, got %v", err)
+	}
+	if _, err := s.Authenticate("demo", demo.PasswordHash); err == nil {
+		t.Fatalf("expected direct hash input to be rejected")
+	}
+}
+
+func TestMemoryStoreAuthenticatePrefersRepoUser(t *testing.T) {
+	s := NewMemoryStore()
+	repo := newFakeUserRepo()
+	hasher := auth.NewPasswordHasher()
+	repoHash, err := hasher.HashPassword("repo-secret")
+	if err != nil {
+		t.Fatalf("hash repo secret failed: %v", err)
+	}
+
+	repo.byUsername["demo"] = &model.User{ID: 2001, Username: "demo", DisplayName: "Repo Demo", PasswordHash: repoHash}
+	repo.byID[2001] = repo.byUsername["demo"]
+	s.SetUserRepo(repo)
+
+	user, err := s.Authenticate("demo", "repo-secret")
+	if err != nil {
+		t.Fatalf("repo authenticate failed: %v", err)
+	}
+	if user.ID != "u2001" {
+		t.Fatalf("expected repo user id u2001, got %s", user.ID)
+	}
+
+	if _, err := s.Authenticate("demo", "demo"); err == nil {
+		t.Fatal("expected local plaintext password to fail when repo user exists")
+	}
+	if _, err := s.Authenticate("demo", repoHash); err == nil {
+		t.Fatal("expected direct hash input to fail for repo user")
+	}
+
+	got, ok := s.GetUserByID("u2001")
+	if !ok || got.Username != "demo" {
+		t.Fatalf("expected repo get-by-id success, got ok=%v user=%+v", ok, got)
+	}
+}
+
+func TestMemoryStoreSeedDefaultUsersToRepo(t *testing.T) {
+	s := NewMemoryStore()
+	repo := newFakeUserRepo()
+	s.SetUserRepo(repo)
+
+	if err := s.SeedDefaultUsersToRepo(context.Background()); err != nil {
+		t.Fatalf("SeedDefaultUsersToRepo failed: %v", err)
+	}
+
+	for _, username := range []string{"demo", "alice", "bob"} {
+		seeded, ok := repo.byUsername[username]
+		if !ok {
+			t.Fatalf("expected seeded user %s", username)
+		}
+		if !auth.IsArgon2idHash(seeded.PasswordHash) {
+			t.Fatalf("expected argon2 hash for %s, got %q", username, seeded.PasswordHash)
+		}
+	}
+
+	if _, err := s.Authenticate("demo", "demo"); err != nil {
+		t.Fatalf("expected seeded repo auth to accept demo password, got %v", err)
 	}
 }
 

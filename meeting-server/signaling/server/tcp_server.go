@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
+	"fmt"
 	"meeting-server/signaling/config"
 	"meeting-server/signaling/protocol"
 	"net"
@@ -29,8 +31,29 @@ func NewTCPServer(cfg config.Config, sessions *SessionManager, handler MessageHa
 	return &TCPServer{cfg: cfg, sessions: sessions, handler: handler}
 }
 
+func (s *TCPServer) createListener() (net.Listener, error) {
+	if !s.cfg.TLSEnabled {
+		return net.Listen("tcp", s.cfg.ListenAddr)
+	}
+
+	if s.cfg.TLSCertFile == "" || s.cfg.TLSKeyFile == "" {
+		return nil, fmt.Errorf("tls enabled but cert/key file is missing")
+	}
+
+	certificate, err := tls.LoadX509KeyPair(s.cfg.TLSCertFile, s.cfg.TLSKeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("load tls key pair: %w", err)
+	}
+
+	tlsConfig := &tls.Config{
+		MinVersion:   tls.VersionTLS12,
+		Certificates: []tls.Certificate{certificate},
+	}
+	return tls.Listen("tcp", s.cfg.ListenAddr, tlsConfig)
+}
+
 func (s *TCPServer) Run(ctx context.Context) error {
-	listener, err := net.Listen("tcp", s.cfg.ListenAddr)
+	listener, err := s.createListener()
 	if err != nil {
 		return err
 	}

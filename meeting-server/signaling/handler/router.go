@@ -22,6 +22,7 @@ type Router struct {
 	meetingHandler *MeetingHandler
 	mediaHandler   *MediaHandler
 	chatHandler    *ChatHandler
+	fileHandler    *FileHandler
 	sessions       *server.SessionManager
 	sessionStore   store.SessionStore
 }
@@ -36,6 +37,7 @@ func NewRouter(cfg config.Config, sessions *server.SessionManager, memStore *sto
 	r.meetingHandler = NewMeetingHandler(cfg, sessions, meetingStore, roomStateStore, sessionStore, directBus, mediaSfuClient, meetingMirror...)
 	r.mediaHandler = NewMediaHandler(cfg, sessions, meetingStore, roomStateStore, mediaSfuClient, sessionStore, directBus)
 	r.chatHandler = NewChatHandler(cfg, sessions, memStore)
+	r.fileHandler = NewFileHandler(cfg, sessions)
 
 	r.Register(protocol.AuthLoginReq, r.authHandler.HandleLogin)
 	r.Register(protocol.AuthLogoutReq, r.authHandler.HandleLogout)
@@ -54,6 +56,10 @@ func NewRouter(cfg config.Config, sessions *server.SessionManager, memStore *sto
 	r.Register(protocol.MediaScreenShare, r.mediaHandler.HandleScreenShare)
 
 	r.Register(protocol.ChatSendReq, r.chatHandler.HandleSend)
+
+	r.Register(protocol.FileOfferReq, r.fileHandler.HandleOffer)
+	r.Register(protocol.FileAcceptReq, r.fileHandler.HandleAccept)
+	r.Register(protocol.FileChunkData, r.fileHandler.HandleChunk)
 
 	return r
 }
@@ -130,7 +136,8 @@ func isStateAllowed(state server.SessionState, msgType protocol.SignalType) bool
 		return state == server.StateAuthenticated || state == server.StateInMeeting
 	case protocol.MeetCreateReq, protocol.MeetJoinReq:
 		return state == server.StateAuthenticated
-	case protocol.MeetLeaveReq, protocol.ChatSendReq, protocol.MeetKickReq, protocol.MeetMuteAllReq:
+	case protocol.MeetLeaveReq, protocol.ChatSendReq, protocol.MeetKickReq, protocol.MeetMuteAllReq,
+		protocol.FileOfferReq, protocol.FileAcceptReq, protocol.FileChunkData:
 		return state == server.StateInMeeting
 	case protocol.MediaOffer, protocol.MediaAnswer, protocol.MediaIceCandidate, protocol.MediaMuteToggle, protocol.MediaScreenShare:
 		return state == server.StateInMeeting

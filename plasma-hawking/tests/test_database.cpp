@@ -56,6 +56,8 @@ int main(int argc, char* argv[]) {
     assert(settings.saveServerEndpoint(QStringLiteral("127.0.0.1"), 8443));
     assert(settings.serverHost() == QStringLiteral("127.0.0.1"));
     assert(settings.serverPort() == 8443);
+    assert(settings.savePreferredCameraDevice(QStringLiteral("e2eSoft iVCam")));
+    assert(settings.preferredCameraDevice() == QStringLiteral("e2eSoft iVCam"));
 
     MeetingRepository meetings(databasePath);
     assert(meetings.isOpen());
@@ -76,3 +78,6 @@ int main(int argc, char* argv[]) {
     db.close();
     return 0;
 }
+
+
+

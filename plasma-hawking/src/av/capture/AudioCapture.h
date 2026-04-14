@@ -8,6 +8,9 @@
 #include <memory>
 #include <vector>
 
+#include <QString>
+#include <QStringList>
+
 namespace av::capture {
 
 struct AudioFrame {
@@ -26,6 +29,10 @@ public:
     void stop();
     bool isRunning() const;
 
+    static QStringList availableInputDevices();
+    bool setPreferredDeviceName(const QString& deviceName);
+    QString preferredDeviceName() const;
+
     // Capture-thread entry: push one captured PCM frame.
     bool pushCapturedFrame(AudioFrame frame);
 
@@ -39,6 +46,7 @@ private:
     std::atomic<bool> m_running{false};
     std::unique_ptr<Impl> m_impl;
     common::RingBuffer<AudioFrame> m_ringBuffer;
+    QString m_preferredDeviceName;
 };
 
 }  // namespace av::capture

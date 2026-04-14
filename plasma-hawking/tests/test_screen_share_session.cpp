@@ -94,8 +94,12 @@ std::vector<uint8_t> buildNackPacket(uint32_t senderSsrc, uint32_t mediaSsrc, ui
 
 int main(int argc, char* argv[]) {
     QCoreApplication app(argc, argv);
-    qputenv("MEETING_SYNTHETIC_SCREEN", QByteArrayLiteral("1"));
-    qputenv("MEETING_SYNTHETIC_CAMERA", QByteArrayLiteral("1"));
+    if (qEnvironmentVariableIsEmpty("MEETING_SYNTHETIC_SCREEN")) {
+        qputenv("MEETING_SYNTHETIC_SCREEN", QByteArrayLiteral("1"));
+    }
+    if (qEnvironmentVariableIsEmpty("MEETING_SYNTHETIC_CAMERA")) {
+        qputenv("MEETING_SYNTHETIC_CAMERA", QByteArrayLiteral("1"));
+    }
 
     av::session::ScreenShareSessionConfig senderConfig{};
     senderConfig.localAddress = "127.0.0.1";
@@ -217,6 +221,11 @@ int main(int argc, char* argv[]) {
     assert(sender.setCameraSendingEnabled(false));
     assert(!sender.cameraSendingEnabled());
 
+    uint32_t rtcpFeedbackSsrc = sender.videoSsrc();
+    if (rtcpFeedbackSsrc == 0U) {
+        rtcpFeedbackSsrc = cameraSsrc != 0U ? cameraSsrc : screenSsrc;
+    }
+
     if (!packetsSent) {
         sender.stop();
         receiver.stop();
@@ -227,7 +236,7 @@ int main(int argc, char* argv[]) {
     assert(feedbackSocket.bind(QHostAddress::LocalHost, 0));
 
 
-    const auto pliPacket = buildPliPacket(0x33333333U, screenSsrc);
+    const auto pliPacket = buildPliPacket(0x33333333U, rtcpFeedbackSsrc);
     const qint64 pliSent = feedbackSocket.writeDatagram(reinterpret_cast<const char*>(pliPacket.data()),
                                                         static_cast<qint64>(pliPacket.size()),
                                                         QHostAddress::LocalHost,
@@ -241,7 +250,7 @@ int main(int argc, char* argv[]) {
 
     if (packetsSent) {
         const uint64_t retransmitBase = sender.retransmitPacketCount();
-        const auto nackPacket = buildNackPacket(0x33333333U, screenSsrc, 0U, 0U);
+        const auto nackPacket = buildNackPacket(0x33333333U, rtcpFeedbackSsrc, 0U, 0U);
         const qint64 nackSent = feedbackSocket.writeDatagram(reinterpret_cast<const char*>(nackPacket.data()),
                                                              static_cast<qint64>(nackPacket.size()),
                                                              QHostAddress::LocalHost,
@@ -255,7 +264,7 @@ int main(int argc, char* argv[]) {
     }
 
     constexpr uint32_t kTargetBitrateBps = 200000U;
-    const auto rembPacket = buildRembPacket(0x33333333U, screenSsrc, kTargetBitrateBps);
+    const auto rembPacket = buildRembPacket(0x33333333U, rtcpFeedbackSsrc, kTargetBitrateBps);
     const qint64 rembSent = feedbackSocket.writeDatagram(reinterpret_cast<const char*>(rembPacket.data()),
                                                          static_cast<qint64>(rembPacket.size()),
                                                          QHostAddress::LocalHost,
@@ -267,7 +276,8 @@ int main(int argc, char* argv[]) {
     }, 2000);
     assert(rembTargetHandled);
 
-    if (packetsSent) {
+    const bool senderActiveForBitrateApply = sender.sharingEnabled() || sender.cameraSendingEnabled();
+    if (packetsSent && senderActiveForBitrateApply) {
         const uint64_t reconfigureBase = sender.bitrateReconfigureCount();
         const bool rembApplied = waitForCondition(app, [&sender, kTargetBitrateBps]() {
             return sender.appliedBitrateBps() == kTargetBitrateBps;
@@ -278,7 +288,7 @@ int main(int argc, char* argv[]) {
         assert(sender.lastBitrateApplyDelayMs() <= 5000U);
 
         constexpr uint32_t kFollowupBitrateBps = 350000U;
-        const auto followupRembPacket = buildRembPacket(0x44444444U, screenSsrc, kFollowupBitrateBps);
+        const auto followupRembPacket = buildRembPacket(0x44444444U, rtcpFeedbackSsrc, kFollowupBitrateBps);
         const qint64 followupRembSent = feedbackSocket.writeDatagram(reinterpret_cast<const char*>(followupRembPacket.data()),
                                                                      static_cast<qint64>(followupRembPacket.size()),
                                                                      QHostAddress::LocalHost,
@@ -302,4 +312,7 @@ int main(int argc, char* argv[]) {
     receiver.stop();
     return 0;
 }
+
+
+
 

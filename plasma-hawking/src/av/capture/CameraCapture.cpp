@@ -17,17 +17,61 @@ namespace av::capture {
 
 namespace {
 
+QString deviceNameForSelection(const QCameraDevice& device) {
+    const QString description = device.description().trimmed();
+    if (!description.isEmpty()) {
+        return description;
+    }
+    return QString::fromUtf8(device.id()).trimmed();
+}
+
+bool deviceMatchesSelection(const QCameraDevice& device, const QString& selection) {
+    const QString trimmedSelection = selection.trimmed();
+    if (trimmedSelection.isEmpty()) {
+        return false;
+    }
+
+    const QString description = device.description().trimmed();
+    const QString identifier = QString::fromUtf8(device.id()).trimmed();
+    return description.compare(trimmedSelection, Qt::CaseInsensitive) == 0 ||
+           identifier.compare(trimmedSelection, Qt::CaseInsensitive) == 0 ||
+           description.contains(trimmedSelection, Qt::CaseInsensitive) ||
+           identifier.contains(trimmedSelection, Qt::CaseInsensitive);
+}
+
+QCameraDevice findDeviceBySelection(const QString& selection) {
+    if (selection.trimmed().isEmpty()) {
+        return {};
+    }
+
+    const auto inputs = QMediaDevices::videoInputs();
+    for (const auto& input : inputs) {
+        if (deviceMatchesSelection(input, selection)) {
+            return input;
+        }
+    }
+    return {};
+}
+
 QCameraDevice chooseDevice(const QCameraDevice& requested) {
     if (!requested.isNull()) {
         return requested;
     }
 
+    const QString preferredDeviceName = qEnvironmentVariable("MEETING_CAMERA_DEVICE_NAME").trimmed();
+    if (!preferredDeviceName.isEmpty()) {
+        const QCameraDevice preferredDevice = findDeviceBySelection(preferredDeviceName);
+        if (!preferredDevice.isNull()) {
+            return preferredDevice;
+        }
+    }
+
+    const auto inputs = QMediaDevices::videoInputs();
     const QCameraDevice defaultDevice = QMediaDevices::defaultVideoInput();
     if (!defaultDevice.isNull()) {
         return defaultDevice;
     }
 
-    const auto inputs = QMediaDevices::videoInputs();
     if (!inputs.isEmpty()) {
         return inputs.front();
     }
@@ -116,7 +160,7 @@ struct CameraCapture::Impl {
     bool setDevice(const QCameraDevice& device, const std::shared_ptr<Impl>& self) {
         const QCameraDevice nextDevice = chooseDevice(device);
         if (nextDevice.isNull()) {
-            qWarning().noquote() << "[camera-capture] rejected empty camera device selection";
+            qWarning().noquote() << "[camera-capture] camera device selection resolved to no device";
             return false;
         }
 
@@ -160,6 +204,14 @@ QList<QCameraDevice> CameraCapture::availableDevices() {
     return Impl::availableDevices();
 }
 
+QString CameraCapture::deviceName(const QCameraDevice& device) {
+    return deviceNameForSelection(device);
+}
+
+QCameraDevice CameraCapture::findDevice(const QString& selection) {
+    return findDeviceBySelection(selection);
+}
+
 bool CameraCapture::start() {
     return m_impl ? m_impl->start(m_impl) : false;
 }
@@ -185,4 +237,3 @@ void CameraCapture::setFrameCallback(FrameCallback callback) {
 }
 
 }  // namespace av::capture
-

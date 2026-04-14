@@ -56,6 +56,8 @@ public:
     bool sharingEnabled() const;
     bool setCameraSendingEnabled(bool enabled);
     bool cameraSendingEnabled() const;
+    bool setPreferredCameraDeviceName(const std::string& deviceName);
+    std::string preferredCameraDeviceName() const;
     void setExpectedRemoteVideoSsrc(uint32_t ssrc);
     uint32_t expectedRemoteVideoSsrc() const;
 
@@ -63,6 +65,7 @@ public:
     void setDecodedFrameCallback(std::function<void(av::codec::DecodedVideoFrame)> callback);
     void setErrorCallback(std::function<void(std::string)> callback);
     void setCameraSourceCallback(std::function<void(bool syntheticFallback)> callback);
+    void setStatusCallback(std::function<void(std::string)> callback);
     uint16_t localPort() const;
     uint32_t videoSsrc() const;
     bool isRunning() const;
@@ -108,9 +111,11 @@ private:
     std::function<void(av::codec::DecodedVideoFrame)> m_decodedFrameCallback;
     std::function<void(std::string)> m_errorCallback;
     std::function<void(bool)> m_cameraSourceCallback;
+    std::function<void(std::string)> m_statusCallback;
     std::atomic<bool> m_running{false};
     std::atomic<bool> m_sharingEnabled{false};
     std::atomic<bool> m_cameraSendingEnabled{false};
+    std::string m_preferredCameraDeviceName;
     std::atomic<uint64_t> m_sentPacketCount{0};
     std::atomic<uint64_t> m_receivedPacketCount{0};
     std::atomic<uint64_t> m_keyframeRequestCount{0};
@@ -141,11 +146,3 @@ private:
 };
 
 }  // namespace av::session
-
-
-
-
-
-
-
-

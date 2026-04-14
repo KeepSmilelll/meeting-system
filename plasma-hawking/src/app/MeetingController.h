@@ -13,6 +13,7 @@
 #include <functional>
 #include <memory>
 
+class QMediaDevices;
 class QTimer;
 class UserManager;
 class ParticipantListModel;
@@ -47,6 +48,12 @@ class MeetingController : public QObject {
     Q_PROPERTY(bool hasActiveShare READ hasActiveShare NOTIFY activeShareChanged)
     Q_PROPERTY(QObject* remoteScreenFrameSource READ remoteScreenFrameSource NOTIFY remoteScreenFrameSourceChanged)
     Q_PROPERTY(QObject* remoteVideoFrameSource READ remoteVideoFrameSource NOTIFY remoteVideoFrameSourceChanged)
+    Q_PROPERTY(QStringList availableCameraDevices READ availableCameraDevices NOTIFY availableCameraDevicesChanged)
+    Q_PROPERTY(QString preferredCameraDevice READ preferredCameraDevice NOTIFY preferredCameraDeviceChanged)
+    Q_PROPERTY(QStringList availableAudioInputDevices READ availableAudioInputDevices NOTIFY availableAudioInputDevicesChanged)
+    Q_PROPERTY(QStringList availableAudioOutputDevices READ availableAudioOutputDevices NOTIFY availableAudioOutputDevicesChanged)
+    Q_PROPERTY(QString preferredMicrophoneDevice READ preferredMicrophoneDevice NOTIFY preferredMicrophoneDeviceChanged)
+    Q_PROPERTY(QString preferredSpeakerDevice READ preferredSpeakerDevice NOTIFY preferredSpeakerDeviceChanged)
     Q_PROPERTY(QString username READ username NOTIFY sessionChanged)
     Q_PROPERTY(QString userId READ userId NOTIFY sessionChanged)
     Q_PROPERTY(QString meetingId READ meetingId NOTIFY meetingIdChanged)
@@ -73,6 +80,13 @@ public:
     bool hasActiveShare() const;
     QObject* remoteScreenFrameSource() const;
     QObject* remoteVideoFrameSource() const;
+    Q_INVOKABLE QObject* remoteVideoFrameSourceForUser(const QString& userId) const;
+    QStringList availableCameraDevices() const;
+    QString preferredCameraDevice() const;
+    QStringList availableAudioInputDevices() const;
+    QStringList availableAudioOutputDevices() const;
+    QString preferredMicrophoneDevice() const;
+    QString preferredSpeakerDevice() const;
     QString username() const;
     QString userId() const;
     QString meetingId() const;
@@ -80,6 +94,11 @@ public:
     QAbstractItemModel* participantModel() const;
     QStringList participants() const;
     QString statusText() const;
+    quint64 audioSentPacketCount() const;
+    quint64 audioReceivedPacketCount() const;
+    quint64 audioPlayedFrameCount() const;
+    quint32 audioLastRttMs() const;
+    quint32 audioTargetBitrateBps() const;
 
     Q_INVOKABLE void login(const QString& username, const QString& password);
     Q_INVOKABLE void setServerEndpoint(const QString& host, quint16 port);
@@ -90,6 +109,9 @@ public:
     Q_INVOKABLE void toggleAudio();
     Q_INVOKABLE void toggleVideo();
     Q_INVOKABLE void toggleScreenSharing();
+    Q_INVOKABLE bool setPreferredCameraDevice(const QString& deviceName);
+    Q_INVOKABLE bool setPreferredMicrophoneDevice(const QString& deviceName);
+    Q_INVOKABLE bool setPreferredSpeakerDevice(const QString& deviceName);
     Q_INVOKABLE bool setActiveShareUserId(const QString& userId);
     Q_INVOKABLE bool setActiveVideoPeerUserId(const QString& userId);
 
@@ -103,6 +125,12 @@ signals:
     void screenSharingChanged();
     void activeShareChanged();
     void activeVideoPeerUserIdChanged();
+    void availableCameraDevicesChanged();
+    void preferredCameraDeviceChanged();
+    void availableAudioInputDevicesChanged();
+    void availableAudioOutputDevicesChanged();
+    void preferredMicrophoneDeviceChanged();
+    void preferredSpeakerDeviceChanged();
     void remoteScreenFrameSourceChanged();
     void remoteVideoFrameSourceChanged();
     void sessionChanged();
@@ -160,6 +188,10 @@ private:
     void prunePeerNegotiationState();
     void syncLocalParticipantMediaState();
     void setScreenSharing(bool sharing);
+    av::render::VideoFrameStore* ensureRemoteVideoFrameStore(const QString& userId);
+    void clearRemoteVideoFrameStores();
+    void refreshAvailableCameraDevices();
+    void refreshAvailableAudioDevices();
 
     UserManager* m_userManager{nullptr};
     ParticipantListModel* m_participantModel{nullptr};
@@ -171,10 +203,12 @@ private:
     std::unique_ptr<av::session::ScreenShareSession> m_screenShareSession;
     std::unique_ptr<av::render::VideoFrameStore> m_remoteScreenFrameStore;
     std::unique_ptr<av::render::VideoFrameStore> m_remoteVideoFrameStore;
+    QHash<QString, av::render::VideoFrameStore*> m_remoteVideoFrameStoresByPeer;
     signaling::SignalingClient* m_signaling{nullptr};
     signaling::Reconnector* m_reconnector{nullptr};
     QTimer* m_heartbeatTimer{nullptr};
     QTimer* m_videoRenderTimer{nullptr};
+    QMediaDevices* m_mediaDevices{nullptr};
 
     bool m_loggedIn{false};
     bool m_reconnecting{false};
@@ -212,6 +246,12 @@ private:
 
     QString m_serverHost{QStringLiteral("127.0.0.1")};
     quint16 m_serverPort{8443};
+    QString m_preferredCameraDevice;
+    QStringList m_availableCameraDevices;
+    QString m_preferredMicrophoneDevice;
+    QString m_preferredSpeakerDevice;
+    QStringList m_availableAudioInputDevices;
+    QStringList m_availableAudioOutputDevices;
     QString m_username;
     QString m_userId;
     QString m_passwordHash;
@@ -219,6 +259,3 @@ private:
     bool m_waitingLogin{false};
     bool m_restoringSession{false};
 };
-
-
-

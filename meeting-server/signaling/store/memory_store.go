@@ -1,14 +1,19 @@
 package store
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math/rand"
+	"meeting-server/signaling/auth"
+	"meeting-server/signaling/model"
 	"meeting-server/signaling/protocol"
 	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 var (
@@ -46,6 +51,12 @@ type Message struct {
 	Timestamp int64
 }
 
+type UserAuthRepo interface {
+	FindByUsername(ctx context.Context, username string) (*model.User, error)
+	FindByID(ctx context.Context, userID uint64) (*model.User, error)
+	Create(ctx context.Context, user *model.User) error
+}
+
 type MemoryStore struct {
 	mu sync.RWMutex
 
@@ -58,30 +69,104 @@ type MemoryStore struct {
 	meetingSeq   atomic.Uint64
 	messageSeq   atomic.Uint64
 	joinSeq      atomic.Uint64
+
+	passwordHasher *auth.PasswordHasher
+	userRepo       UserAuthRepo
 }
 
 func NewMemoryStore() *MemoryStore {
 	s := &MemoryStore{
-		users:        make(map[string]User),
-		userByID:     make(map[string]User),
-		meetings:     make(map[string]*Meeting),
-		participants: make(map[string]map[string]*protocol.Participant),
-		joinOrder:    make(map[string]map[string]uint64),
-		meetingMsgs:  make(map[string][]Message),
+		users:          make(map[string]User),
+		userByID:       make(map[string]User),
+		meetings:       make(map[string]*Meeting),
+		participants:   make(map[string]map[string]*protocol.Participant),
+		joinOrder:      make(map[string]map[string]uint64),
+		meetingMsgs:    make(map[string][]Message),
+		passwordHasher: auth.NewPasswordHasher(),
 	}
 
 	s.seedDefaultUsers()
 	return s
 }
 
-func (s *MemoryStore) seedDefaultUsers() {
-	defaults := []User{
-		{ID: "u1001", Username: "demo", PasswordHash: "demo", DisplayName: "Demo User"},
-		{ID: "u1002", Username: "alice", PasswordHash: "alice", DisplayName: "Alice"},
-		{ID: "u1003", Username: "bob", PasswordHash: "bob", DisplayName: "Bob"},
+func (s *MemoryStore) SetUserRepo(repo UserAuthRepo) {
+	s.mu.Lock()
+	s.userRepo = repo
+	s.mu.Unlock()
+}
+
+func (s *MemoryStore) SeedDefaultUsersToRepo(ctx context.Context) error {
+	s.mu.RLock()
+	repo := s.userRepo
+	defaults := make([]User, 0, len(s.users))
+	for _, user := range s.users {
+		defaults = append(defaults, user)
+	}
+	s.mu.RUnlock()
+
+	if repo == nil {
+		return nil
 	}
 
-	for _, u := range defaults {
+	for _, localUser := range defaults {
+		_, err := repo.FindByUsername(ctx, localUser.Username)
+		if err == nil {
+			continue
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			if errors.Is(err, gorm.ErrInvalidDB) || errors.Is(err, gorm.ErrInvalidTransaction) {
+				return nil
+			}
+			return fmt.Errorf("seed default user %s: %w", localUser.Username, err)
+		}
+
+		id, err := userIDToUint64(localUser.ID)
+		if err != nil {
+			return fmt.Errorf("seed default user %s: parse id: %w", localUser.Username, err)
+		}
+
+		createErr := repo.Create(ctx, &model.User{
+			ID:           id,
+			Username:     localUser.Username,
+			DisplayName:  localUser.DisplayName,
+			AvatarURL:    localUser.AvatarURL,
+			PasswordHash: localUser.PasswordHash,
+			Status:       0,
+		})
+		if createErr != nil {
+			return fmt.Errorf("seed default user %s: %w", localUser.Username, createErr)
+		}
+	}
+
+	return nil
+}
+
+func (s *MemoryStore) seedDefaultUsers() {
+	defaults := []struct {
+		ID          string
+		Username    string
+		PasswordRaw string
+		DisplayName string
+	}{
+		{ID: "u1001", Username: "demo", PasswordRaw: "demo", DisplayName: "Demo User"},
+		{ID: "u1002", Username: "alice", PasswordRaw: "alice", DisplayName: "Alice"},
+		{ID: "u1003", Username: "bob", PasswordRaw: "bob", DisplayName: "Bob"},
+	}
+
+	for _, raw := range defaults {
+		passwordHash := raw.PasswordRaw
+		if s.passwordHasher != nil {
+			if hashed, err := s.passwordHasher.HashPassword(raw.PasswordRaw); err == nil {
+				passwordHash = hashed
+			}
+		}
+
+		u := User{
+			ID:           raw.ID,
+			Username:     raw.Username,
+			PasswordHash: passwordHash,
+			DisplayName:  raw.DisplayName,
+		}
 		s.users[u.Username] = u
 		s.userByID[u.ID] = u
 	}
@@ -89,23 +174,117 @@ func (s *MemoryStore) seedDefaultUsers() {
 
 func (s *MemoryStore) Authenticate(username, passwordHash string) (User, error) {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
+	repo := s.userRepo
+	localUser, localUserExists := s.users[username]
+	s.mu.RUnlock()
 
-	user, ok := s.users[username]
-	if !ok {
+	if repo != nil {
+		repoUser, found, err := s.loadUserByUsernameFromRepo(repo, username)
+		if err != nil {
+			if !s.canFallbackToMemory(err) {
+				return User{}, err
+			}
+		} else if found {
+			if s.verifyPassword(repoUser.PasswordHash, passwordHash) {
+				return repoUser, nil
+			}
+			return User{}, ErrInvalidPassword
+		}
+	}
+
+	if !localUserExists {
 		return User{}, ErrUserNotFound
 	}
-	if user.PasswordHash != passwordHash {
+	if !s.verifyPassword(localUser.PasswordHash, passwordHash) {
 		return User{}, ErrInvalidPassword
 	}
-	return user, nil
+	return localUser, nil
 }
 
 func (s *MemoryStore) GetUserByID(userID string) (User, bool) {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-	u, ok := s.userByID[userID]
-	return u, ok
+	repo := s.userRepo
+	localUser, localExists := s.userByID[userID]
+	s.mu.RUnlock()
+
+	if repo != nil {
+		repoUser, found, err := s.loadUserByIDFromRepo(repo, userID)
+		if err != nil {
+			if !s.canFallbackToMemory(err) {
+				return User{}, false
+			}
+		} else if found {
+			return repoUser, true
+		}
+	}
+
+	if !localExists {
+		return User{}, false
+	}
+	return localUser, true
+}
+
+func (s *MemoryStore) verifyPassword(storedHash, provided string) bool {
+	if s.passwordHasher == nil || !auth.IsArgon2idHash(storedHash) {
+		return false
+	}
+
+	return s.passwordHasher.VerifyPassword(storedHash, provided) == nil
+}
+
+func (s *MemoryStore) canFallbackToMemory(err error) bool {
+	return errors.Is(err, gorm.ErrRecordNotFound) ||
+		errors.Is(err, gorm.ErrInvalidDB) ||
+		errors.Is(err, gorm.ErrInvalidTransaction)
+}
+
+func (s *MemoryStore) loadUserByUsernameFromRepo(repo UserAuthRepo, username string) (User, bool, error) {
+	record, err := repo.FindByUsername(context.Background(), username)
+	if err != nil {
+		return User{}, false, err
+	}
+	if record == nil {
+		return User{}, false, nil
+	}
+
+	displayName := record.DisplayName
+	if displayName == "" {
+		displayName = record.Username
+	}
+	return User{
+		ID:           userIDFromUint64(record.ID),
+		Username:     record.Username,
+		PasswordHash: record.PasswordHash,
+		DisplayName:  displayName,
+		AvatarURL:    record.AvatarURL,
+	}, true, nil
+}
+
+func (s *MemoryStore) loadUserByIDFromRepo(repo UserAuthRepo, userID string) (User, bool, error) {
+	numericUserID, err := userIDToUint64(userID)
+	if err != nil {
+		return User{}, false, err
+	}
+
+	record, findErr := repo.FindByID(context.Background(), numericUserID)
+	if findErr != nil {
+		return User{}, false, findErr
+	}
+	if record == nil {
+		return User{}, false, nil
+	}
+
+	displayName := record.DisplayName
+	if displayName == "" {
+		displayName = record.Username
+	}
+	return User{
+		ID:           userIDFromUint64(record.ID),
+		Username:     record.Username,
+		PasswordHash: record.PasswordHash,
+		DisplayName:  displayName,
+		AvatarURL:    record.AvatarURL,
+	}, true, nil
 }
 
 func (s *MemoryStore) CreateMeeting(title, password, hostUserID string, maxParticipants int) (*Meeting, *protocol.Participant, error) {

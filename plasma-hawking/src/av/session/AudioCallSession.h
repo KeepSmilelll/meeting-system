@@ -21,6 +21,7 @@
 #include <thread>
 #include <utility>
 #include <QDebug>
+#include <QString>
 
 #ifdef _WIN32
 #include <winsock2.h>
@@ -55,12 +56,19 @@ public:
 
     void setCaptureMuted(bool muted);
     bool captureMuted() const;
+    bool setPreferredInputDeviceName(const QString& deviceName);
+    bool setPreferredOutputDeviceName(const QString& deviceName);
+    QString preferredInputDeviceName() const;
+    QString preferredOutputDeviceName() const;
 
     void setPeer(const std::string& address, uint16_t port);
     uint16_t localPort() const;
     uint32_t audioSsrc() const;
     uint32_t lastRttMs() const;
     uint32_t targetBitrateBps() const;
+    uint64_t sentPacketCount() const;
+    uint64_t receivedPacketCount() const;
+    uint64_t playedFrameCount() const;
     bool isRunning() const;
     std::string lastError() const;
 
@@ -116,6 +124,7 @@ private:
     std::atomic<uint32_t> m_lastRttMs{0};
     std::atomic<uint32_t> m_targetBitrateBps{32000};
     std::atomic<uint32_t> m_lastReceivedSequence{0};
+    std::atomic<uint32_t> m_receivedPacketCount{0};
     std::atomic<uint32_t> m_sentPacketCount{0};
     std::atomic<uint32_t> m_sentOctetCount{0};
 
@@ -177,6 +186,7 @@ inline bool av::session::AudioCallSession::start() {
     m_lastRttMs.store(0, std::memory_order_release);
     m_targetBitrateBps.store(static_cast<uint32_t>(m_config.bitrate), std::memory_order_release);
     m_lastReceivedSequence.store(0, std::memory_order_release);
+    m_receivedPacketCount.store(0, std::memory_order_release);
     m_sentPacketCount.store(0, std::memory_order_release);
     m_sentOctetCount.store(0, std::memory_order_release);
     m_audioBwe.reset();
@@ -258,6 +268,21 @@ inline void av::session::AudioCallSession::setCaptureMuted(bool muted) {
 inline bool av::session::AudioCallSession::captureMuted() const {
     return m_captureMuted.load(std::memory_order_acquire);
 }
+inline bool av::session::AudioCallSession::setPreferredInputDeviceName(const QString& deviceName) {
+    return m_capture.setPreferredDeviceName(deviceName);
+}
+
+inline bool av::session::AudioCallSession::setPreferredOutputDeviceName(const QString& deviceName) {
+    return m_player.setPreferredOutputDeviceName(deviceName);
+}
+
+inline QString av::session::AudioCallSession::preferredInputDeviceName() const {
+    return m_capture.preferredDeviceName();
+}
+
+inline QString av::session::AudioCallSession::preferredOutputDeviceName() const {
+    return m_player.preferredOutputDeviceName();
+}
 
 inline void av::session::AudioCallSession::setPeer(const std::string& address, uint16_t port) {
 #ifdef _WIN32
@@ -306,6 +331,18 @@ inline uint32_t av::session::AudioCallSession::lastRttMs() const {
 
 inline uint32_t av::session::AudioCallSession::targetBitrateBps() const {
     return m_targetBitrateBps.load(std::memory_order_acquire);
+}
+
+inline uint64_t av::session::AudioCallSession::sentPacketCount() const {
+    return static_cast<uint64_t>(m_sentPacketCount.load(std::memory_order_acquire));
+}
+
+inline uint64_t av::session::AudioCallSession::receivedPacketCount() const {
+    return static_cast<uint64_t>(m_receivedPacketCount.load(std::memory_order_acquire));
+}
+
+inline uint64_t av::session::AudioCallSession::playedFrameCount() const {
+    return m_player.stats().playedFrames;
 }
 
 inline bool av::session::AudioCallSession::isRunning() const {
@@ -828,6 +865,7 @@ inline void av::session::AudioCallSession::recvLoop() {
             continue;
         }
 
+        m_receivedPacketCount.fetch_add(1, std::memory_order_relaxed);
         m_lastReceivedSequence.store(packet.header.sequenceNumber, std::memory_order_release);
 
         if (!m_jitter.push(packet)) {
@@ -843,110 +881,6 @@ inline void av::session::AudioCallSession::recvLoop() {
     }
 }
 #endif
-
-inline bool av::session::runAudioCallSessionLoopbackSelfCheck(std::string* error) {
-#ifdef _WIN32
-    AudioCallSessionConfig config{};
-    config.peerAddress = "127.0.0.1";
-
-    AudioCallSession session(config);
-    if (!session.start()) {
-        if (error != nullptr) {
-            *error = session.lastError();
-        }
-        session.stop();
-        return false;
-    }
-
-    const uint16_t localPort = session.localPort();
-    if (localPort == 0) {
-        if (error != nullptr) {
-            *error = "local port not assigned";
-        }
-        session.stop();
-        return false;
-    }
-
-        session.setPeer("127.0.0.1", localPort);
-
-    const int frameSamples = session.player().frameSamples();
-
-    av::capture::AudioFrame frame;
-    frame.sampleRate = 48000;
-    frame.channels = 1;
-    frame.samples.assign(static_cast<std::size_t>(frameSamples), 0.2F);
-
-    for (int i = 0; i < 20; ++i) {
-        av::capture::AudioFrame submitFrame = frame;
-        submitFrame.pts = static_cast<int64_t>(frameSamples * i);
-        if (!session.submitLocalFrame(submitFrame)) {
-            if (error != nullptr) {
-                *error = "submit local frame failed";
-            }
-            session.stop();
-            return false;
-        }
-    }
-
-    av::capture::AudioFrame played;
-    const bool gotPlayed = session.waitForPlayedFrame(played, std::chrono::milliseconds(5000));
-    uint32_t observedRttMs = 0;
-    for (int i = 0; i < 40 && observedRttMs == 0; ++i) {
-        observedRttMs = session.lastRttMs();
-        if (observedRttMs != 0) {
-            break;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    }
-    const uint32_t observedTargetBitrate = session.targetBitrateBps();
-    const bool ok = gotPlayed &&
-                    played.sampleRate == 48000 &&
-                    played.channels == 1 &&
-                    played.samples.size() == static_cast<std::size_t>(frameSamples) &&
-                    observedRttMs > 0 &&
-                    observedTargetBitrate >= 16000U &&
-                    observedTargetBitrate <= 64000U;
-
-    if (!ok && error != nullptr) {
-        if (!session.lastError().empty()) {
-            *error = session.lastError();
-        } else if (!gotPlayed) {
-            *error = "playback timeout";
-        } else if (observedRttMs == 0) {
-            *error = "rtcp rtt timeout";
-        } else if (observedTargetBitrate < 16000U || observedTargetBitrate > 64000U) {
-            *error = "audio bwe bitrate out of range";
-        } else {
-            *error = "unexpected decoded frame shape";
-        }
-    }
-
-    session.stop();
-    return ok;
-#else
-    return false;
-#endif
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

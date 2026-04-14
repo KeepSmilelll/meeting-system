@@ -4,11 +4,8 @@
 #include "av/capture/ScreenCapture.h"
 
 #include <cstdint>
-#include <memory>
 #include <string>
 #include <vector>
-
-struct SwsContext;
 
 namespace av::codec {
 
@@ -40,12 +37,6 @@ public:
     uint8_t payloadType() const;
 
 private:
-    struct SwsContextDeleter {
-        void operator()(SwsContext* ctx) const;
-    };
-
-    using SwsContextPtr = std::unique_ptr<SwsContext, SwsContextDeleter>;
-
     int m_width{0};
     int m_height{0};
     int m_frameRate{0};
@@ -53,7 +44,6 @@ private:
     uint8_t m_payloadType{97};
     AVPixelFormat m_outputPixelFormat{AV_PIX_FMT_NONE};
     av::AVCodecContextPtr m_codecContext;
-    SwsContextPtr m_swsContext;
     std::string m_codecName;
 };
 

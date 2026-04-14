@@ -123,9 +123,46 @@ quint16 SettingsRepository::serverPort(quint16 defaultValue) const {
     return static_cast<quint16>(parsed);
 }
 
+bool SettingsRepository::savePreferredCameraDevice(const QString& deviceName) {
+    return saveValue(QStringLiteral("preferred_camera_device"), deviceName.trimmed(), QStringLiteral("media"));
+}
+
+QString SettingsRepository::preferredCameraDevice(const QString& defaultValue) const {
+    return value(QStringLiteral("preferred_camera_device"), defaultValue, QStringLiteral("media")).toString().trimmed();
+}
+
+bool SettingsRepository::clearPreferredCameraDevice() {
+    return removeValue(QStringLiteral("preferred_camera_device"), QStringLiteral("media"));
+}
+bool SettingsRepository::savePreferredMicrophoneDevice(const QString& deviceName) {
+    return saveValue(QStringLiteral("preferred_microphone_device"), deviceName.trimmed(), QStringLiteral("media"));
+}
+
+QString SettingsRepository::preferredMicrophoneDevice(const QString& defaultValue) const {
+    return value(QStringLiteral("preferred_microphone_device"), defaultValue, QStringLiteral("media")).toString().trimmed();
+}
+
+bool SettingsRepository::clearPreferredMicrophoneDevice() {
+    return removeValue(QStringLiteral("preferred_microphone_device"), QStringLiteral("media"));
+}
+
+bool SettingsRepository::savePreferredSpeakerDevice(const QString& deviceName) {
+    return saveValue(QStringLiteral("preferred_speaker_device"), deviceName.trimmed(), QStringLiteral("media"));
+}
+
+QString SettingsRepository::preferredSpeakerDevice(const QString& defaultValue) const {
+    return value(QStringLiteral("preferred_speaker_device"), defaultValue, QStringLiteral("media")).toString().trimmed();
+}
+
+bool SettingsRepository::clearPreferredSpeakerDevice() {
+    return removeValue(QStringLiteral("preferred_speaker_device"), QStringLiteral("media"));
+}
+
 bool SettingsRepository::clearSession() {
     return clearToken() &&
-           removeValue(QStringLiteral("user_id"), QStringLiteral("auth"));
+           removeValue(QStringLiteral("user_id"), QStringLiteral("auth")) &&
+           removeValue(QStringLiteral("token_issued_at_ms"), QStringLiteral("auth")) &&
+           removeValue(QStringLiteral("token_expires_at_ms"), QStringLiteral("auth"));
 }
 
 bool SettingsRepository::ensureOpen() {
@@ -159,3 +196,7 @@ QString SettingsRepository::connectionName() const {
 QString SettingsRepository::settingKey(const QString& category, const QString& key) {
     return category.isEmpty() ? key : category + QStringLiteral("/") + key;
 }
+
+
+
+

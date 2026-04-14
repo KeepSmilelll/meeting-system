@@ -5,6 +5,7 @@
 #include <QEventLoop>
 #include <QFileInfo>
 #include <QHostAddress>
+#include <QtMultimedia/QAudioDevice>
 #include <QtMultimedia/QCameraDevice>
 #include <QtMultimedia/QMediaDevices>
 #include <QProcess>
@@ -38,6 +39,18 @@ struct VideoSmokeDiagnostics {
     bool guestDecodedFrameReady{false};
 };
 
+struct AudioSmokeDiagnostics {
+    quint64 hostSentPackets{0};
+    quint64 hostReceivedPackets{0};
+    quint64 hostPlayedFrames{0};
+    quint64 guestSentPackets{0};
+    quint64 guestReceivedPackets{0};
+    quint64 guestPlayedFrames{0};
+    quint32 hostRttMs{0};
+    quint32 guestRttMs{0};
+    quint32 hostTargetBitrateBps{0};
+    quint32 guestTargetBitrateBps{0};
+};
 struct SignalingStageDiagnostics {
     bool loginReady{false};
     bool hostCreateReady{false};
@@ -84,6 +97,15 @@ bool canEncodeVideoForRuntimeSmoke() {
     return encoder.configure(640, 360, 5, 500 * 1000);
 }
 
+bool useSyntheticAudioForRuntimeSmoke() {
+    const QByteArray value = qgetenv("MEETING_RUNTIME_SMOKE_SYNTHETIC_AUDIO");
+    return value.isEmpty() || value != "0";
+}
+
+bool hasDefaultAudioDevices() {
+    return !QMediaDevices::defaultAudioInput().isNull() &&
+           !QMediaDevices::defaultAudioOutput().isNull();
+}
 bool useSyntheticCameraForRuntimeSmoke() {
     const QByteArray value = qgetenv("MEETING_RUNTIME_SMOKE_SYNTHETIC_CAMERA");
     return value.isEmpty() || value != "0";
@@ -133,6 +155,84 @@ bool hasDecodedVideoFrame(av::render::VideoFrameStore* frameStore) {
     return frame.width > 0 && frame.height > 0 && !frame.yPlane.empty() && !frame.uvPlane.empty();
 }
 
+AudioSmokeDiagnostics collectAudioSmokeDiagnostics(const MeetingController& hostController,
+                                                   const MeetingController& guestController) {
+    AudioSmokeDiagnostics diagnostics;
+    diagnostics.hostSentPackets = hostController.audioSentPacketCount();
+    diagnostics.hostReceivedPackets = hostController.audioReceivedPacketCount();
+    diagnostics.hostPlayedFrames = hostController.audioPlayedFrameCount();
+    diagnostics.guestSentPackets = guestController.audioSentPacketCount();
+    diagnostics.guestReceivedPackets = guestController.audioReceivedPacketCount();
+    diagnostics.guestPlayedFrames = guestController.audioPlayedFrameCount();
+    diagnostics.hostRttMs = hostController.audioLastRttMs();
+    diagnostics.guestRttMs = guestController.audioLastRttMs();
+    diagnostics.hostTargetBitrateBps = hostController.audioTargetBitrateBps();
+    diagnostics.guestTargetBitrateBps = guestController.audioTargetBitrateBps();
+    return diagnostics;
+}
+
+bool hasDualEndAudioEvidence(const AudioSmokeDiagnostics& diagnostics) {
+    return diagnostics.hostSentPackets > 0 &&
+           diagnostics.hostReceivedPackets > 0 &&
+           diagnostics.hostPlayedFrames > 0 &&
+           diagnostics.guestSentPackets > 0 &&
+           diagnostics.guestReceivedPackets > 0 &&
+           diagnostics.guestPlayedFrames > 0;
+}
+
+bool hasAudioRtcpEvidence(const AudioSmokeDiagnostics& diagnostics) {
+    constexpr quint32 kMinAudioBitrateBps = 16000U;
+    constexpr quint32 kMaxAudioBitrateBps = 64000U;
+    const bool hostBitrateInRange = diagnostics.hostTargetBitrateBps >= kMinAudioBitrateBps &&
+                                    diagnostics.hostTargetBitrateBps <= kMaxAudioBitrateBps;
+    const bool guestBitrateInRange = diagnostics.guestTargetBitrateBps >= kMinAudioBitrateBps &&
+                                     diagnostics.guestTargetBitrateBps <= kMaxAudioBitrateBps;
+    return diagnostics.hostRttMs > 0 &&
+           diagnostics.guestRttMs > 0 &&
+           hostBitrateInRange &&
+           guestBitrateInRange;
+}
+
+QString formatAudioSmokeDiagnostics(const AudioSmokeDiagnostics& diagnostics) {
+    return QStringLiteral("audio-diagnostics: host_sent=%1 host_recv=%2 host_played=%3 host_rtt_ms=%4 host_target_bps=%5 guest_sent=%6 guest_recv=%7 guest_played=%8 guest_rtt_ms=%9 guest_target_bps=%10")
+        .arg(diagnostics.hostSentPackets)
+        .arg(diagnostics.hostReceivedPackets)
+        .arg(diagnostics.hostPlayedFrames)
+        .arg(diagnostics.hostRttMs)
+        .arg(diagnostics.hostTargetBitrateBps)
+        .arg(diagnostics.guestSentPackets)
+        .arg(diagnostics.guestReceivedPackets)
+        .arg(diagnostics.guestPlayedFrames)
+        .arg(diagnostics.guestRttMs)
+        .arg(diagnostics.guestTargetBitrateBps);
+}
+
+QString inferAudioFailureBucket(const AudioSmokeDiagnostics& diagnostics) {
+    const bool hostSendMissing = diagnostics.hostSentPackets == 0;
+    const bool guestSendMissing = diagnostics.guestSentPackets == 0;
+    if (hostSendMissing || guestSendMissing) {
+        return QStringLiteral("likely-module=audio-capture-or-encoder");
+    }
+
+    const bool hostReceiveMissing = diagnostics.hostReceivedPackets == 0 || diagnostics.hostPlayedFrames == 0;
+    const bool guestReceiveMissing = diagnostics.guestReceivedPackets == 0 || diagnostics.guestPlayedFrames == 0;
+    if (hostReceiveMissing || guestReceiveMissing) {
+        return QStringLiteral("likely-module=audio-transport-or-decoder");
+    }
+
+    constexpr quint32 kMinAudioBitrateBps = 16000U;
+    constexpr quint32 kMaxAudioBitrateBps = 64000U;
+    const bool hostRtcpMissing = diagnostics.hostRttMs == 0 ||
+                                 diagnostics.hostTargetBitrateBps < kMinAudioBitrateBps ||
+                                 diagnostics.hostTargetBitrateBps > kMaxAudioBitrateBps;
+    const bool guestRtcpMissing = diagnostics.guestRttMs == 0 ||
+                                  diagnostics.guestTargetBitrateBps < kMinAudioBitrateBps ||
+                                  diagnostics.guestTargetBitrateBps > kMaxAudioBitrateBps;
+    if (hostRtcpMissing || guestRtcpMissing) {
+        return QStringLiteral("likely-module=rtcp-rtt-or-audio-bwe");
+    }
+    return QStringLiteral("likely-module=audio-unknown");
+}
 VideoSmokeDiagnostics collectVideoSmokeDiagnostics(const ControllerProbe& hostProbe,
                                                    const ControllerProbe& guestProbe,
                                                    av::render::VideoFrameStore* guestRemoteVideoFrameStore) {
@@ -211,13 +311,23 @@ QString resolveGoExecutable() {
 
 int main(int argc, char* argv[]) {
     QCoreApplication app(argc, argv);
-    qputenv("MEETING_SYNTHETIC_AUDIO", "1");
+    const bool syntheticAudio = useSyntheticAudioForRuntimeSmoke();
+    if (syntheticAudio) {
+        qputenv("MEETING_SYNTHETIC_AUDIO", "1");
+    } else {
+        qunsetenv("MEETING_SYNTHETIC_AUDIO");
+    }
     qputenv("MEETING_SYNTHETIC_SCREEN", "1");
     const bool syntheticCamera = useSyntheticCameraForRuntimeSmoke();
     if (syntheticCamera) {
         qputenv("MEETING_SYNTHETIC_CAMERA", "1");
     } else {
         qunsetenv("MEETING_SYNTHETIC_CAMERA");
+    }
+
+    if (!syntheticAudio && !hasDefaultAudioDevices()) {
+        qInfo().noquote() << "SKIP no default audio input/output available for real-audio mode";
+        return 77;
     }
 
     if (!syntheticCamera && !hasVideoInputDevices()) {
@@ -371,7 +481,55 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    if (!waitForCondition(app, [&hostController, &guestController] {
+            const AudioSmokeDiagnostics diagnostics =
+                collectAudioSmokeDiagnostics(hostController, guestController);
+            return hasDualEndAudioEvidence(diagnostics);
+        }, 20000)) {
+        const VideoSmokeDiagnostics videoDiagnostics =
+            collectVideoSmokeDiagnostics(hostProbe, guestProbe, guestRemoteVideoFrameStore);
+        const AudioSmokeDiagnostics audioDiagnostics =
+            collectAudioSmokeDiagnostics(hostController, guestController);
+        qCritical().noquote() << "dual-end audio smoke failed";
+        qCritical().noquote() << formatSignalingStageDiagnostics(signalingStageDiagnostics);
+        qCritical().noquote() << inferSignalingFailureStage(signalingStageDiagnostics);
+        qCritical().noquote() << formatAudioSmokeDiagnostics(audioDiagnostics);
+        qCritical().noquote() << inferAudioFailureBucket(audioDiagnostics);
+        qCritical().noquote() << formatVideoSmokeDiagnostics(videoDiagnostics);
+        qCritical().noquote() << inferVideoFailureBucket(videoDiagnostics);
+        qCritical().noquote() << "host status:" << hostController.statusText();
+        qCritical().noquote() << "guest status:" << guestController.statusText();
+        qCritical().noquote() << "host messages:" << hostProbe.infoMessages.join(QStringLiteral(" | "));
+        qCritical().noquote() << "guest messages:" << guestProbe.infoMessages.join(QStringLiteral(" | "));
+        qCritical().noquote() << collectedOutput(server);
+        stopServer();
+        return 1;
+    }
 
+    if (!waitForCondition(app, [&hostController, &guestController] {
+            const AudioSmokeDiagnostics diagnostics =
+                collectAudioSmokeDiagnostics(hostController, guestController);
+            return hasAudioRtcpEvidence(diagnostics);
+        }, 15000)) {
+        const VideoSmokeDiagnostics videoDiagnostics =
+            collectVideoSmokeDiagnostics(hostProbe, guestProbe, guestRemoteVideoFrameStore);
+        const AudioSmokeDiagnostics audioDiagnostics =
+            collectAudioSmokeDiagnostics(hostController, guestController);
+        qCritical().noquote() << "audio RTCP RTT smoke failed";
+        qCritical().noquote() << formatSignalingStageDiagnostics(signalingStageDiagnostics);
+        qCritical().noquote() << inferSignalingFailureStage(signalingStageDiagnostics);
+        qCritical().noquote() << formatAudioSmokeDiagnostics(audioDiagnostics);
+        qCritical().noquote() << inferAudioFailureBucket(audioDiagnostics);
+        qCritical().noquote() << formatVideoSmokeDiagnostics(videoDiagnostics);
+        qCritical().noquote() << inferVideoFailureBucket(videoDiagnostics);
+        qCritical().noquote() << "host status:" << hostController.statusText();
+        qCritical().noquote() << "guest status:" << guestController.statusText();
+        qCritical().noquote() << "host messages:" << hostProbe.infoMessages.join(QStringLiteral(" | "));
+        qCritical().noquote() << "guest messages:" << guestProbe.infoMessages.join(QStringLiteral(" | "));
+        qCritical().noquote() << collectedOutput(server);
+        stopServer();
+        return 1;
+    }
     const QString expectedCameraSource = syntheticCamera
         ? QStringLiteral("synthetic-fallback")
         : QStringLiteral("real-device");

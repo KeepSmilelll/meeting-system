@@ -30,6 +30,10 @@ func main() {
 		if err := store.AutoMigrate(mysqlDB); err != nil {
 			panic(err)
 		}
+		memoryStore.SetUserRepo(store.NewUserRepo(mysqlDB))
+		if err := memoryStore.SeedDefaultUsersToRepo(context.Background()); err != nil {
+			panic(err)
+		}
 	}
 
 	redisClient := store.NewRedisClient(cfg)

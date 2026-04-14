@@ -19,6 +19,9 @@ type Config struct {
 	MaxMessageLen         int
 	JWTSecret             string
 	TokenTTL              time.Duration
+	TLSEnabled            bool
+	TLSCertFile           string
+	TLSKeyFile            string
 	DefaultSFUAddress     string
 	DefaultSFUNodeID      string
 	SFURPCAddr            string
@@ -69,6 +72,9 @@ func Load() Config {
 		MaxMessageLen:         getInt("SIGNALING_CHAT_MAX_LEN", 5000),
 		JWTSecret:             getEnv("SIGNALING_JWT_SECRET", "dev-secret-change-me"),
 		TokenTTL:              getDuration("SIGNALING_TOKEN_TTL", 7*24*time.Hour),
+		TLSEnabled:            getBool("SIGNALING_TLS_ENABLE", false),
+		TLSCertFile:           getEnv("SIGNALING_TLS_CERT_FILE", ""),
+		TLSKeyFile:            getEnv("SIGNALING_TLS_KEY_FILE", ""),
 		DefaultSFUAddress:     getEnv("SIGNALING_DEFAULT_SFU", "127.0.0.1:10000"),
 		DefaultSFUNodeID:      getEnv("SIGNALING_DEFAULT_SFU_NODE_ID", "default-sfu"),
 		SFURPCAddr:            getEnv("SIGNALING_SFU_RPC_ADDR", ""),

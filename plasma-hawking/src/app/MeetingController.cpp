@@ -9,6 +9,9 @@
 #include "MediaSessionManager.h"
 #include "av/session/AudioCallSession.h"
 #include "av/session/ScreenShareSession.h"
+#include "av/capture/AudioCapture.h"
+#include "av/capture/CameraCapture.h"
+#include "av/render/AudioPlayer.h"
 #include "av/render/VideoFrameStore.h"
 #include "av/sync/AVSync.h"
 #include <QByteArray>
@@ -19,6 +22,7 @@
 #include <QJsonObject>
 #include <QNetworkInterface>
 #include <QProcessEnvironment>
+#include <QtMultimedia/QMediaDevices>
 #include <QTimer>
 #include <QtGlobal>
 
@@ -146,6 +150,10 @@ QString toQtString(const std::string& s) {
     return QString::fromUtf8(s.data(), static_cast<int>(s.size()));
 }
 
+bool shouldStartVideoMutedForSmoke() {
+    return qEnvironmentVariableIntValue("MEETING_SMOKE_START_VIDEO_MUTED") != 0;
+}
+
 struct MediaRouteStatusEvent {
     QString stage;
     QString message;
@@ -184,7 +192,76 @@ MediaRouteStatusEvent parseMediaRouteStatusEvent(const QString& rawReason) {
 }
 
 QString resolveAdvertisedHost() {
+    const QString configuredHost = qEnvironmentVariable("MEETING_ADVERTISED_HOST").trimmed();
+    if (!configuredHost.isEmpty()) {
+        QHostAddress configuredAddress;
+        if (configuredAddress.setAddress(configuredHost) &&
+            configuredAddress.protocol() == QAbstractSocket::IPv4Protocol) {
+            return configuredAddress.toString();
+        }
+        return configuredHost;
+    }
+
+    const auto isPrivateIpv4 = [](const QHostAddress& address) {
+        const quint32 raw = address.toIPv4Address();
+        const quint8 a = static_cast<quint8>((raw >> 24) & 0xFFU);
+        const quint8 b = static_cast<quint8>((raw >> 16) & 0xFFU);
+        return a == 10U ||
+               (a == 172U && b >= 16U && b <= 31U) ||
+               (a == 192U && b == 168U);
+    };
+
+    const auto looksLikeVirtualOrTunnel = [](const QNetworkInterface& iface) {
+        const QString tag = (iface.humanReadableName() + QLatin1Char(' ') + iface.name()).toLower();
+        static const QStringList kSkipKeywords = {
+            QStringLiteral("meta"),
+            QStringLiteral("mihomo"),
+            QStringLiteral("tap"),
+            QStringLiteral("tun"),
+            QStringLiteral("vpn"),
+            QStringLiteral("virtual"),
+            QStringLiteral("vethernet"),
+            QStringLiteral("hyper-v"),
+            QStringLiteral("docker")
+        };
+        for (const QString& keyword : kSkipKeywords) {
+            if (tag.contains(keyword)) {
+                return true;
+            }
+        }
+        return false;
+    };
+
     const auto interfaces = QNetworkInterface::allInterfaces();
+    QString firstRoutableIpv4;
+    for (const auto& iface : interfaces) {
+        if (!(iface.flags() & QNetworkInterface::IsUp) ||
+            !(iface.flags() & QNetworkInterface::IsRunning) ||
+            (iface.flags() & QNetworkInterface::IsLoopBack)) {
+            continue;
+        }
+        if (looksLikeVirtualOrTunnel(iface)) {
+            continue;
+        }
+
+        for (const auto& entry : iface.addressEntries()) {
+            const QHostAddress addr = entry.ip();
+            if (addr.protocol() != QAbstractSocket::IPv4Protocol || addr.isLoopback()) {
+                continue;
+            }
+            if (isPrivateIpv4(addr)) {
+                return addr.toString();
+            }
+            if (firstRoutableIpv4.isEmpty()) {
+                firstRoutableIpv4 = addr.toString();
+            }
+        }
+    }
+
+    if (!firstRoutableIpv4.isEmpty()) {
+        return firstRoutableIpv4;
+    }
+
     for (const auto& iface : interfaces) {
         if (!(iface.flags() & QNetworkInterface::IsUp) ||
             !(iface.flags() & QNetworkInterface::IsRunning) ||
@@ -200,7 +277,42 @@ QString resolveAdvertisedHost() {
             return addr.toString();
         }
     }
+
     return QStringLiteral("127.0.0.1");
+}
+
+QString normalizePreferredCameraDevice(const QString& deviceName) {
+    return deviceName.trimmed();
+}
+
+QString cameraDeviceName(const QCameraDevice& device) {
+    const QString description = device.description().trimmed();
+    if (!description.isEmpty()) {
+        return description;
+    }
+    return QString::fromUtf8(device.id()).trimmed();
+}
+
+QStringList readAvailableCameraDeviceNames() {
+    QStringList names;
+    for (const auto& device : av::capture::CameraCapture::availableDevices()) {
+        const QString name = cameraDeviceName(device);
+        if (!name.isEmpty() && !names.contains(name, Qt::CaseInsensitive)) {
+            names.append(name);
+        }
+    }
+    return names;
+}
+QString normalizePreferredAudioDevice(const QString& deviceName) {
+    return deviceName.trimmed();
+}
+
+QStringList readAvailableAudioInputDeviceNames() {
+    return av::capture::AudioCapture::availableInputDevices();
+}
+
+QStringList readAvailableAudioOutputDeviceNames() {
+    return av::render::AudioPlayer::availableOutputDevices();
 }
 
 bool shouldInitiateOffer(bool isHost, const QString& localUserId, const QString& peerUserId) {
@@ -223,13 +335,31 @@ MeetingController::MeetingController(const QString& databasePath, QObject* paren
     , m_signaling(new signaling::SignalingClient(this))
     , m_reconnector(new signaling::Reconnector(this))
     , m_heartbeatTimer(new QTimer(this))
-    , m_videoRenderTimer(new QTimer(this)) {
+    , m_videoRenderTimer(new QTimer(this))
+    , m_mediaDevices(new QMediaDevices(this)) {
     m_reconnector->configure(1000, 30000);
 
     m_serverHost = m_userManager->serverHost();
     m_serverPort = m_userManager->serverPort();
     m_username = m_userManager->username();
     m_userId = m_userManager->userId();
+        const QString storedPreferredCameraDevice = normalizePreferredCameraDevice(m_userManager->preferredCameraDevice());
+    m_preferredCameraDevice = storedPreferredCameraDevice.isEmpty()
+                                  ? qEnvironmentVariable("MEETING_CAMERA_DEVICE_NAME").trimmed()
+                                  : storedPreferredCameraDevice;
+    const QString storedPreferredMicrophone = normalizePreferredAudioDevice(m_userManager->preferredMicrophoneDevice());
+    m_preferredMicrophoneDevice = storedPreferredMicrophone.isEmpty()
+                                      ? qEnvironmentVariable("MEETING_AUDIO_INPUT_DEVICE_NAME").trimmed()
+                                      : storedPreferredMicrophone;
+    const QString storedPreferredSpeaker = normalizePreferredAudioDevice(m_userManager->preferredSpeakerDevice());
+    m_preferredSpeakerDevice = storedPreferredSpeaker.isEmpty()
+                                   ? qEnvironmentVariable("MEETING_AUDIO_OUTPUT_DEVICE_NAME").trimmed()
+                                   : storedPreferredSpeaker;
+    refreshAvailableCameraDevices();
+    refreshAvailableAudioDevices();
+    connect(m_mediaDevices, &QMediaDevices::videoInputsChanged, this, &MeetingController::refreshAvailableCameraDevices);
+    connect(m_mediaDevices, &QMediaDevices::audioInputsChanged, this, &MeetingController::refreshAvailableAudioDevices);
+    connect(m_mediaDevices, &QMediaDevices::audioOutputsChanged, this, &MeetingController::refreshAvailableAudioDevices);
 
     m_heartbeatTimer->setInterval(30 * 1000);
     connect(m_heartbeatTimer, &QTimer::timeout, this, [this]() {
@@ -435,7 +565,7 @@ MeetingController::MeetingController(const QString& databasePath, QObject* paren
         m_pendingMeetingTitle.clear();
         m_inMeeting = true;
         m_audioMuted = false;
-        m_videoMuted = false;
+        m_videoMuted = shouldStartVideoMutedForSmoke();
         setScreenSharing(false);
         m_waitingLeaveResponse = false;
         m_currentMeetingHost = true;
@@ -468,7 +598,7 @@ MeetingController::MeetingController(const QString& databasePath, QObject* paren
         m_meetingTitle = title;
         m_inMeeting = true;
         m_audioMuted = false;
-        m_videoMuted = false;
+        m_videoMuted = shouldStartVideoMutedForSmoke();
         setScreenSharing(false);
         m_waitingLeaveResponse = false;
         const bool isHost = !hostUserId.isEmpty() && hostUserId == m_userId;
@@ -704,6 +834,19 @@ QObject* MeetingController::remoteVideoFrameSource() const {
     return m_remoteVideoFrameStore.get();
 }
 
+QObject* MeetingController::remoteVideoFrameSourceForUser(const QString& userId) const {
+    const QString normalized = userId.trimmed();
+    if (normalized.isEmpty() || normalized == m_userId) {
+        return nullptr;
+    }
+
+    const auto it = m_remoteVideoFrameStoresByPeer.constFind(normalized);
+    if (it == m_remoteVideoFrameStoresByPeer.constEnd()) {
+        return nullptr;
+    }
+    return it.value();
+}
+
 QString MeetingController::username() const {
     return m_username;
 }
@@ -728,8 +871,67 @@ QStringList MeetingController::participants() const {
     return m_participantModel->displayNames();
 }
 
+QStringList MeetingController::availableCameraDevices() const {
+    return m_availableCameraDevices;
+}
+
+QString MeetingController::preferredCameraDevice() const {
+    return m_preferredCameraDevice;
+}
+
+QStringList MeetingController::availableAudioInputDevices() const {
+    return m_availableAudioInputDevices;
+}
+
+QStringList MeetingController::availableAudioOutputDevices() const {
+    return m_availableAudioOutputDevices;
+}
+
+QString MeetingController::preferredMicrophoneDevice() const {
+    return m_preferredMicrophoneDevice;
+}
+
+QString MeetingController::preferredSpeakerDevice() const {
+    return m_preferredSpeakerDevice;
+}
+
 QString MeetingController::statusText() const {
     return m_statusText;
+}
+
+quint64 MeetingController::audioSentPacketCount() const {
+    if (!m_audioCallSession) {
+        return 0;
+    }
+    return static_cast<quint64>(m_audioCallSession->sentPacketCount());
+}
+
+quint64 MeetingController::audioReceivedPacketCount() const {
+    if (!m_audioCallSession) {
+        return 0;
+    }
+    return static_cast<quint64>(m_audioCallSession->receivedPacketCount());
+}
+
+quint64 MeetingController::audioPlayedFrameCount() const {
+    if (!m_audioCallSession) {
+        return 0;
+    }
+    return static_cast<quint64>(m_audioCallSession->playedFrameCount());
+}
+
+quint32 MeetingController::audioLastRttMs() const {
+    if (!m_audioCallSession) {
+        return 0;
+    }
+    return static_cast<quint32>(m_audioCallSession->lastRttMs());
+}
+
+quint32 MeetingController::audioTargetBitrateBps() const {
+    if (!m_audioCallSession) {
+        return 0;
+    }
+    return static_cast<quint32>(m_audioCallSession->targetBitrateBps());
 }
 
 void MeetingController::login(const QString& username, const QString& password) {
@@ -766,6 +968,92 @@ void MeetingController::setServerEndpoint(const QString& host, quint16 port) {
     m_serverPort = normalizedPort;
     if (m_userManager) {
         m_userManager->setServerEndpoint(m_serverHost, m_serverPort);
+    }
+}
+
+bool MeetingController::setPreferredCameraDevice(const QString& deviceName) {
+    const QString normalized = normalizePreferredCameraDevice(deviceName);
+    if (m_preferredCameraDevice == normalized) {
+        return true;
+    }
+
+    m_preferredCameraDevice = normalized;
+    if (m_userManager) {
+        m_userManager->setPreferredCameraDevice(normalized);
+    }
+    emit preferredCameraDeviceChanged();
+
+    if (!m_screenShareSession) {
+        return true;
+    }
+
+    if (!m_screenShareSession->setPreferredCameraDeviceName(normalized.toStdString())) {
+        emit infoMessage(QStringLiteral("Camera device switch pending restart"));
+        return false;
+    }
+    return true;
+}
+bool MeetingController::setPreferredMicrophoneDevice(const QString& deviceName) {
+    const QString normalized = normalizePreferredAudioDevice(deviceName);
+    if (m_preferredMicrophoneDevice == normalized) {
+        return true;
+    }
+
+    m_preferredMicrophoneDevice = normalized;
+    if (m_userManager) {
+        m_userManager->setPreferredMicrophoneDevice(normalized);
+    }
+    emit preferredMicrophoneDeviceChanged();
+
+    if (m_audioCallSession && !m_audioCallSession->setPreferredInputDeviceName(normalized)) {
+        emit infoMessage(QStringLiteral("Microphone switch failed, keeping previous device"));
+        return false;
+    }
+
+    return true;
+}
+
+bool MeetingController::setPreferredSpeakerDevice(const QString& deviceName) {
+    const QString normalized = normalizePreferredAudioDevice(deviceName);
+    if (m_preferredSpeakerDevice == normalized) {
+        return true;
+    }
+
+    m_preferredSpeakerDevice = normalized;
+    if (m_userManager) {
+        m_userManager->setPreferredSpeakerDevice(normalized);
+    }
+    emit preferredSpeakerDeviceChanged();
+
+    if (m_audioCallSession && !m_audioCallSession->setPreferredOutputDeviceName(normalized)) {
+        emit infoMessage(QStringLiteral("Speaker switch failed, keeping previous device"));
+        return false;
+    }
+
+    return true;
+}
+
+
+void MeetingController::refreshAvailableCameraDevices() {
+    const QStringList nextDevices = readAvailableCameraDeviceNames();
+    if (m_availableCameraDevices == nextDevices) {
+        return;
+    }
+
+    m_availableCameraDevices = nextDevices;
+    emit availableCameraDevicesChanged();
+}
+void MeetingController::refreshAvailableAudioDevices() {
+    const QStringList nextInputs = readAvailableAudioInputDeviceNames();
+    if (m_availableAudioInputDevices != nextInputs) {
+        m_availableAudioInputDevices = nextInputs;
+        emit availableAudioInputDevicesChanged();
+    }
+
+    const QStringList nextOutputs = readAvailableAudioOutputDeviceNames();
+    if (m_availableAudioOutputDevices != nextOutputs) {
+        m_availableAudioOutputDevices = nextOutputs;
+        emit availableAudioOutputDevicesChanged();
     }
 }
 
@@ -862,6 +1150,8 @@ void MeetingController::toggleAudio() {
     }
     if (m_audioCallSession) {
         m_audioCallSession->setCaptureMuted(m_audioMuted);
+    (void)m_audioCallSession->setPreferredInputDeviceName(m_preferredMicrophoneDevice);
+    (void)m_audioCallSession->setPreferredOutputDeviceName(m_preferredSpeakerDevice);
     }
     if (!m_audioMuted) {
         maybeStartMediaNegotiation();
@@ -1035,6 +1325,7 @@ void MeetingController::resetMeetingState(const QString& leaveReason) {
     m_meetingId.clear();
     m_meetingTitle.clear();
     m_participantModel->clearParticipants();
+    clearRemoteVideoFrameStores();
     syncParticipantsChanged();
 
     emit inMeetingChanged();
@@ -1143,6 +1434,8 @@ void MeetingController::handleProtobufMessage(quint16 signalType, const QByteArr
 
             if (m_audioCallSession) {
                 m_audioCallSession->setCaptureMuted(m_audioMuted);
+    (void)m_audioCallSession->setPreferredInputDeviceName(m_preferredMicrophoneDevice);
+    (void)m_audioCallSession->setPreferredOutputDeviceName(m_preferredSpeakerDevice);
             }
             setScreenSharing(participant.sharing);
             if (m_screenShareSession) {
@@ -1258,6 +1551,8 @@ void MeetingController::handleProtobufMessage(quint16 signalType, const QByteArr
         }
         if (m_audioCallSession) {
             m_audioCallSession->setCaptureMuted(m_audioMuted);
+    (void)m_audioCallSession->setPreferredInputDeviceName(m_preferredMicrophoneDevice);
+    (void)m_audioCallSession->setPreferredOutputDeviceName(m_preferredSpeakerDevice);
         }
         syncLocalParticipantMediaState();
 
@@ -1883,6 +2178,31 @@ void MeetingController::resetAudioPeerState() {
     }
 }
 
+av::render::VideoFrameStore* MeetingController::ensureRemoteVideoFrameStore(const QString& userId) {
+    const QString normalized = userId.trimmed();
+    if (normalized.isEmpty() || normalized == m_userId) {
+        return nullptr;
+    }
+
+    auto it = m_remoteVideoFrameStoresByPeer.find(normalized);
+    if (it != m_remoteVideoFrameStoresByPeer.end()) {
+        return it.value();
+    }
+
+    auto* store = new av::render::VideoFrameStore(this);
+    m_remoteVideoFrameStoresByPeer.insert(normalized, store);
+    return store;
+}
+
+void MeetingController::clearRemoteVideoFrameStores() {
+    for (auto it = m_remoteVideoFrameStoresByPeer.begin(); it != m_remoteVideoFrameStoresByPeer.end(); ++it) {
+        if (it.value() != nullptr) {
+            it.value()->deleteLater();
+        }
+    }
+    m_remoteVideoFrameStoresByPeer.clear();
+}
+
 void MeetingController::resetVideoPeerState(bool clearRemoteFrame) {
     if (!m_videoPeerUserId.isEmpty()) {
         m_videoOfferSentPeers.remove(m_videoPeerUserId);
@@ -2020,6 +2340,8 @@ void MeetingController::maybeStartAudioNegotiation() {
     }
 
     m_audioCallSession->setCaptureMuted(m_audioMuted);
+    (void)m_audioCallSession->setPreferredInputDeviceName(m_preferredMicrophoneDevice);
+    (void)m_audioCallSession->setPreferredOutputDeviceName(m_preferredSpeakerDevice);
 
     if (!m_audioCallSession->isRunning()) {
         if (!m_audioCallSession->start()) {
@@ -2075,6 +2397,7 @@ void MeetingController::maybeStartVideoNegotiation() {
         config.bitrate = kScreenBitrate;
         config.payloadType = static_cast<uint8_t>(kScreenPayloadType);
         m_screenShareSession = std::make_unique<av::session::ScreenShareSession>(config);
+        m_screenShareSession->setPreferredCameraDeviceName(m_preferredCameraDevice.toStdString());
         m_screenShareSession->setDecodedFrameCallback([this](av::codec::DecodedVideoFrame frame) {
             if (!m_remoteScreenFrameStore || !m_remoteVideoFrameStore) {
                 return;
@@ -2122,6 +2445,12 @@ void MeetingController::maybeStartVideoNegotiation() {
                 emit infoMessage(syntheticFallback
                                      ? QStringLiteral("Video camera source: synthetic-fallback")
                                      : QStringLiteral("Video camera source: real-device"));
+            }, Qt::QueuedConnection);
+        });
+        m_screenShareSession->setStatusCallback([this](std::string statusMessage) {
+            const QString statusText = QString::fromStdString(statusMessage);
+            QMetaObject::invokeMethod(this, [this, statusText]() {
+                emit infoMessage(statusText);
             }, Qt::QueuedConnection);
         });
         m_screenShareSession->setErrorCallback([this](std::string errorMessage) {
@@ -2242,6 +2571,30 @@ bool MeetingController::sendVideoOfferToPeer(bool force) {
     emit infoMessage(QStringLiteral("Video offer sent to %1").arg(peerUserId));
     return true;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

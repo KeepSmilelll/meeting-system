@@ -28,6 +28,15 @@ public:
     bool saveServerEndpoint(const QString& host, quint16 port);
     QString serverHost(const QString& defaultValue = QStringLiteral("127.0.0.1")) const;
     quint16 serverPort(quint16 defaultValue = 8443) const;
+    bool savePreferredCameraDevice(const QString& deviceName);
+    QString preferredCameraDevice(const QString& defaultValue = QString()) const;
+    bool clearPreferredCameraDevice();
+    bool savePreferredMicrophoneDevice(const QString& deviceName);
+    QString preferredMicrophoneDevice(const QString& defaultValue = QString()) const;
+    bool clearPreferredMicrophoneDevice();
+    bool savePreferredSpeakerDevice(const QString& deviceName);
+    QString preferredSpeakerDevice(const QString& defaultValue = QString()) const;
+    bool clearPreferredSpeakerDevice();
 
     bool clearSession();
 

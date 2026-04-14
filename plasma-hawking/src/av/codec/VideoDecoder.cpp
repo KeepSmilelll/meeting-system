@@ -4,6 +4,7 @@
 #include <string>
 
 extern "C" {
+#include <libavutil/hwcontext.h>
 #include <libavutil/pixfmt.h>
 }
 
@@ -69,9 +70,69 @@ bool copyYuv420pFrameAsNv12(const AVFrame& frame, DecodedVideoFrame& outFrame) {
 
 }  // namespace
 
+void VideoDecoder::AvBufferRefDeleter::operator()(AVBufferRef* ref) const {
+    if (ref != nullptr) {
+        av_buffer_unref(&ref);
+    }
+}
+
 VideoDecoder::VideoDecoder() = default;
 
 VideoDecoder::~VideoDecoder() = default;
+
+AVPixelFormat VideoDecoder::selectPixelFormat(AVCodecContext* context, const AVPixelFormat* formats) {
+    if (formats == nullptr) {
+        return AV_PIX_FMT_NONE;
+    }
+
+    const auto* decoder = static_cast<const VideoDecoder*>(context != nullptr ? context->opaque : nullptr);
+    if (decoder != nullptr && decoder->m_hwPixelFormat != AV_PIX_FMT_NONE) {
+        for (const AVPixelFormat* format = formats; *format != AV_PIX_FMT_NONE; ++format) {
+            if (*format == decoder->m_hwPixelFormat) {
+                return *format;
+            }
+        }
+    }
+
+    return formats[0];
+}
+
+bool VideoDecoder::configureHardwareDecode(const AVCodec* codec, AVCodecContext& context) {
+    if (codec == nullptr) {
+        return false;
+    }
+
+    for (int index = 0;; ++index) {
+        const AVCodecHWConfig* hwConfig = avcodec_get_hw_config(codec, index);
+        if (hwConfig == nullptr) {
+            break;
+        }
+
+        if ((hwConfig->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) == 0) {
+            continue;
+        }
+
+        AVBufferRef* rawDeviceContext = nullptr;
+        const int createResult = av_hwdevice_ctx_create(&rawDeviceContext, hwConfig->device_type, nullptr, nullptr, 0);
+        if (createResult < 0 || rawDeviceContext == nullptr) {
+            continue;
+        }
+
+        m_hwDeviceContext.reset(rawDeviceContext);
+        context.hw_device_ctx = av_buffer_ref(m_hwDeviceContext.get());
+        if (context.hw_device_ctx == nullptr) {
+            m_hwDeviceContext.reset();
+            continue;
+        }
+
+        m_hwPixelFormat = hwConfig->pix_fmt;
+        context.get_format = &VideoDecoder::selectPixelFormat;
+        context.opaque = this;
+        return true;
+    }
+
+    return false;
+}
 
 bool VideoDecoder::configure() {
     const AVCodec* codec = avcodec_find_decoder(AV_CODEC_ID_H264);
@@ -84,9 +145,18 @@ bool VideoDecoder::configure() {
         return false;
     }
 
+    m_hwDeviceContext.reset();
+    m_hwPixelFormat = AV_PIX_FMT_NONE;
+
     context->thread_count = 1;
     context->thread_type = FF_THREAD_FRAME;
+    context->opaque = nullptr;
+
+    (void)configureHardwareDecode(codec, *context);
+
     if (avcodec_open2(context.get(), codec, nullptr) < 0) {
+        m_hwDeviceContext.reset();
+        m_hwPixelFormat = AV_PIX_FMT_NONE;
         return false;
     }
 
@@ -139,11 +209,34 @@ bool VideoDecoder::decode(const EncodedVideoFrame& inFrame, DecodedVideoFrame& o
         return false;
     }
 
-    if (frame->format == AV_PIX_FMT_NV12) {
-        return copyNv12Frame(*frame, outFrame);
+    const AVFrame* resolvedFrame = frame.get();
+    av::AVFramePtr transferredFrame;
+    if (m_hwPixelFormat != AV_PIX_FMT_NONE && frame->format == m_hwPixelFormat) {
+        transferredFrame = av::makeFrame();
+        if (!transferredFrame) {
+            if (error != nullptr) {
+                *error = "hw transfer frame alloc failed";
+            }
+            return false;
+        }
+
+        const int transferResult = av_hwframe_transfer_data(transferredFrame.get(), frame.get(), 0);
+        if (transferResult < 0) {
+            if (error != nullptr) {
+                *error = "av_hwframe_transfer_data failed: " + describeAvError(transferResult);
+            }
+            return false;
+        }
+
+        (void)av_frame_copy_props(transferredFrame.get(), frame.get());
+        resolvedFrame = transferredFrame.get();
     }
-    if (frame->format == AV_PIX_FMT_YUV420P || frame->format == AV_PIX_FMT_YUVJ420P) {
-        return copyYuv420pFrameAsNv12(*frame, outFrame);
+
+    if (resolvedFrame->format == AV_PIX_FMT_NV12) {
+        return copyNv12Frame(*resolvedFrame, outFrame);
+    }
+    if (resolvedFrame->format == AV_PIX_FMT_YUV420P || resolvedFrame->format == AV_PIX_FMT_YUVJ420P) {
+        return copyYuv420pFrameAsNv12(*resolvedFrame, outFrame);
     }
 
     if (error != nullptr) {
@@ -153,3 +246,4 @@ bool VideoDecoder::decode(const EncodedVideoFrame& inFrame, DecodedVideoFrame& o
 }
 
 }  // namespace av::codec
+

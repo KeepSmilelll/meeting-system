@@ -72,6 +72,29 @@ qt_standard_project_setup()
 if(NOT (FFMPEG_INCLUDE_DIR AND FFMPEG_AVCODEC_LIBRARY AND FFMPEG_AVUTIL_LIBRARY AND FFMPEG_SWRESAMPLE_LIBRARY AND FFMPEG_SWSCALE_LIBRARY))
     message(FATAL_ERROR "meeting_client requires FFmpeg 7.1 headers/libs under ${FFMPEG_ROOT_HINT}")
 endif()
+
+set(FFMPEG_RUNTIME_DLLS)
+if(WIN32 AND EXISTS "${FFMPEG_ROOT_HINT}/bin")
+    foreach(ffmpeg_dll_name IN ITEMS avcodec-61.dll avutil-59.dll swresample-5.dll swscale-8.dll)
+        set(ffmpeg_dll_path "${FFMPEG_ROOT_HINT}/bin/${ffmpeg_dll_name}")
+        if(EXISTS "${ffmpeg_dll_path}")
+            list(APPEND FFMPEG_RUNTIME_DLLS "${ffmpeg_dll_path}")
+        endif()
+    endforeach()
+endif()
+
+function(copy_ffmpeg_runtime target_name)
+    if(NOT WIN32)
+        return()
+    endif()
+    foreach(ffmpeg_dll IN LISTS FFMPEG_RUNTIME_DLLS)
+        add_custom_command(TARGET ${target_name} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${ffmpeg_dll}"
+                $<TARGET_FILE_DIR:${target_name}>
+        )
+    endforeach()
+endfunction()
 qt_add_executable(meeting_client
     src/main.cpp
     src/app/AppStateMachine.cpp
@@ -80,6 +103,10 @@ qt_add_executable(meeting_client
     src/app/ParticipantListModel.cpp
     src/app/RuntimeSmokeDriver.cpp
     src/app/UserManager.cpp
+    src/app/EventBus.cpp
+    src/security/CryptoUtils.cpp
+    src/security/TokenManager.cpp
+    src/security/SRTPContext.cpp
     src/av/capture/AudioCapture.cpp
     src/av/capture/CameraCapture.cpp
     src/av/capture/ScreenCapture.cpp
@@ -129,6 +156,7 @@ target_link_libraries(meeting_client PRIVATE
     ${FFMPEG_SWRESAMPLE_LIBRARY}
     ${FFMPEG_SWSCALE_LIBRARY}
 )
+copy_ffmpeg_runtime(meeting_client)
 
 if(WIN32)
     target_link_libraries(meeting_client PRIVATE ws2_32 bcrypt)
@@ -210,6 +238,7 @@ target_link_libraries(test_screen_share_session PRIVATE
     ${FFMPEG_AVUTIL_LIBRARY}
     ${FFMPEG_SWSCALE_LIBRARY}
 )
+copy_ffmpeg_runtime(test_screen_share_session)
 
 if(WIN32)
     target_link_libraries(test_screen_share_session PRIVATE ws2_32)
@@ -246,12 +275,70 @@ target_include_directories(test_av_sync PRIVATE
 
 add_test(NAME test_av_sync COMMAND test_av_sync)
 
+add_executable(test_ring_buffer
+    tests/test_ring_buffer.cpp
+)
+
+target_include_directories(test_ring_buffer PRIVATE
+    src
+)
+
+add_test(NAME test_ring_buffer COMMAND test_ring_buffer)
+
+add_executable(test_jitter_buffer
+    tests/test_jitter_buffer.cpp
+    src/net/media/JitterBuffer.cpp
+)
+
+target_include_directories(test_jitter_buffer PRIVATE
+    src
+)
+
+add_test(NAME test_jitter_buffer COMMAND test_jitter_buffer)
+
+add_executable(test_security_utils
+    tests/test_security_utils.cpp
+    src/security/CryptoUtils.cpp
+    src/security/TokenManager.cpp
+    src/security/SRTPContext.cpp
+    src/storage/DatabaseManager.cpp
+    src/storage/SettingsRepository.cpp
+)
+
+target_include_directories(test_security_utils PRIVATE
+    src
+)
+
+target_link_libraries(test_security_utils PRIVATE
+    Qt6::Core
+    Qt6::Sql
+)
+
+add_test(NAME test_security_utils COMMAND test_security_utils)
+
+add_executable(test_event_bus
+    tests/test_event_bus.cpp
+    src/app/EventBus.cpp
+)
+
+target_include_directories(test_event_bus PRIVATE
+    src
+)
+
+target_link_libraries(test_event_bus PRIVATE
+    Qt6::Core
+)
+
+add_test(NAME test_event_bus COMMAND test_event_bus)
+
 add_executable(test_meeting_controller_mute_all
     tests/test_meeting_controller_mute_all.cpp
     src/app/MeetingController.cpp
     src/app/MediaSessionManager.cpp
     src/app/ParticipantListModel.cpp
     src/app/UserManager.cpp
+    src/security/CryptoUtils.cpp
+    src/security/TokenManager.cpp
     src/av/capture/AudioCapture.cpp
     src/av/capture/CameraCapture.cpp
     src/av/capture/ScreenCapture.cpp
@@ -294,6 +381,7 @@ target_link_libraries(test_meeting_controller_mute_all PRIVATE
     ${FFMPEG_SWRESAMPLE_LIBRARY}
     ${FFMPEG_SWSCALE_LIBRARY}
 )
+copy_ffmpeg_runtime(test_meeting_controller_mute_all)
 
 if(WIN32)
     target_link_libraries(test_meeting_controller_mute_all PRIVATE ws2_32 bcrypt)
@@ -307,6 +395,8 @@ add_executable(test_meeting_runtime_smoke
     src/app/MediaSessionManager.cpp
     src/app/ParticipantListModel.cpp
     src/app/UserManager.cpp
+    src/security/CryptoUtils.cpp
+    src/security/TokenManager.cpp
     src/av/capture/AudioCapture.cpp
     src/av/capture/CameraCapture.cpp
     src/av/capture/ScreenCapture.cpp
@@ -349,6 +439,7 @@ target_link_libraries(test_meeting_runtime_smoke PRIVATE
     ${FFMPEG_SWRESAMPLE_LIBRARY}
     ${FFMPEG_SWSCALE_LIBRARY}
 )
+copy_ffmpeg_runtime(test_meeting_runtime_smoke)
 
 if(WIN32)
     target_link_libraries(test_meeting_runtime_smoke PRIVATE ws2_32 bcrypt)
@@ -374,13 +465,20 @@ target_link_libraries(test_meeting_client_process_smoke PRIVATE
     ${FFMPEG_AVUTIL_LIBRARY}
     ${FFMPEG_SWSCALE_LIBRARY}
 )
+copy_ffmpeg_runtime(test_meeting_client_process_smoke)
 
 add_dependencies(test_meeting_client_process_smoke meeting_client)
 
 add_test(NAME test_meeting_client_process_smoke COMMAND test_meeting_client_process_smoke)
 add_test(NAME test_meeting_client_real_audio_smoke COMMAND test_meeting_client_process_smoke)
 set_tests_properties(test_meeting_client_real_audio_smoke PROPERTIES
-    ENVIRONMENT "MEETING_PROCESS_SMOKE_SYNTHETIC_AUDIO=0"
+    ENVIRONMENT "MEETING_PROCESS_SMOKE_SYNTHETIC_AUDIO=0;MEETING_PROCESS_SMOKE_REQUIRE_AUDIO=1"
+    SKIP_RETURN_CODE 77
+)
+
+add_test(NAME test_meeting_runtime_real_audio_smoke COMMAND test_meeting_runtime_smoke)
+set_tests_properties(test_meeting_runtime_real_audio_smoke PROPERTIES
+    ENVIRONMENT "MEETING_RUNTIME_SMOKE_SYNTHETIC_AUDIO=0"
     SKIP_RETURN_CODE 77
 )
 
@@ -412,6 +510,7 @@ if(MEETING_BUILD_AUDIO_CODEC_SMOKE)
             ${FFMPEG_SWRESAMPLE_LIBRARY}
             ${FFMPEG_SWSCALE_LIBRARY}
         )
+        copy_ffmpeg_runtime(audio_codec_smoke)
 
         if(WIN32)
             target_link_libraries(audio_codec_smoke PRIVATE ws2_32 bcrypt)
@@ -422,6 +521,10 @@ if(MEETING_BUILD_AUDIO_CODEC_SMOKE)
         message(WARNING "Audio codec smoke target skipped: FFmpeg 7.1 headers/libs not found under ${FFMPEG_ROOT_HINT}.")
     endif()
 endif()
+
+
+
+
 
 
 

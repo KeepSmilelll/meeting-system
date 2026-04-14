@@ -52,6 +52,10 @@ public:
     bool popPlayedFrame(capture::AudioFrame& outFrame);
     bool waitForPlayedFrame(capture::AudioFrame& outFrame, std::chrono::milliseconds timeout);
 
+    static QStringList availableOutputDevices();
+    bool setPreferredOutputDeviceName(const QString& deviceName);
+    QString preferredOutputDeviceName() const;
+
     void setVolume(float volume);
     float volume() const;
 
@@ -91,6 +95,7 @@ private:
     int m_channels{1};
     int m_frameSamples{960};
     float m_volume{1.0F};
+    QString m_preferredOutputDeviceName;
     bool m_running{false};
     bool m_stopRequested{false};
 };
@@ -207,6 +212,34 @@ inline bool av::render::AudioPlayer::waitForPlayedFrame(capture::AudioFrame& out
     outFrame = std::move(m_playedFrames.front());
     m_playedFrames.pop_front();
     return true;
+}
+inline QStringList av::render::AudioPlayer::availableOutputDevices() {
+    QStringList names;
+    for (const auto& output : QMediaDevices::audioOutputs()) {
+        QString name = output.description().trimmed();
+        if (name.isEmpty()) {
+            name = QString::fromUtf8(output.id()).trimmed();
+        }
+        if (!name.isEmpty() && !names.contains(name, Qt::CaseInsensitive)) {
+            names.append(name);
+        }
+    }
+    return names;
+}
+
+inline bool av::render::AudioPlayer::setPreferredOutputDeviceName(const QString& deviceName) {
+    const QString normalized = deviceName.trimmed();
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (m_preferredOutputDeviceName.compare(normalized, Qt::CaseInsensitive) == 0) {
+        return true;
+    }
+    m_preferredOutputDeviceName = normalized;
+    return true;
+}
+
+inline QString av::render::AudioPlayer::preferredOutputDeviceName() const {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_preferredOutputDeviceName;
 }
 
 inline void av::render::AudioPlayer::setVolume(float volume) {
@@ -371,36 +404,82 @@ inline void av::render::AudioPlayer::playbackLoop() {
     QAudioFormat deviceFormat;
     bool loggedFirstPlaybackFrame = false;
 
-    if (QCoreApplication::instance() != nullptr) {
+    auto resolveOutputDevice = [](const QString& preferredDeviceName) {
+        const auto outputs = QMediaDevices::audioOutputs();
+        if (outputs.isEmpty()) {
+            return QAudioDevice{};
+        }
+
+        const QString preferred = preferredDeviceName.trimmed();
+        if (!preferred.isEmpty()) {
+            for (const auto& output : outputs) {
+                const QString description = output.description().trimmed();
+                const QString idText = QString::fromUtf8(output.id()).trimmed();
+                if (description.compare(preferred, Qt::CaseInsensitive) == 0 ||
+                    idText.compare(preferred, Qt::CaseInsensitive) == 0) {
+                    return output;
+                }
+            }
+        }
+
         const QAudioDevice defaultOutput = QMediaDevices::defaultAudioOutput();
         if (!defaultOutput.isNull()) {
-            const QAudioFormat desired = buildDeviceFormat(m_sampleRate, m_channels);
-            deviceFormat = defaultOutput.isFormatSupported(desired) ? desired : defaultOutput.preferredFormat();
-            if (deviceFormat.isValid()) {
-                audioSink = std::make_unique<QAudioSink>(defaultOutput, deviceFormat);
-                audioSink->setVolume(1.0F);
-                audioSink->setBufferSize(std::max(4096, deviceFormat.bytesPerFrame() * m_frameSamples * 4));
-                audioDevice = audioSink->start();
-                if (audioDevice == nullptr) {
-                    qWarning().noquote() << "[audio-player] fallback: failed to start default output device";
-                    audioSink.reset();
-                } else {
-                    qInfo().noquote() << "[audio-player] output=" << defaultOutput.description() << "sr=" << deviceFormat.sampleRate() << "ch=" << deviceFormat.channelCount() << "fmt=" << static_cast<int>(deviceFormat.sampleFormat());
-                }
-            } else {
-                qWarning().noquote() << "[audio-player] fallback: invalid output format";
-            }
-        } else {
-            qWarning().noquote() << "[audio-player] fallback: no default audio output";
+            return defaultOutput;
         }
-    } else {
-        qWarning().noquote() << "[audio-player] fallback: no Qt application instance";
+
+        return outputs.front();
+    };
+
+    auto openOutputDevice = [&](const QString& preferredDeviceName) {
+        if (audioSink != nullptr) {
+            audioSink->stop();
+            audioSink.reset();
+            audioDevice = nullptr;
+        }
+
+        if (QCoreApplication::instance() == nullptr) {
+            qWarning().noquote() << "[audio-player] fallback: no Qt application instance";
+            return;
+        }
+
+        const QAudioDevice outputDevice = resolveOutputDevice(preferredDeviceName);
+        if (outputDevice.isNull()) {
+            qWarning().noquote() << "[audio-player] fallback: no audio output available";
+            return;
+        }
+
+        const QAudioFormat desired = buildDeviceFormat(m_sampleRate, m_channels);
+        deviceFormat = outputDevice.isFormatSupported(desired) ? desired : outputDevice.preferredFormat();
+        if (!deviceFormat.isValid()) {
+            qWarning().noquote() << "[audio-player] fallback: invalid output format";
+            return;
+        }
+
+        audioSink = std::make_unique<QAudioSink>(outputDevice, deviceFormat);
+        audioSink->setVolume(1.0F);
+        audioSink->setBufferSize(std::max(4096, deviceFormat.bytesPerFrame() * m_frameSamples * 4));
+        audioDevice = audioSink->start();
+        if (audioDevice == nullptr) {
+            qWarning().noquote() << "[audio-player] fallback: failed to start output device";
+            audioSink.reset();
+            return;
+        }
+
+        qInfo().noquote() << "[audio-player] output=" << outputDevice.description() << "sr=" << deviceFormat.sampleRate() << "ch=" << deviceFormat.channelCount() << "fmt=" << static_cast<int>(deviceFormat.sampleFormat());
+    };
+
+    QString preferredOutputDeviceName;
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        preferredOutputDeviceName = m_preferredOutputDeviceName;
     }
+    openOutputDevice(preferredOutputDeviceName);
 
     for (;;) {
         capture::AudioFrame frame;
         FrameCallback callback;
         std::shared_ptr<av::sync::AVSync> clock;
+        QString desiredOutputDeviceName;
 
         {
             std::unique_lock<std::mutex> lock(m_mutex);
@@ -415,6 +494,12 @@ inline void av::render::AudioPlayer::playbackLoop() {
             m_inputFrames.pop_front();
             callback = m_callback;
             clock = m_clock;
+            desiredOutputDeviceName = m_preferredOutputDeviceName;
+        }
+
+        if (preferredOutputDeviceName.compare(desiredOutputDeviceName, Qt::CaseInsensitive) != 0) {
+            preferredOutputDeviceName = desiredOutputDeviceName;
+            openOutputDevice(preferredOutputDeviceName);
         }
 
         frame = applyGain(std::move(frame));
@@ -469,7 +554,6 @@ inline void av::render::AudioPlayer::playbackLoop() {
         audioSink->stop();
     }
 }
-
 inline av::capture::AudioFrame av::render::AudioPlayer::applyGain(capture::AudioFrame frame) const {
     const float gain = volume();
     if (gain == 1.0F) {
@@ -546,6 +630,10 @@ inline bool av::render::runAudioPlayerSelfCheck() {
     player.stop();
     return ok;
 }
+
+
+
+
 
 
 

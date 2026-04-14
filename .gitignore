@@ -39,3 +39,6 @@ bin/
 gopath/
 tools/go/
 tools/go.zip
+
+# Smoke artifacts
+_smoke_*/

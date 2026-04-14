@@ -4,6 +4,7 @@
 #include <QtMultimedia/QVideoFrame>
 
 #include <QList>
+#include <QString>
 
 #include <functional>
 #include <memory>
@@ -19,6 +20,8 @@ public:
     ~CameraCapture();
 
     static QList<QCameraDevice> availableDevices();
+    static QString deviceName(const QCameraDevice& device);
+    static QCameraDevice findDevice(const QString& selection);
 
     bool start();
     void stop();
