@@ -19,6 +19,7 @@ private:
     QString currentStageTag() const;
     QString videoPipelineSummary() const;
     QString audioPipelineSummary() const;
+    QString avSyncSummary() const;
     QString withStageTag(const QString& reason) const;
     void handleInfoMessage(const QString& message);
     void handleLoggedInChanged();
@@ -28,6 +29,7 @@ private:
     void pollPeerSuccess();
     void maybeUpdateVideoEvidence();
     void maybeUpdateAudioEvidence();
+    void maybeUpdateAvSyncEvidence();
     void maybeCompleteSuccess(const QString& reason);
     void maybeStartSoak(const QString& reason);
     void pollSoakProgress();
@@ -44,6 +46,8 @@ private:
     quint16 m_port{8443};
     QString m_username;
     QString m_password;
+    QString m_joinMeetingId;
+    QString m_meetingPassword;
     QString m_title;
     QString m_meetingIdPath;
     QString m_resultPath;
@@ -60,7 +64,9 @@ private:
     bool m_peerSuccessObserved{false};
     bool m_requireVideoEvidence{false};
     bool m_requireAudioEvidence{false};
+    bool m_requireAvSyncEvidence{false};
     bool m_disableLocalVideo{false};
+    int m_avSyncMaxSkewMs{40};
     QString m_expectedCameraSource;
     bool m_cameraSourceObserved{false};
     bool m_videoCameraFrameObserved{false};
@@ -71,6 +77,7 @@ private:
     bool m_videoFrameDecodedObserved{false};
     bool m_videoEvidenceReady{false};
     bool m_audioEvidenceReady{false};
+    bool m_avSyncEvidenceReady{false};
     int m_soakDurationMs{0};
     int m_soakPollIntervalMs{1000};
     bool m_soakStarted{false};

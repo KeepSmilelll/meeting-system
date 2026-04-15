@@ -61,8 +61,10 @@ SignalingClient::SignalingClient(QObject* parent)
         processIncomingFrames();
     });
 
-    connect(m_socket, &QTcpSocket::errorOccurred, this, [this](QAbstractSocket::SocketError) {
-        emit protocolError(m_socket->errorString());
+    connect(m_socket, &QTcpSocket::errorOccurred, this, [this](QAbstractSocket::SocketError socketError) {
+        if (socketError != QAbstractSocket::RemoteHostClosedError) {
+            emit protocolError(m_socket->errorString());
+        }
         if (m_socket->state() == QAbstractSocket::UnconnectedState) {
             emit connectedChanged(false);
         }
