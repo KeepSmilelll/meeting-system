@@ -69,6 +69,10 @@ bool useSyntheticCamera() {
     return value.isEmpty() || value != "0";
 }
 
+bool allowSingleRealCameraMode() {
+    return qEnvironmentVariableIntValue("MEETING_PROCESS_SMOKE_SINGLE_REAL_CAMERA") != 0;
+}
+
 bool hasDefaultAudioDevices() {
     return !QMediaDevices::defaultAudioInput().isNull() &&
            !QMediaDevices::defaultAudioOutput().isNull();
@@ -83,7 +87,7 @@ bool canEncodeVideoForProcessSmoke() {
     return encoder.configure(640, 360, 5, 500 * 1000);
 }
 
-bool requireGuestVideoEvidence() {
+bool requireDualVideoEvidence() {
     const QByteArray configured = qgetenv("MEETING_PROCESS_SMOKE_REQUIRE_VIDEO");
     if (configured == "1") {
         return true;
@@ -105,9 +109,27 @@ bool requireAudioEvidenceForProcessSmoke(bool syntheticAudio) {
     return !syntheticAudio;
 }
 
+bool requireAvSyncEvidenceForProcessSmoke(bool requireVideoEvidence) {
+    const QByteArray configured = qgetenv("MEETING_PROCESS_SMOKE_REQUIRE_AVSYNC");
+    if (configured == "1") {
+        return true;
+    }
+    if (configured == "0") {
+        return false;
+    }
+    Q_UNUSED(requireVideoEvidence)
+    return false;
+}
+
 int envIntValue(const char* key, int fallback) {
     bool ok = false;
     const int value = qEnvironmentVariable(key).toInt(&ok);
+    return ok ? value : fallback;
+}
+
+double envDoubleValue(const char* key, double fallback) {
+    bool ok = false;
+    const double value = qEnvironmentVariable(key).toDouble(&ok);
     return ok ? value : fallback;
 }
 
@@ -146,6 +168,20 @@ struct ProcessMemoryTracker {
     bool available{false};
 };
 
+struct ProcessCpuTracker {
+    QString name;
+    qint64 pid{0};
+    quint64 lastCpuTime100ns{0};
+    qint64 lastSampleTimeNs{0};
+    double averagePercent{0.0};
+    double peakPercent{0.0};
+    double lastPercent{0.0};
+    double totalPercent{0.0};
+    quint64 percentSamples{0};
+    bool available{false};
+    bool hasPreviousSample{false};
+};
+
 #if defined(Q_OS_WIN)
 quint64 queryWorkingSetBytes(qint64 pid) {
     if (pid <= 0) {
@@ -168,9 +204,53 @@ quint64 queryWorkingSetBytes(qint64 pid) {
 
     return static_cast<quint64>(counters.WorkingSetSize);
 }
+
+quint64 fileTimeToUInt64(const FILETIME& value) {
+    ULARGE_INTEGER merged{};
+    merged.LowPart = value.dwLowDateTime;
+    merged.HighPart = value.dwHighDateTime;
+    return merged.QuadPart;
+}
+
+quint64 queryProcessCpuTime100ns(qint64 pid) {
+    if (pid <= 0) {
+        return 0;
+    }
+
+    HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, static_cast<DWORD>(pid));
+    if (process == nullptr) {
+        return 0;
+    }
+
+    FILETIME createTime{};
+    FILETIME exitTime{};
+    FILETIME kernelTime{};
+    FILETIME userTime{};
+    const BOOL ok = GetProcessTimes(process, &createTime, &exitTime, &kernelTime, &userTime);
+    CloseHandle(process);
+    if (!ok) {
+        return 0;
+    }
+
+    return fileTimeToUInt64(kernelTime) + fileTimeToUInt64(userTime);
+}
+
+quint32 querySystemLogicalCpuCount() {
+    SYSTEM_INFO sysInfo{};
+    GetSystemInfo(&sysInfo);
+    return sysInfo.dwNumberOfProcessors > 0 ? static_cast<quint32>(sysInfo.dwNumberOfProcessors) : 1U;
+}
 #else
 quint64 queryWorkingSetBytes(qint64) {
     return 0;
+}
+
+quint64 queryProcessCpuTime100ns(qint64) {
+    return 0;
+}
+
+quint32 querySystemLogicalCpuCount() {
+    return 1U;
 }
 #endif
 
@@ -196,6 +276,51 @@ void sampleProcessMemory(ProcessMemoryTracker& tracker, bool allowBaselineCaptur
     tracker.samples += 1;
 }
 
+void sampleProcessCpu(ProcessCpuTracker& tracker, qint64 sampleTimeNs, quint32 logicalCpuCount) {
+    const quint64 processCpuTime100ns = queryProcessCpuTime100ns(tracker.pid);
+    if (processCpuTime100ns == 0 || sampleTimeNs <= 0 || logicalCpuCount == 0U) {
+        return;
+    }
+
+    if (!tracker.hasPreviousSample) {
+        tracker.lastCpuTime100ns = processCpuTime100ns;
+        tracker.lastSampleTimeNs = sampleTimeNs;
+        tracker.hasPreviousSample = true;
+        return;
+    }
+
+    const qint64 deltaWallNs = sampleTimeNs - tracker.lastSampleTimeNs;
+    if (deltaWallNs <= 0) {
+        return;
+    }
+
+    const quint64 deltaCpu100ns = processCpuTime100ns >= tracker.lastCpuTime100ns
+                                      ? (processCpuTime100ns - tracker.lastCpuTime100ns)
+                                      : 0U;
+    tracker.lastCpuTime100ns = processCpuTime100ns;
+    tracker.lastSampleTimeNs = sampleTimeNs;
+
+    if (deltaCpu100ns == 0U) {
+        return;
+    }
+
+    const double deltaWall100ns = static_cast<double>(deltaWallNs) / 100.0;
+    if (deltaWall100ns <= 0.0) {
+        return;
+    }
+
+    const double cpuPercent = (static_cast<double>(deltaCpu100ns) * 100.0) /
+                              (deltaWall100ns * static_cast<double>(logicalCpuCount));
+    tracker.available = true;
+    tracker.lastPercent = cpuPercent;
+    tracker.totalPercent += cpuPercent;
+    ++tracker.percentSamples;
+    tracker.averagePercent = tracker.totalPercent / static_cast<double>(tracker.percentSamples);
+    if (cpuPercent > tracker.peakPercent) {
+        tracker.peakPercent = cpuPercent;
+    }
+}
+
 QString formatProcessMemory(const ProcessMemoryTracker& tracker) {
     if (!tracker.available) {
         return QStringLiteral("%1_working_set=unavailable").arg(tracker.name);
@@ -213,11 +338,38 @@ QString formatProcessMemory(const ProcessMemoryTracker& tracker) {
         .arg(tracker.samples);
 }
 
+QString formatProcessCpu(const ProcessCpuTracker& tracker) {
+    if (!tracker.available || tracker.percentSamples == 0) {
+        return QStringLiteral("%1_cpu_percent=unavailable").arg(tracker.name);
+    }
+
+    return QStringLiteral("%1_cpu_percent=avg:%2 peak:%3 last:%4 samples:%5")
+        .arg(tracker.name)
+        .arg(QString::number(tracker.averagePercent, 'f', 2))
+        .arg(QString::number(tracker.peakPercent, 'f', 2))
+        .arg(QString::number(tracker.lastPercent, 'f', 2))
+        .arg(tracker.percentSamples);
+}
+
 bool exceedsWorkingSetGrowth(const ProcessMemoryTracker& tracker, quint64 maxGrowthBytes) {
     if (!tracker.available || tracker.baselineBytes == 0 || tracker.peakBytes <= tracker.baselineBytes) {
         return false;
     }
     return (tracker.peakBytes - tracker.baselineBytes) > maxGrowthBytes;
+}
+
+bool exceedsCpuBudget(const ProcessCpuTracker& tracker, double maxCpuPercent) {
+    if (!tracker.available || tracker.percentSamples == 0 || maxCpuPercent < 0.0) {
+        return false;
+    }
+    return tracker.averagePercent > maxCpuPercent;
+}
+
+bool exceedsCpuPeakBudget(const ProcessCpuTracker& tracker, double maxCpuPeakPercent) {
+    if (!tracker.available || tracker.percentSamples == 0 || maxCpuPeakPercent < 0.0) {
+        return false;
+    }
+    return tracker.peakPercent > maxCpuPeakPercent;
 }
 QString readAllOutput(QProcess& process) {
     return QStringLiteral("stdout:\n%1\nstderr:\n%2")
@@ -278,6 +430,9 @@ QString inferSmokeFailureStage(const QString& status, const QString& reason) {
     if (normalizedStatus == QStringLiteral("WAITING_VIDEO")) {
         return QStringLiteral("likely-stage=video-evidence");
     }
+    if (normalizedStatus == QStringLiteral("WAITING_AVSYNC")) {
+        return QStringLiteral("likely-stage=avsync-evidence");
+    }
     if (normalizedStatus == QStringLiteral("WAITING_CAMERA_SOURCE")) {
         return QStringLiteral("likely-stage=camera-source-evidence");
     }
@@ -304,6 +459,9 @@ QString inferSmokeFailureBucket(const QString& status, const QString& reason) {
     const QString normalizedReason = reason.trimmed().toLower();
     if (normalizedStatus == QStringLiteral("WAITING_VIDEO")) {
         return QStringLiteral("likely-module=media-transport-or-decoder");
+    }
+    if (normalizedStatus == QStringLiteral("WAITING_AVSYNC")) {
+        return QStringLiteral("likely-module=avsync-audio-clock");
     }
     if (normalizedStatus == QStringLiteral("WAITING_CAMERA_SOURCE")) {
         return QStringLiteral("likely-module=video-capture-source");
@@ -375,8 +533,18 @@ int main(int argc, char* argv[]) {
 
     const bool syntheticAudio = useSyntheticAudio();
     const bool syntheticCamera = useSyntheticCamera();
-    const bool requireVideoEvidence = requireGuestVideoEvidence();
+    const bool singleRealCameraMode = allowSingleRealCameraMode();
+    const bool requireVideoEvidence = requireDualVideoEvidence();
     const bool requireAudioEvidence = requireAudioEvidenceForProcessSmoke(syntheticAudio);
+    const bool requireAvSyncEvidence = requireAvSyncEvidenceForProcessSmoke(requireVideoEvidence);
+    const bool requireCpuEvidence = envIntValue("MEETING_PROCESS_SMOKE_REQUIRE_CPU", 0) != 0;
+    const int avSyncMaxSkewMs = (std::max)(0, envIntValue("MEETING_PROCESS_SMOKE_AVSYNC_MAX_SKEW_MS", 40));
+    const double maxCpuPercent = (std::max)(0.0, envDoubleValue("MEETING_PROCESS_SMOKE_MAX_CPU_PERCENT", 15.0));
+    const double maxCpuPeakPercent = (std::max)(0.0, envDoubleValue("MEETING_PROCESS_SMOKE_MAX_CPU_PEAK_PERCENT", 50.0));
+    const int cpuVideoWidth = (std::max)(320, envIntValue("MEETING_PROCESS_SMOKE_CPU_VIDEO_WIDTH", 1920));
+    const int cpuVideoHeight = (std::max)(180, envIntValue("MEETING_PROCESS_SMOKE_CPU_VIDEO_HEIGHT", 1080));
+    const int cpuVideoFps = (std::max)(1, envIntValue("MEETING_PROCESS_SMOKE_CPU_VIDEO_FPS", 30));
+    const int cpuVideoBitrateBps = (std::max)(300000, envIntValue("MEETING_PROCESS_SMOKE_CPU_VIDEO_BITRATE_BPS", 4000000));
     const int soakDurationMs = processSmokeSoakDurationMs();
     const int waitTimeoutMs = processSmokeTimeoutMs(soakDurationMs);
     const int runtimeTimeoutForClientMs = runtimeSmokeTimeoutMs(soakDurationMs);
@@ -461,7 +629,9 @@ int main(int argc, char* argv[]) {
         env.insert(QStringLiteral("QT_QPA_PLATFORM"), QStringLiteral("offscreen"));
         env.insert(QStringLiteral("MEETING_RUNTIME_SMOKE"), QStringLiteral("1"));
         env.insert(QStringLiteral("MEETING_SYNTHETIC_SCREEN"), QStringLiteral("1"));
-        if (syntheticCamera) {
+        const bool useSyntheticCameraForRole =
+            syntheticCamera || (singleRealCameraMode && role == QStringLiteral("guest"));
+        if (useSyntheticCameraForRole) {
             env.insert(QStringLiteral("MEETING_SYNTHETIC_CAMERA"), QStringLiteral("1"));
             env.insert(QStringLiteral("MEETING_SMOKE_EXPECT_CAMERA_SOURCE"), QStringLiteral("synthetic-fallback"));
             env.remove(QStringLiteral("MEETING_SMOKE_EXPECT_REAL_CAMERA"));
@@ -492,15 +662,33 @@ int main(int argc, char* argv[]) {
             env.remove(QStringLiteral("MEETING_SMOKE_SOAK_MS"));
             env.remove(QStringLiteral("MEETING_SMOKE_SOAK_POLL_INTERVAL_MS"));
         }
-        if (requireVideoEvidence && role == QStringLiteral("guest")) {
+        if (requireVideoEvidence) {
             env.insert(QStringLiteral("MEETING_SMOKE_REQUIRE_VIDEO"), QStringLiteral("1"));
         } else {
             env.remove(QStringLiteral("MEETING_SMOKE_REQUIRE_VIDEO"));
+        }
+        if (requireAvSyncEvidence) {
+            env.insert(QStringLiteral("MEETING_SMOKE_REQUIRE_AVSYNC"), QStringLiteral("1"));
+            env.insert(QStringLiteral("MEETING_SMOKE_AVSYNC_MAX_SKEW_MS"), QString::number(avSyncMaxSkewMs));
+        } else {
+            env.remove(QStringLiteral("MEETING_SMOKE_REQUIRE_AVSYNC"));
+            env.remove(QStringLiteral("MEETING_SMOKE_AVSYNC_MAX_SKEW_MS"));
         }
         if (requireAudioEvidence) {
             env.insert(QStringLiteral("MEETING_SMOKE_REQUIRE_AUDIO"), QStringLiteral("1"));
         } else {
             env.remove(QStringLiteral("MEETING_SMOKE_REQUIRE_AUDIO"));
+        }
+        if (requireCpuEvidence) {
+            env.insert(QStringLiteral("MEETING_VIDEO_WIDTH"), QString::number(cpuVideoWidth));
+            env.insert(QStringLiteral("MEETING_VIDEO_HEIGHT"), QString::number(cpuVideoHeight));
+            env.insert(QStringLiteral("MEETING_VIDEO_FPS"), QString::number(cpuVideoFps));
+            env.insert(QStringLiteral("MEETING_VIDEO_BITRATE_BPS"), QString::number(cpuVideoBitrateBps));
+        } else {
+            env.remove(QStringLiteral("MEETING_VIDEO_WIDTH"));
+            env.remove(QStringLiteral("MEETING_VIDEO_HEIGHT"));
+            env.remove(QStringLiteral("MEETING_VIDEO_FPS"));
+            env.remove(QStringLiteral("MEETING_VIDEO_BITRATE_BPS"));
         }
         return env;
     };
@@ -530,18 +718,33 @@ int main(int argc, char* argv[]) {
 
     ProcessMemoryTracker hostMemory{QStringLiteral("host"), host.processId()};
     ProcessMemoryTracker guestMemory{QStringLiteral("guest"), guest.processId()};
+    ProcessCpuTracker hostCpu{QStringLiteral("host"), host.processId()};
+    ProcessCpuTracker guestCpu{QStringLiteral("guest"), guest.processId()};
+    const quint32 logicalCpuCount = querySystemLogicalCpuCount();
     QElapsedTimer memorySamplingTimer;
     memorySamplingTimer.start();
-    const auto sampleMemory = [&hostMemory, &guestMemory, &memorySamplingTimer, memoryBaselineDelayMs]() {
+    QElapsedTimer cpuSamplingTimer;
+    cpuSamplingTimer.start();
+    const auto sampleRuntimeStats = [&hostMemory,
+                                     &guestMemory,
+                                     &hostCpu,
+                                     &guestCpu,
+                                     &memorySamplingTimer,
+                                     &cpuSamplingTimer,
+                                     memoryBaselineDelayMs,
+                                     logicalCpuCount]() {
         const bool allowBaselineCapture = memorySamplingTimer.elapsed() >= memoryBaselineDelayMs;
         sampleProcessMemory(hostMemory, allowBaselineCapture);
         sampleProcessMemory(guestMemory, allowBaselineCapture);
+        const qint64 sampleTimeNs = cpuSamplingTimer.nsecsElapsed();
+        sampleProcessCpu(hostCpu, sampleTimeNs, logicalCpuCount);
+        sampleProcessCpu(guestCpu, sampleTimeNs, logicalCpuCount);
     };
 
-    sampleMemory();
-    const bool hostOk = waitForSuccessfulExit(app, host, waitTimeoutMs, sampleMemory);
-    const bool guestOk = waitForSuccessfulExit(app, guest, waitTimeoutMs, sampleMemory);
-    sampleMemory();
+    sampleRuntimeStats();
+    const bool hostOk = waitForSuccessfulExit(app, host, waitTimeoutMs, sampleRuntimeStats);
+    const bool guestOk = waitForSuccessfulExit(app, guest, waitTimeoutMs, sampleRuntimeStats);
+    sampleRuntimeStats();
 
     if (!hostOk || !guestOk) {
         const QString hostResult = readTextFile(hostResultPath);
@@ -550,9 +753,24 @@ int main(int argc, char* argv[]) {
         printFailure(QStringLiteral("video evidence required=%1 encoder available=%2")
                          .arg(requireVideoEvidence ? 1 : 0)
                          .arg(canEncodeVideoForProcessSmoke() ? 1 : 0));
+        printFailure(QStringLiteral("avsync evidence required=%1 max_skew_ms=%2")
+                         .arg(requireAvSyncEvidence ? 1 : 0)
+                         .arg(avSyncMaxSkewMs));
         printFailure(QStringLiteral("audio evidence required=%1 synthetic_audio=%2")
                          .arg(requireAudioEvidence ? 1 : 0)
                          .arg(syntheticAudio ? 1 : 0));
+        printFailure(QStringLiteral("cpu evidence required=%1 max_cpu_percent=%2 logical_cpu_count=%3 cpu_video=%4x%5@%6 bitrate_bps=%7")
+                         .arg(requireCpuEvidence ? 1 : 0)
+                         .arg(QString::number(maxCpuPercent, 'f', 2))
+                         .arg(logicalCpuCount)
+                         .arg(cpuVideoWidth)
+                         .arg(cpuVideoHeight)
+                         .arg(cpuVideoFps)
+                         .arg(cpuVideoBitrateBps));
+        printFailure(QStringLiteral("single_real_camera_mode=%1")
+                         .arg(singleRealCameraMode ? 1 : 0));
+        printFailure(QStringLiteral("cpu peak threshold percent=%1")
+                         .arg(QString::number(maxCpuPeakPercent, 'f', 2)));
         printFailure(QStringLiteral("soak_ms=%1 process_timeout_ms=%2 runtime_timeout_ms=%3 max_ws_growth_mb=%4 memory_baseline_delay_ms=%5")
                          .arg(soakDurationMs)
                          .arg(waitTimeoutMs)
@@ -562,6 +780,8 @@ int main(int argc, char* argv[]) {
                          .arg(memoryBaselineDelayMs));
         printFailure(formatProcessMemory(hostMemory));
         printFailure(formatProcessMemory(guestMemory));
+        printFailure(formatProcessCpu(hostCpu));
+        printFailure(formatProcessCpu(guestCpu));
         printFailure(QStringLiteral("host result status=%1 reason=%2")
                          .arg(resultStatusLine(hostResult), resultReasonLine(hostResult)));
         printFailure(QStringLiteral("guest result status=%1 reason=%2")
@@ -606,8 +826,33 @@ int main(int argc, char* argv[]) {
             return 1;
         }
     }
+    if (requireCpuEvidence) {
+        const bool hostCpuExceeded = exceedsCpuBudget(hostCpu, maxCpuPercent);
+        const bool guestCpuExceeded = exceedsCpuBudget(guestCpu, maxCpuPercent);
+        const bool hostCpuPeakExceeded = exceedsCpuPeakBudget(hostCpu, maxCpuPeakPercent);
+        const bool guestCpuPeakExceeded = exceedsCpuPeakBudget(guestCpu, maxCpuPeakPercent);
+        if (hostCpuExceeded || guestCpuExceeded || hostCpuPeakExceeded || guestCpuPeakExceeded) {
+            printFailure(QStringLiteral("process smoke cpu guard failed: CPU exceeded threshold"));
+            printFailure(QStringLiteral("max_cpu_percent=%1 max_cpu_peak_percent=%2 logical_cpu_count=%3 cpu_video=%4x%5@%6 bitrate_bps=%7")
+                             .arg(QString::number(maxCpuPercent, 'f', 2))
+                             .arg(QString::number(maxCpuPeakPercent, 'f', 2))
+                             .arg(logicalCpuCount)
+                             .arg(cpuVideoWidth)
+                             .arg(cpuVideoHeight)
+                             .arg(cpuVideoFps)
+                             .arg(cpuVideoBitrateBps));
+            printFailure(formatProcessCpu(hostCpu));
+            printFailure(formatProcessCpu(guestCpu));
+            printFailure(formatProcessMemory(hostMemory));
+            printFailure(formatProcessMemory(guestMemory));
+            stopProcess(server);
+            return 1;
+        }
+    }
     std::cout << formatProcessMemory(hostMemory).toLocal8Bit().constData() << std::endl;
     std::cout << formatProcessMemory(guestMemory).toLocal8Bit().constData() << std::endl;
+    std::cout << formatProcessCpu(hostCpu).toLocal8Bit().constData() << std::endl;
+    std::cout << formatProcessCpu(guestCpu).toLocal8Bit().constData() << std::endl;
 
     stopProcess(server);
     std::cout << "test_meeting_client_process_smoke passed" << std::endl;

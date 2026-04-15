@@ -99,6 +99,9 @@ public:
     quint64 audioPlayedFrameCount() const;
     quint32 audioLastRttMs() const;
     quint32 audioTargetBitrateBps() const;
+    qint64 videoLastAudioSkewMs() const;
+    qint64 videoMaxAbsAudioSkewMs() const;
+    quint64 videoAudioSkewSampleCount() const;
 
     Q_INVOKABLE void login(const QString& username, const QString& password);
     Q_INVOKABLE void setServerEndpoint(const QString& host, quint16 port);
@@ -243,6 +246,10 @@ private:
     uint64_t m_videoRenderTicket{0};
     qint64 m_lastVideoRenderAtMs{0};
     int64_t m_lastRenderedVideoPts90k{-1};
+    qint64 m_lastVideoAudioSkewMs{0};
+    qint64 m_maxAbsVideoAudioSkewMs{0};
+    quint64 m_videoAudioSkewSampleCount{0};
+    bool m_hasVideoAudioSkewSample{false};
 
     QString m_serverHost{QStringLiteral("127.0.0.1")};
     quint16 m_serverPort{8443};

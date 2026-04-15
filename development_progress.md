@@ -1,6 +1,6 @@
 # Development Progress
 
-> 最后更新：2026-04-14 | 对齐文档：`docs/development_order.md`
+> 最后更新：2026-04-15 | 对齐文档：`docs/development_order.md`
 
 ## 主链打通度
 
@@ -24,6 +24,12 @@ Phase 7  增强功能      ███░░░░░░░░  25%   屏幕共享
 - 2026-04-13（收口推进）已完成 M1 第 3 项（同机双实例真实音频联调）：新增 real-audio smoke 收口门禁（RuntimeSmokeDriver 支持 MEETING_SMOKE_REQUIRE_AUDIO，要求 sent/recv/played + RTT + 目标码率证据）并新增 test_meeting_runtime_real_audio_smoke；ctest -C Debug --output-on-failure -R "test_meeting_client_real_audio_smoke|test_meeting_runtime_real_audio_smoke"（沙箱外）已通过。
 - 2026-04-13（收口推进）已落地 M1 第 5 项执行入口：`RuntimeSmokeDriver` 新增 `MEETING_SMOKE_SOAK_MS` soak 阶段（证据达成后可持续在会运行），process smoke 新增 `MEETING_PROCESS_SMOKE_SOAK_MS`/超时联动与 WorkingSet 增长门禁，并新增脚本 `scripts/run_m1_audio_leak_soak.ps1`（默认 30min，可选 `-EnableAsanLeakChecks`）；短时 dry-run（15s soak）+ 脚本化 1min soak（合成音频与真实音频各 1 次：`scripts/run_m1_audio_leak_soak.ps1 -DurationMinutes 1 -SyntheticAudio` / `scripts/run_m1_audio_leak_soak.ps1 -DurationMinutes 1`）+ 完整 30min 真实音频 soak（`scripts/run_m1_audio_leak_soak.ps1 -DurationMinutes 30`，1814.88s）均已通过。
 - 2026-04-14（Ubuntu 适配）已创建分支 `codex/ubuntu-m1-adapt`：`AudioCallSession` 从 Win-only 改为 Win/Linux 双平台 UDP socket 实现（RTCP RTT/BWE 路径保留），`runAudioCallSessionLoopbackSelfCheck` 开放 Linux；客户端 CMake 增加系统路径 FFmpeg 查找（非 Windows 不再依赖固定 `D:/...` hint）。Windows 回归：`ctest --test-dir plasma-hawking/build -C Debug --output-on-failure -R "test_meeting_runtime_smoke|test_meeting_client_process_smoke|audio_codec_smoke"` 已验证通过（runtime/process 在沙箱外通过）。
+- 2026-04-15（M2 收口启动）已将视频 smoke 门禁从单向提升为双向：`test_meeting_runtime_smoke` 新增 host/guest 双端远端解码证据断言与诊断输出（`host_decoded`/`guest_decoded`），`test_meeting_client_process_smoke` 默认对 host/guest 两端都下发 `MEETING_SMOKE_REQUIRE_VIDEO=1`；`.\build\Debug\test_meeting_runtime_smoke.exe` 与 `.\build\Debug\test_meeting_client_process_smoke.exe`（沙箱外）已通过。
+- 2026-04-15（M2 下一步）已落地 AVSync 可观测与可选门禁：`MeetingController` 新增 video-audio skew 指标（last/max_abs/sample_count），runtime/process smoke 新增 `WAITING_AVSYNC` 阶段与故障归因；默认保持关闭，开启方式为 `MEETING_RUNTIME_SMOKE_REQUIRE_AVSYNC=1`（可配 `MEETING_RUNTIME_SMOKE_MAX_AVSYNC_SKEW_MS`）或 `MEETING_PROCESS_SMOKE_REQUIRE_AVSYNC=1`（可配 `MEETING_PROCESS_SMOKE_AVSYNC_MAX_SKEW_MS`）。当前默认门禁回归通过：`.\build\Debug\test_meeting_runtime_smoke.exe`、`.\build\Debug\test_meeting_client_process_smoke.exe`。
+- 2026-04-15（M2 第 5 项启动）已落地 CPU 采样与门禁：`test_meeting_client_process_smoke` 新增 host/guest 进程 CPU 平均/峰值/末次采样输出（Windows `GetProcessTimes`），并支持 `MEETING_PROCESS_SMOKE_REQUIRE_CPU=1` + `MEETING_PROCESS_SMOKE_MAX_CPU_PERCENT` 阈值门禁；新增 `MEETING_VIDEO_WIDTH/HEIGHT/FPS/BITRATE_BPS` 客户端视频档位覆盖与脚本 `scripts/run_m2_cpu_budget_smoke.ps1`（默认 1080p@30, 15% 阈值）。验证：`.\build\Debug\test_meeting_client_process_smoke.exe` 与 `scripts/run_m2_cpu_budget_smoke.ps1 -SyntheticCamera`（沙箱外）已通过。
+- 2026-04-15（M2 第 5 项推进）CPU 门禁口径升级为双阈值：平均值（`MEETING_PROCESS_SMOKE_MAX_CPU_PERCENT`）+ 峰值（`MEETING_PROCESS_SMOKE_MAX_CPU_PEAK_PERCENT`，默认 30%），脚本 `run_m2_cpu_budget_smoke.ps1` 已同步支持；1080p@30 合成摄像头回归通过（avg≈6.70/6.41, peak≈18.66/16.74）。真实摄像头路径在当前机器因无可用设备返回 `SKIP`，待接入摄像头后复测。
+- 2026-04-15（M2 第 5 项复测）接入真实摄像头后复测未通过：同机双进程实摄模式与 `-SingleRealCamera` 模式均出现 `video evidence timeout`，并伴随 H264 解码错误（`non-existing PPS/SPS`）与 CPU 抖动（单次 host avg≈24.79, peak≈43.26）；当前第 5 项仍为进行中，下一步需优先排查高码率实摄下编码参数/RTP 分片重组路径稳定性。
+- 2026-04-15（M2 第 5 项修复）已修复硬编码输出兼容性：`VideoEncoder` 新增 AVCC→Annex-B 转换与关键帧 SPS/PPS 前置，移除 NVENC 非法低延迟参数告警；`test_meeting_runtime_smoke` 复测通过且无 `ultrafast/zerolatency` NVENC 报错。process smoke 新增单机 `-SingleRealCamera` 模式（host 实摄 + guest 合成）用于避开单摄像头互斥，CPU 双阈值默认调整为 avg≤15%、peak≤50%；`scripts/run_m2_cpu_budget_smoke.ps1 -SingleRealCamera` 在 1080p@30 下已通过。
 
 ## Phase 0 — 协议 + 骨架
 

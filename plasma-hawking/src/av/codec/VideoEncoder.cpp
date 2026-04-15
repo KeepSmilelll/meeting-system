@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <cstdlib>
 #include <string>
 #include <vector>
@@ -42,6 +43,155 @@ bool codecSupportsPixelFormat(const AVCodec* codec, AVPixelFormat pixelFormat) {
         }
     }
     return false;
+}
+
+bool hasAnnexBStartCode(const std::vector<uint8_t>& payload) {
+    for (std::size_t i = 0; i + 3 < payload.size(); ++i) {
+        if (payload[i] == 0x00 && payload[i + 1] == 0x00 &&
+            (payload[i + 2] == 0x01 || (i + 3 < payload.size() && payload[i + 2] == 0x00 && payload[i + 3] == 0x01))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::vector<uint8_t> buildAnnexBParameterSetsFromExtradata(const uint8_t* extradata, int extradataSize) {
+    std::vector<uint8_t> parameterSets;
+    if (extradata == nullptr || extradataSize < 7 || extradata[0] != 1) {
+        return parameterSets;
+    }
+
+    std::size_t offset = 5;
+    const uint8_t spsCount = static_cast<uint8_t>(extradata[offset] & 0x1FU);
+    ++offset;
+
+    auto appendNalu = [&parameterSets](const uint8_t* data, std::size_t size) {
+        if (data == nullptr || size == 0) {
+            return;
+        }
+        static constexpr uint8_t kStartCode[] = {0x00, 0x00, 0x00, 0x01};
+        parameterSets.insert(parameterSets.end(), std::begin(kStartCode), std::end(kStartCode));
+        parameterSets.insert(parameterSets.end(), data, data + static_cast<std::ptrdiff_t>(size));
+    };
+
+    auto readLength = [extradata, extradataSize](std::size_t& cursor, std::size_t& length) -> bool {
+        if (cursor + 2 > static_cast<std::size_t>(extradataSize)) {
+            return false;
+        }
+        length = static_cast<std::size_t>((extradata[cursor] << 8) | extradata[cursor + 1]);
+        cursor += 2;
+        if (cursor + length > static_cast<std::size_t>(extradataSize)) {
+            return false;
+        }
+        return true;
+    };
+
+    for (uint8_t i = 0; i < spsCount; ++i) {
+        std::size_t naluSize = 0;
+        if (!readLength(offset, naluSize)) {
+            return {};
+        }
+        appendNalu(extradata + offset, naluSize);
+        offset += naluSize;
+    }
+
+    if (offset >= static_cast<std::size_t>(extradataSize)) {
+        return parameterSets;
+    }
+
+    const uint8_t ppsCount = extradata[offset++];
+    for (uint8_t i = 0; i < ppsCount; ++i) {
+        std::size_t naluSize = 0;
+        if (!readLength(offset, naluSize)) {
+            return {};
+        }
+        appendNalu(extradata + offset, naluSize);
+        offset += naluSize;
+    }
+
+    return parameterSets;
+}
+
+bool convertAvccPayloadToAnnexB(const std::vector<uint8_t>& payload, int nalLengthSize, std::vector<uint8_t>& annexBPayload) {
+    if (payload.empty()) {
+        annexBPayload.clear();
+        return true;
+    }
+
+    if (hasAnnexBStartCode(payload)) {
+        annexBPayload = payload;
+        return true;
+    }
+
+    if (nalLengthSize < 1 || nalLengthSize > 4) {
+        nalLengthSize = 4;
+    }
+
+    std::vector<uint8_t> converted;
+    converted.reserve(payload.size() + 64);
+    std::size_t cursor = 0;
+    static constexpr uint8_t kStartCode[] = {0x00, 0x00, 0x00, 0x01};
+    while (cursor + static_cast<std::size_t>(nalLengthSize) <= payload.size()) {
+        uint32_t naluSize = 0;
+        for (int i = 0; i < nalLengthSize; ++i) {
+            naluSize = (naluSize << 8) | payload[cursor + static_cast<std::size_t>(i)];
+        }
+        cursor += static_cast<std::size_t>(nalLengthSize);
+        if (naluSize == 0 || cursor + naluSize > payload.size()) {
+            annexBPayload = payload;
+            return false;
+        }
+
+        converted.insert(converted.end(), std::begin(kStartCode), std::end(kStartCode));
+        converted.insert(converted.end(),
+                         payload.begin() + static_cast<std::ptrdiff_t>(cursor),
+                         payload.begin() + static_cast<std::ptrdiff_t>(cursor + naluSize));
+        cursor += naluSize;
+    }
+
+    if (converted.empty() || cursor != payload.size()) {
+        annexBPayload = payload;
+        return false;
+    }
+
+    annexBPayload = std::move(converted);
+    return true;
+}
+
+void prependParameterSetsForKeyFrame(std::vector<uint8_t>& payload,
+                                     bool keyFrame,
+                                     const uint8_t* extradata,
+                                     int extradataSize) {
+    if (!keyFrame) {
+        return;
+    }
+
+    const auto parameterSets = buildAnnexBParameterSetsFromExtradata(extradata, extradataSize);
+    if (parameterSets.empty()) {
+        return;
+    }
+
+    payload.insert(payload.begin(), parameterSets.begin(), parameterSets.end());
+}
+
+void applyLowLatencyCodecOptions(const char* codecName, AVCodecContext* context) {
+    if (codecName == nullptr || context == nullptr) {
+        return;
+    }
+
+    const std::string name(codecName);
+    if (name.find("nvenc") != std::string::npos) {
+        av_opt_set(context->priv_data, "preset", "p1", 0);
+        av_opt_set(context->priv_data, "tune", "ull", 0);
+        av_opt_set(context->priv_data, "zerolatency", "1", 0);
+        av_opt_set(context->priv_data, "rc", "cbr", 0);
+        return;
+    }
+
+    if (name.find("libx264") != std::string::npos || name == "h264") {
+        av_opt_set(context->priv_data, "preset", "ultrafast", 0);
+        av_opt_set(context->priv_data, "tune", "zerolatency", 0);
+    }
 }
 
 std::vector<const char*> orderedCodecCandidates() {
@@ -194,8 +344,7 @@ bool VideoEncoder::configure(int width, int height, int frameRate, int bitrate) 
             context->max_b_frames = 0;
             context->pix_fmt = outputFormat;
 
-            av_opt_set(context->priv_data, "preset", "ultrafast", 0);
-            av_opt_set(context->priv_data, "tune", "zerolatency", 0);
+            applyLowLatencyCodecOptions(candidate, context.get());
             av_opt_set(context->priv_data, "repeat_headers", "1", 0);
 
             if (avcodec_open2(context.get(), codec, nullptr) < 0) {
@@ -318,6 +467,23 @@ bool VideoEncoder::encode(const capture::ScreenFrame& inFrame,
         }
         return false;
     }
+
+    const int nalLengthSize = (m_codecContext->extradata != nullptr && m_codecContext->extradata_size >= 5 &&
+                               m_codecContext->extradata[0] == 1)
+                                  ? ((m_codecContext->extradata[4] & 0x03) + 1)
+                                  : 4;
+    std::vector<uint8_t> annexBPayload;
+    if (!convertAvccPayloadToAnnexB(outFrame.payload, nalLengthSize, annexBPayload)) {
+        if (error != nullptr) {
+            *error = "avcc-to-annexb conversion failed";
+        }
+        return false;
+    }
+    prependParameterSetsForKeyFrame(annexBPayload,
+                                    outFrame.keyFrame,
+                                    m_codecContext->extradata,
+                                    m_codecContext->extradata_size);
+    outFrame.payload = std::move(annexBPayload);
 
     return true;
 }
