@@ -42,6 +42,7 @@ constexpr quint16 kMeetParticipantLeave = 0x020D;
 constexpr quint16 kMeetHostChanged = 0x020E;
 constexpr quint16 kMediaRouteStatusNotify = 0x0306;
 constexpr int kAudioPayloadType = 111;
+constexpr int kCameraPayloadType = 96;
 constexpr int kScreenPayloadType = 97;
 constexpr int kAudioSampleRate = 48000;
 constexpr int kAudioChannels = 1;
@@ -51,17 +52,18 @@ constexpr int kDefaultVideoWidth = 1280;
 constexpr int kDefaultVideoHeight = 720;
 constexpr int kDefaultVideoFrameRate = 5;
 constexpr int kDefaultVideoBitrate = 1500 * 1000;
-constexpr int kMaxVideoLeadMsForSyncDrop = 1200;
-constexpr int kMaxVideoLagMsForSyncDrop = 1500;
-constexpr int kMaxVideoRenderDelayMsForSync = 250;
+constexpr int kMaxVideoRenderDelayMsForSync = 40;
 constexpr int kDefaultMaxRemoteVideoRenderQueueDepth = 8;
-constexpr int kDefaultMaxAudioDrivenRenderDelayMs = 120;
+constexpr int kDefaultMaxPerPeerVideoRenderQueueDepth = 4;
+constexpr int kDefaultMaxAudioDrivenRenderDelayMs = 40;
 constexpr int kDefaultMaxVideoFramesPerDrain = 2;
 constexpr int kDefaultMinVideoCadenceMs = 12;
 constexpr int kDefaultMaxVideoCadenceMs = 80;
+constexpr int kFixedVideoRenderTickMs = 16;
 
 struct VideoRenderTuning {
     int maxRemoteQueueDepth{kDefaultMaxRemoteVideoRenderQueueDepth};
+    int maxPerPeerQueueDepth{kDefaultMaxPerPeerVideoRenderQueueDepth};
     int maxAudioDrivenRenderDelayMs{kDefaultMaxAudioDrivenRenderDelayMs};
     int maxVideoFramesPerDrain{kDefaultMaxVideoFramesPerDrain};
     int minVideoCadenceMs{kDefaultMinVideoCadenceMs};
@@ -73,6 +75,8 @@ struct VideoSessionTuning {
     int height{kDefaultVideoHeight};
     int frameRate{kDefaultVideoFrameRate};
     int bitrate{kDefaultVideoBitrate};
+    QString profileName{QStringLiteral("720p")};
+    av::codec::VideoEncoderPreset encoderPreset{av::codec::VideoEncoderPreset::Realtime};
 };
 
 int readBoundedEnvInt(const QProcessEnvironment& env,
@@ -93,30 +97,101 @@ int readBoundedEnvInt(const QProcessEnvironment& env,
     return std::clamp(parsed, minValue, maxValue);
 }
 
+QString canonicalVideoPresetName(const QString& raw) {
+    const QString preset = raw.trimmed().toLower();
+    if (preset == QStringLiteral("1080p") ||
+        preset == QStringLiteral("fhd") ||
+        preset == QStringLiteral("fullhd")) {
+        return QStringLiteral("1080p");
+    }
+    if (preset == QStringLiteral("360p") || preset == QStringLiteral("sd")) {
+        return QStringLiteral("360p");
+    }
+    return QStringLiteral("720p");
+}
+
+QString videoEncoderPresetLabel(av::codec::VideoEncoderPreset preset) {
+    switch (preset) {
+    case av::codec::VideoEncoderPreset::Balanced:
+        return QStringLiteral("balanced");
+    case av::codec::VideoEncoderPreset::Quality:
+        return QStringLiteral("quality");
+    case av::codec::VideoEncoderPreset::Realtime:
+    default:
+        return QStringLiteral("realtime");
+    }
+}
+
+av::codec::VideoEncoderPreset resolveVideoEncoderPreset(const QProcessEnvironment& env,
+                                                        av::codec::VideoEncoderPreset fallback) {
+    const QString raw = env.value(QStringLiteral("MEETING_VIDEO_ENCODER_PRESET")).trimmed().toLower();
+    if (raw == QStringLiteral("balanced")) {
+        return av::codec::VideoEncoderPreset::Balanced;
+    }
+    if (raw == QStringLiteral("quality") || raw == QStringLiteral("hq")) {
+        return av::codec::VideoEncoderPreset::Quality;
+    }
+    if (raw == QStringLiteral("realtime") ||
+        raw == QStringLiteral("speed") ||
+        raw == QStringLiteral("lowlatency")) {
+        return av::codec::VideoEncoderPreset::Realtime;
+    }
+    return fallback;
+}
+
+void applyVideoPresetDefaults(VideoSessionTuning& tuning, const QString& presetName) {
+    tuning.profileName = presetName;
+    if (presetName == QStringLiteral("1080p")) {
+        tuning.width = 1920;
+        tuning.height = 1080;
+        tuning.frameRate = 8;
+        tuning.bitrate = 3000 * 1000;
+        tuning.encoderPreset = av::codec::VideoEncoderPreset::Balanced;
+        return;
+    }
+    if (presetName == QStringLiteral("360p")) {
+        tuning.width = 640;
+        tuning.height = 360;
+        tuning.frameRate = 8;
+        tuning.bitrate = 700 * 1000;
+        tuning.encoderPreset = av::codec::VideoEncoderPreset::Realtime;
+        return;
+    }
+
+    tuning.width = kDefaultVideoWidth;
+    tuning.height = kDefaultVideoHeight;
+    tuning.frameRate = kDefaultVideoFrameRate;
+    tuning.bitrate = kDefaultVideoBitrate;
+    tuning.encoderPreset = av::codec::VideoEncoderPreset::Realtime;
+}
+
 const VideoSessionTuning& videoSessionTuning() {
     static const VideoSessionTuning tuning = [] {
         VideoSessionTuning value;
         const QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        const QString presetName = canonicalVideoPresetName(env.value(QStringLiteral("MEETING_VIDEO_PRESET")));
+        applyVideoPresetDefaults(value, presetName);
         value.width = readBoundedEnvInt(env,
                                         QStringLiteral("MEETING_VIDEO_WIDTH"),
-                                        kDefaultVideoWidth,
+                                        value.width,
                                         320,
                                         3840);
         value.height = readBoundedEnvInt(env,
                                          QStringLiteral("MEETING_VIDEO_HEIGHT"),
-                                         kDefaultVideoHeight,
+                                         value.height,
                                          180,
                                          2160);
         value.frameRate = readBoundedEnvInt(env,
                                             QStringLiteral("MEETING_VIDEO_FPS"),
-                                            kDefaultVideoFrameRate,
+                                            value.frameRate,
                                             1,
                                             60);
         value.bitrate = readBoundedEnvInt(env,
                                           QStringLiteral("MEETING_VIDEO_BITRATE_BPS"),
-                                          kDefaultVideoBitrate,
+                                          value.bitrate,
                                           300 * 1000,
                                           20 * 1000 * 1000);
+        value.encoderPreset = resolveVideoEncoderPreset(env, value.encoderPreset);
         return value;
     }();
     return tuning;
@@ -131,6 +206,11 @@ const VideoRenderTuning& videoRenderTuning() {
                                                       kDefaultMaxRemoteVideoRenderQueueDepth,
                                                       2,
                                                       32);
+        value.maxPerPeerQueueDepth = readBoundedEnvInt(env,
+                                                       QStringLiteral("MEETING_VIDEO_RENDER_QUEUE_PER_PEER_DEPTH"),
+                                                       kDefaultMaxPerPeerVideoRenderQueueDepth,
+                                                       1,
+                                                       16);
         value.maxAudioDrivenRenderDelayMs = readBoundedEnvInt(env,
                                                                QStringLiteral("MEETING_VIDEO_AUDIO_DRIVEN_MAX_DELAY_MS"),
                                                                kDefaultMaxAudioDrivenRenderDelayMs,
@@ -159,19 +239,6 @@ const VideoRenderTuning& videoRenderTuning() {
     return tuning;
 }
 
-bool shouldDropRemoteVideoFrameByAudioClock(const av::codec::DecodedVideoFrame& frame,
-                                            const std::shared_ptr<av::sync::AVSync>& clock) {
-    if (!clock) {
-        return false;
-    }
-
-    return av::sync::AVSync::shouldDropVideoFrameByAudioClock(frame.pts,
-                                                               clock->audioPts(),
-                                                               clock->sampleRate(),
-                                                               kMaxVideoLeadMsForSyncDrop,
-                                                               kMaxVideoLagMsForSyncDrop);
-}
-
 int suggestRemoteVideoRenderDelayMsByAudioClock(const av::codec::DecodedVideoFrame& frame,
                                                  const std::shared_ptr<av::sync::AVSync>& clock) {
     if (!clock) {
@@ -187,8 +254,19 @@ QString toQtString(const std::string& s) {
     return QString::fromUtf8(s.data(), static_cast<int>(s.size()));
 }
 
-bool shouldStartVideoMutedForSmoke() {
-    return qEnvironmentVariableIntValue("MEETING_SMOKE_START_VIDEO_MUTED") != 0;
+bool shouldStartVideoMutedByDefault() {
+    if (!qEnvironmentVariableIsEmpty("MEETING_DEFAULT_VIDEO_MUTED")) {
+        return qEnvironmentVariableIntValue("MEETING_DEFAULT_VIDEO_MUTED") != 0;
+    }
+    if (qEnvironmentVariableIntValue("MEETING_RUNTIME_SMOKE") != 0) {
+        return qEnvironmentVariableIntValue("MEETING_SMOKE_START_VIDEO_MUTED") != 0;
+    }
+    return true;
+}
+
+bool shouldEmitVerboseNegotiationLogs() {
+    return qEnvironmentVariableIntValue("MEETING_RUNTIME_SMOKE") != 0 ||
+           qEnvironmentVariableIntValue("MEETING_VERBOSE_NEGOTIATION_LOGS") != 0;
 }
 
 struct MediaRouteStatusEvent {
@@ -331,14 +409,7 @@ QString cameraDeviceName(const QCameraDevice& device) {
 }
 
 QStringList readAvailableCameraDeviceNames() {
-    QStringList names;
-    for (const auto& device : av::capture::CameraCapture::availableDevices()) {
-        const QString name = cameraDeviceName(device);
-        if (!name.isEmpty() && !names.contains(name, Qt::CaseInsensitive)) {
-            names.append(name);
-        }
-    }
-    return names;
+    return av::capture::CameraCapture::availableDeviceNames();
 }
 QString normalizePreferredAudioDevice(const QString& deviceName) {
     return deviceName.trimmed();
@@ -405,7 +476,8 @@ MeetingController::MeetingController(const QString& databasePath, QObject* paren
         }
     });
 
-    m_videoRenderTimer->setSingleShot(true);
+    m_videoRenderTimer->setSingleShot(false);
+    m_videoRenderTimer->setInterval(kFixedVideoRenderTickMs);
     connect(m_videoRenderTimer, &QTimer::timeout, this, [this]() {
         drainRemoteVideoRenderQueue();
     });
@@ -441,13 +513,17 @@ MeetingController::MeetingController(const QString& databasePath, QObject* paren
                 const QString answer = m_audioSessionManager->buildAnswer(peerUserId);
                 const quint32 audioSsrc = m_audioCallSession ? m_audioCallSession->audioSsrc() : 0;
                 m_signaling->sendMediaAnswer(peerUserId, answer, audioSsrc, 0);
-                emit infoMessage(QStringLiteral("Audio answer sent to %1").arg(peerUserId));
+                if (shouldEmitVerboseNegotiationLogs()) {
+                    emit infoMessage(QStringLiteral("Audio answer sent to %1").arg(peerUserId));
+                }
             }
             return;
         }
 
         m_audioNegotiationStarted = true;
-        emit infoMessage(QStringLiteral("Audio endpoint ready for %1").arg(peerUserId));
+        if (shouldEmitVerboseNegotiationLogs()) {
+            emit infoMessage(QStringLiteral("Audio endpoint ready for %1").arg(peerUserId));
+        }
     });
     connect(m_mediaSessionManager.get(), &MediaSessionManager::remoteVideoEndpointReady, this,
             [this](const QString& peerUserId, const QString& host, quint16 port, int payloadType, bool offer) {
@@ -475,12 +551,16 @@ MeetingController::MeetingController(const QString& databasePath, QObject* paren
             const QString answer = m_mediaSessionManager->buildAnswer(peerUserId);
             const quint32 videoSsrc = currentVideoSsrc();
             m_signaling->sendMediaAnswer(peerUserId, answer, 0, videoSsrc);
-            emit infoMessage(QStringLiteral("Video answer sent to %1").arg(peerUserId));
+            if (shouldEmitVerboseNegotiationLogs()) {
+                emit infoMessage(QStringLiteral("Video answer sent to %1").arg(peerUserId));
+            }
             return;
         }
 
         m_videoNegotiationStarted = true;
-        emit infoMessage(QStringLiteral("Video endpoint ready for %1").arg(peerUserId));
+        if (shouldEmitVerboseNegotiationLogs()) {
+            emit infoMessage(QStringLiteral("Video endpoint ready for %1").arg(peerUserId));
+        }
     });
 
     connect(m_signaling, &signaling::SignalingClient::connectedChanged, this, [this](bool connected) {
@@ -609,7 +689,7 @@ MeetingController::MeetingController(const QString& databasePath, QObject* paren
         m_pendingMeetingTitle.clear();
         m_inMeeting = true;
         m_audioMuted = false;
-        m_videoMuted = shouldStartVideoMutedForSmoke();
+        m_videoMuted = shouldStartVideoMutedByDefault();
         setScreenSharing(false);
         m_waitingLeaveResponse = false;
         m_currentMeetingHost = true;
@@ -642,7 +722,7 @@ MeetingController::MeetingController(const QString& databasePath, QObject* paren
         m_meetingTitle = title;
         m_inMeeting = true;
         m_audioMuted = false;
-        m_videoMuted = shouldStartVideoMutedForSmoke();
+        m_videoMuted = shouldStartVideoMutedByDefault();
         setScreenSharing(false);
         m_waitingLeaveResponse = false;
         const bool isHost = !hostUserId.isEmpty() && hostUserId == m_userId;
@@ -723,7 +803,9 @@ MeetingController::MeetingController(const QString& databasePath, QObject* paren
             return;
         }
         Q_UNUSED(audioSsrc)
-        maybeStartMediaNegotiation();
+        if (!m_audioSessionManager || !m_mediaSessionManager || !m_audioCallSession || !m_screenShareSession) {
+            maybeStartMediaNegotiation();
+        }
         if (!m_audioSessionManager || !m_mediaSessionManager) {
             return;
         }
@@ -771,7 +853,9 @@ MeetingController::MeetingController(const QString& databasePath, QObject* paren
             return;
         }
         Q_UNUSED(audioSsrc)
-        maybeStartMediaNegotiation();
+        if (!m_audioSessionManager || !m_mediaSessionManager || !m_audioCallSession || !m_screenShareSession) {
+            maybeStartMediaNegotiation();
+        }
         if (!m_audioSessionManager || !m_mediaSessionManager) {
             return;
         }
@@ -875,6 +959,13 @@ QObject* MeetingController::remoteScreenFrameSource() const {
 }
 
 QObject* MeetingController::remoteVideoFrameSource() const {
+    const QString normalized = m_activeVideoPeerUserId.trimmed();
+    if (!normalized.isEmpty()) {
+        const auto it = m_remoteVideoFrameStoresByPeer.constFind(normalized);
+        if (it != m_remoteVideoFrameStoresByPeer.constEnd() && it.value() != nullptr) {
+            return it.value();
+        }
+    }
     return m_remoteVideoFrameStore.get();
 }
 
@@ -994,6 +1085,54 @@ qint64 MeetingController::videoMaxAbsAudioSkewMs() const {
 
 quint64 MeetingController::videoAudioSkewSampleCount() const {
     return m_videoAudioSkewSampleCount;
+}
+
+quint64 MeetingController::videoAudioSkewCandidateCount() const {
+    return m_videoAudioSkewCandidateCount;
+}
+
+quint64 MeetingController::videoAudioSkewNoClockCount() const {
+    return m_videoAudioSkewNoClockCount;
+}
+
+quint64 MeetingController::videoAudioSkewInvalidVideoPtsCount() const {
+    return m_videoAudioSkewInvalidVideoPtsCount;
+}
+
+quint64 MeetingController::videoAudioSkewInvalidAudioClockCount() const {
+    return m_videoAudioSkewInvalidAudioClockCount;
+}
+
+quint64 MeetingController::remoteVideoDecodedFrameCount() const {
+    return m_remoteVideoDecodedFrameCount;
+}
+
+quint64 MeetingController::remoteVideoDroppedByAudioClockCount() const {
+    return m_remoteVideoDroppedByAudioClockCount;
+}
+
+quint64 MeetingController::remoteVideoQueuedFrameCount() const {
+    return m_remoteVideoQueuedFrameCount;
+}
+
+quint64 MeetingController::remoteVideoRenderedFrameCount() const {
+    return m_remoteVideoRenderedFrameCount;
+}
+
+quint64 MeetingController::remoteVideoStalePtsDropCount() const {
+    return m_remoteVideoStalePtsDropCount;
+}
+
+quint64 MeetingController::remoteVideoRescheduledFrameCount() const {
+    return m_remoteVideoRescheduledFrameCount;
+}
+
+quint64 MeetingController::remoteVideoQueueResetCount() const {
+    return m_remoteVideoQueueResetCount;
+}
+
+void MeetingController::shutdownMediaForRuntimeSmoke() {
+    resetMediaNegotiation();
 }
 
 void MeetingController::login(const QString& username, const QString& password) {
@@ -1379,7 +1518,7 @@ void MeetingController::resetMeetingState(const QString& leaveReason) {
     const bool hadMeetingTitle = !previousMeetingTitle.isEmpty();
     m_inMeeting = false;
     m_audioMuted = false;
-    m_videoMuted = false;
+    m_videoMuted = shouldStartVideoMutedByDefault();
     setScreenSharing(false);
     m_waitingLeaveResponse = false;
     m_currentMeetingHost = false;
@@ -1911,9 +2050,42 @@ quint32 MeetingController::remoteVideoSsrcForPeer(const QString& peerUserId) con
     return *it;
 }
 
+QString MeetingController::resolvePeerUserIdForRemoteVideoSsrc(quint32 remoteSsrc) const {
+    if (remoteSsrc != 0U) {
+        for (auto it = m_remoteVideoSsrcByPeer.constBegin(); it != m_remoteVideoSsrcByPeer.constEnd(); ++it) {
+            if (it.value() == remoteSsrc && hasRemoteVideoParticipant(it.key())) {
+                return it.key();
+            }
+        }
+        for (auto it = m_remoteVideoSsrcByPeer.constBegin(); it != m_remoteVideoSsrcByPeer.constEnd(); ++it) {
+            if (it.value() == remoteSsrc) {
+                return it.key();
+            }
+        }
+    }
+
+    const QString configuredPeerUserId = m_videoPeerUserId.trimmed();
+    if (!configuredPeerUserId.isEmpty()) {
+        return configuredPeerUserId;
+    }
+    return currentVideoPeerUserId();
+}
+
 void MeetingController::updateExpectedRemoteVideoSsrcForCurrentPeer() {
     if (!m_screenShareSession) {
         return;
+    }
+
+    int activeVideoSsrcCount = 0;
+    for (auto it = m_remoteVideoSsrcByPeer.constBegin(); it != m_remoteVideoSsrcByPeer.constEnd(); ++it) {
+        if (it.value() == 0U || !hasRemoteVideoParticipant(it.key())) {
+            continue;
+        }
+        ++activeVideoSsrcCount;
+        if (activeVideoSsrcCount > 1) {
+            m_screenShareSession->setExpectedRemoteVideoSsrc(0U);
+            return;
+        }
     }
 
     const QString peerUserId = currentVideoPeerUserId();
@@ -1952,7 +2124,7 @@ void MeetingController::updateVideoSessionSettings() {
     m_mediaSessionManager->setMeetingId(m_meetingId);
     m_mediaSessionManager->setLocalHost(resolveAdvertisedHost());
     m_mediaSessionManager->setAudioPayloadType(kAudioPayloadType);
-    m_mediaSessionManager->setVideoPayloadType(kScreenPayloadType);
+    m_mediaSessionManager->setVideoPayloadType(m_screenSharing ? kScreenPayloadType : kCameraPayloadType);
     m_mediaSessionManager->setAudioNegotiationEnabled(false);
     m_mediaSessionManager->setVideoNegotiationEnabled(true);
     m_mediaSessionManager->setLocalAudioSsrc(0);
@@ -1962,17 +2134,30 @@ void MeetingController::updateVideoSessionSettings() {
 
         if (enableSharing) {
             if (m_screenShareSession->cameraSendingEnabled()) {
-                m_screenShareSession->setCameraSendingEnabled(false);
+                if (!m_screenShareSession->setCameraSendingEnabled(false)) {
+                    emit infoMessage(QStringLiteral("Failed to stop camera sending: %1")
+                                         .arg(QString::fromStdString(m_screenShareSession->lastError())));
+                }
             }
             if (!m_screenShareSession->sharingEnabled()) {
-                m_screenShareSession->setSharingEnabled(true);
+                if (!m_screenShareSession->setSharingEnabled(true)) {
+                    emit infoMessage(QStringLiteral("Failed to enable screen sharing: %1")
+                                         .arg(QString::fromStdString(m_screenShareSession->lastError())));
+                }
             }
         } else {
             if (m_screenShareSession->sharingEnabled()) {
-                m_screenShareSession->setSharingEnabled(false);
+                if (!m_screenShareSession->setSharingEnabled(false)) {
+                    emit infoMessage(QStringLiteral("Failed to disable screen sharing: %1")
+                                         .arg(QString::fromStdString(m_screenShareSession->lastError())));
+                }
             }
             if (m_screenShareSession->cameraSendingEnabled() != enableCamera) {
-                m_screenShareSession->setCameraSendingEnabled(enableCamera);
+                if (!m_screenShareSession->setCameraSendingEnabled(enableCamera)) {
+                    emit infoMessage(QStringLiteral("Failed to %1 camera sending: %2")
+                                         .arg(enableCamera ? QStringLiteral("start") : QStringLiteral("stop"),
+                                              QString::fromStdString(m_screenShareSession->lastError())));
+                }
             }
         }
 
@@ -2029,8 +2214,11 @@ void MeetingController::updateActiveVideoPeerSelection() {
     }
 
     m_activeVideoPeerUserId = nextUserId;
+    qInfo().noquote() << "[meeting] active video peer=" << (m_activeVideoPeerUserId.isEmpty() ? QStringLiteral("<none>") : m_activeVideoPeerUserId)
+                      << "share=" << hasActiveShare();
     updateExpectedRemoteVideoSsrcForCurrentPeer();
     emit activeVideoPeerUserIdChanged();
+    emit remoteVideoFrameSourceChanged();
     if (!hadActiveShare && previousUserId != nextUserId && m_remoteVideoFrameStore) {
         invalidateRemoteVideoRenderQueue(true);
     }
@@ -2038,7 +2226,8 @@ void MeetingController::updateActiveVideoPeerSelection() {
 
 void MeetingController::enqueueRemoteVideoRenderTask(std::function<void()> renderTask,
                                                      int renderDelayMs,
-                                                     int64_t videoPts90k) {
+                                                     int64_t videoPts90k,
+                                                     const QString& peerUserId) {
     if (!renderTask || !m_videoRenderTimer || !m_remoteVideoFrameStore) {
         return;
     }
@@ -2054,7 +2243,9 @@ void MeetingController::enqueueRemoteVideoRenderTask(std::function<void()> rende
     task.videoPts90k = videoPts90k;
     task.enqueueSeq = ++m_videoRenderEnqueueSeq;
     task.ticket = m_videoRenderTicket;
+    task.peerUserId = peerUserId;
     task.render = std::move(renderTask);
+    ++m_remoteVideoQueuedFrameCount;
 
     auto insertIt = m_remoteVideoRenderQueue.end();
     for (auto it = m_remoteVideoRenderQueue.begin(); it != m_remoteVideoRenderQueue.end(); ++it) {
@@ -2066,11 +2257,36 @@ void MeetingController::enqueueRemoteVideoRenderTask(std::function<void()> rende
     }
     m_remoteVideoRenderQueue.insert(insertIt, std::move(task));
 
+    if (!peerUserId.isEmpty()) {
+        int peerTaskCount = 0;
+        for (const auto& queuedTask : m_remoteVideoRenderQueue) {
+            if (queuedTask.peerUserId == peerUserId) {
+                ++peerTaskCount;
+            }
+        }
+        while (peerTaskCount > tuning.maxPerPeerQueueDepth) {
+            auto eraseIt = m_remoteVideoRenderQueue.end();
+            for (auto it = m_remoteVideoRenderQueue.begin(); it != m_remoteVideoRenderQueue.end(); ++it) {
+                if (it->peerUserId == peerUserId) {
+                    eraseIt = it;
+                    break;
+                }
+            }
+            if (eraseIt == m_remoteVideoRenderQueue.end()) {
+                break;
+            }
+            m_remoteVideoRenderQueue.erase(eraseIt);
+            --peerTaskCount;
+        }
+    }
+
     while (static_cast<int>(m_remoteVideoRenderQueue.size()) > tuning.maxRemoteQueueDepth) {
         m_remoteVideoRenderQueue.pop_front();
     }
 
-    drainRemoteVideoRenderQueue();
+    if (!m_videoRenderTimer->isActive()) {
+        m_videoRenderTimer->start();
+    }
 }
 
 void MeetingController::drainRemoteVideoRenderQueue() {
@@ -2145,6 +2361,7 @@ void MeetingController::drainRemoteVideoRenderQueue() {
         if (task.videoPts90k >= 0 &&
             m_lastRenderedVideoPts90k >= 0 &&
             task.videoPts90k <= m_lastRenderedVideoPts90k) {
+            ++m_remoteVideoStalePtsDropCount;
             continue;
         }
 
@@ -2162,6 +2379,7 @@ void MeetingController::drainRemoteVideoRenderQueue() {
                 } else {
                     task.dueAtMs = candidateDueAtMs;
                     task.enqueueSeq = ++m_videoRenderEnqueueSeq;
+                    ++m_remoteVideoRescheduledFrameCount;
                     rescheduledTasks.push_back(std::move(task));
                     continue;
                 }
@@ -2180,17 +2398,36 @@ void MeetingController::drainRemoteVideoRenderQueue() {
                 if (sinceLastRenderMs < cadenceMs) {
                     task.dueAtMs = renderCheckMs + (cadenceMs - static_cast<int>(sinceLastRenderMs));
                     task.enqueueSeq = ++m_videoRenderEnqueueSeq;
+                    ++m_remoteVideoRescheduledFrameCount;
                     rescheduledTasks.push_back(std::move(task));
                     continue;
                 }
             }
         }
 
+        if (task.videoPts90k < 0) {
+            ++m_videoAudioSkewInvalidVideoPtsCount;
+        } else if (!clock) {
+            ++m_videoAudioSkewNoClockCount;
+        }
+
         if (clock && task.videoPts90k >= 0) {
-            const int64_t skewMs = av::sync::AVSync::videoAudioSkewMs(task.videoPts90k,
-                                                                       clock->audioPts(),
-                                                                       clock->sampleRate());
-            if (skewMs != std::numeric_limits<int64_t>::min()) {
+            ++m_videoAudioSkewCandidateCount;
+            const int64_t videoMs = av::sync::AVSync::videoPts90kToTimeMs(task.videoPts90k);
+            const int64_t audioMs = av::sync::AVSync::audioPtsToTimeMs(clock->audioPts(), clock->sampleRate());
+            if (videoMs < 0) {
+                ++m_videoAudioSkewInvalidVideoPtsCount;
+            } else if (audioMs < 0) {
+                ++m_videoAudioSkewInvalidAudioClockCount;
+            } else {
+                if (!m_videoAudioSkewBaselineReady) {
+                    m_videoAudioSkewBaselineVideoMs = static_cast<qint64>(videoMs);
+                    m_videoAudioSkewBaselineAudioMs = static_cast<qint64>(audioMs);
+                    m_videoAudioSkewBaselineReady = true;
+                }
+                const int64_t alignedVideoMs = videoMs - m_videoAudioSkewBaselineVideoMs;
+                const int64_t alignedAudioMs = audioMs - m_videoAudioSkewBaselineAudioMs;
+                const int64_t skewMs = alignedVideoMs - alignedAudioMs;
                 m_hasVideoAudioSkewSample = true;
                 m_lastVideoAudioSkewMs = static_cast<qint64>(skewMs);
                 const qint64 absSkewMs = static_cast<qint64>(std::llabs(skewMs));
@@ -2202,6 +2439,7 @@ void MeetingController::drainRemoteVideoRenderQueue() {
         }
 
         task.render();
+        ++m_remoteVideoRenderedFrameCount;
         m_lastVideoRenderAtMs = QDateTime::currentMSecsSinceEpoch();
         if (task.videoPts90k >= 0) {
             m_lastRenderedVideoPts90k = task.videoPts90k;
@@ -2221,21 +2459,16 @@ void MeetingController::drainRemoteVideoRenderQueue() {
         return;
     }
 
-    int nextWakeMs = static_cast<int>(m_remoteVideoRenderQueue.front().dueAtMs - QDateTime::currentMSecsSinceEpoch());
-    if (nextWakeMs < 1) {
-        nextWakeMs = 1;
+    if (!m_videoRenderTimer->isActive()) {
+        m_videoRenderTimer->start();
     }
-    m_videoRenderTimer->start(nextWakeMs);
 }
 void MeetingController::invalidateRemoteVideoRenderQueue(bool clearFrameStore) {
+    ++m_remoteVideoQueueResetCount;
     ++m_videoRenderTicket;
     m_remoteVideoRenderQueue.clear();
     m_lastVideoRenderAtMs = 0;
     m_lastRenderedVideoPts90k = -1;
-    m_lastVideoAudioSkewMs = 0;
-    m_maxAbsVideoAudioSkewMs = 0;
-    m_videoAudioSkewSampleCount = 0;
-    m_hasVideoAudioSkewSample = false;
 
     if (m_videoRenderTimer) {
         m_videoRenderTimer->stop();
@@ -2244,6 +2477,20 @@ void MeetingController::invalidateRemoteVideoRenderQueue(bool clearFrameStore) {
     if (clearFrameStore && m_remoteVideoFrameStore) {
         m_remoteVideoFrameStore->clear();
     }
+}
+
+void MeetingController::resetRemoteVideoAvSyncStats() {
+    m_lastVideoAudioSkewMs = 0;
+    m_maxAbsVideoAudioSkewMs = 0;
+    m_videoAudioSkewSampleCount = 0;
+    m_hasVideoAudioSkewSample = false;
+    m_videoAudioSkewBaselineReady = false;
+    m_videoAudioSkewBaselineVideoMs = 0;
+    m_videoAudioSkewBaselineAudioMs = 0;
+    m_videoAudioSkewCandidateCount = 0;
+    m_videoAudioSkewNoClockCount = 0;
+    m_videoAudioSkewInvalidVideoPtsCount = 0;
+    m_videoAudioSkewInvalidAudioClockCount = 0;
 }
 
 void MeetingController::resetAudioPeerState() {
@@ -2272,6 +2519,7 @@ av::render::VideoFrameStore* MeetingController::ensureRemoteVideoFrameStore(cons
 
     auto* store = new av::render::VideoFrameStore(this);
     m_remoteVideoFrameStoresByPeer.insert(normalized, store);
+    emit remoteVideoFrameSourceChanged();
     return store;
 }
 
@@ -2282,6 +2530,7 @@ void MeetingController::clearRemoteVideoFrameStores() {
         }
     }
     m_remoteVideoFrameStoresByPeer.clear();
+    emit remoteVideoFrameSourceChanged();
 }
 
 void MeetingController::resetVideoPeerState(bool clearRemoteFrame) {
@@ -2302,6 +2551,7 @@ void MeetingController::resetVideoPeerState(bool clearRemoteFrame) {
             m_remoteScreenFrameStore->clear();
         }
     }
+    resetRemoteVideoAvSyncStats();
 
     if (m_mediaSessionManager) {
         m_mediaSessionManager->reset();
@@ -2477,25 +2727,30 @@ void MeetingController::maybeStartVideoNegotiation() {
         config.height = videoTuning.height;
         config.frameRate = videoTuning.frameRate;
         config.bitrate = videoTuning.bitrate;
+        config.encoderPreset = videoTuning.encoderPreset;
+        config.cameraPayloadType = static_cast<uint8_t>(kCameraPayloadType);
         config.payloadType = static_cast<uint8_t>(kScreenPayloadType);
         m_screenShareSession = std::make_unique<av::session::ScreenShareSession>(config);
-        emit infoMessage(QStringLiteral("Video profile active: %1x%2@%3fps bitrate=%4")
+        emit infoMessage(QStringLiteral("Video profile active: %1x%2@%3fps bitrate=%4 preset=%5 encoder=%6")
                              .arg(videoTuning.width)
                              .arg(videoTuning.height)
                              .arg(videoTuning.frameRate)
-                             .arg(videoTuning.bitrate));
+                             .arg(videoTuning.bitrate)
+                             .arg(videoTuning.profileName)
+                             .arg(videoEncoderPresetLabel(videoTuning.encoderPreset)));
         m_screenShareSession->setPreferredCameraDeviceName(m_preferredCameraDevice.toStdString());
-        m_screenShareSession->setDecodedFrameCallback([this](av::codec::DecodedVideoFrame frame) {
-            if (!m_remoteScreenFrameStore || !m_remoteVideoFrameStore) {
+        m_screenShareSession->setDecodedFrameWithSsrcCallback(
+            [this](av::codec::DecodedVideoFrame frame, uint32_t remoteMediaSsrc) {
+            if (!m_remoteScreenFrameStore) {
                 return;
             }
-            QMetaObject::invokeMethod(this, [this, frame = std::move(frame)]() mutable {
+            QMetaObject::invokeMethod(
+                this,
+                [this, frame = std::move(frame), remoteMediaSsrc]() mutable {
+                ++m_remoteVideoDecodedFrameCount;
                 int renderDelayMs = 0;
                 if (m_audioCallSession) {
                     const auto clock = m_audioCallSession->clock();
-                    if (shouldDropRemoteVideoFrameByAudioClock(frame, clock)) {
-                        return;
-                    }
                     renderDelayMs = suggestRemoteVideoRenderDelayMsByAudioClock(frame, clock);
                 }
 
@@ -2519,13 +2774,31 @@ void MeetingController::maybeStartVideoNegotiation() {
                     m_remoteScreenFrameStore->clear();
                 }
 
-                enqueueRemoteVideoRenderTask([this, frame = std::move(frame)]() mutable {
-                    if (!m_remoteVideoFrameStore || hasActiveShare()) {
+                const QString framePeerUserId = resolvePeerUserIdForRemoteVideoSsrc(remoteMediaSsrc);
+                auto framePtr = std::make_shared<av::codec::DecodedVideoFrame>(std::move(frame));
+                const int64_t framePts = framePtr->pts;
+                if (!framePeerUserId.isEmpty()) {
+                    (void)ensureRemoteVideoFrameStore(framePeerUserId);
+                }
+                enqueueRemoteVideoRenderTask([this, framePeerUserId, framePtr = std::move(framePtr)]() {
+                    if (hasActiveShare()) {
                         return;
                     }
-                    m_remoteVideoFrameStore->setFrame(std::move(frame));
-                }, renderDelayMs, frame.pts);
-            }, Qt::QueuedConnection);
+                    const QString activePeerUserId = m_activeVideoPeerUserId.trimmed();
+                    const bool shouldUpdateDefaultStore = framePeerUserId.isEmpty() ||
+                                                          activePeerUserId.isEmpty() ||
+                                                          activePeerUserId == framePeerUserId;
+                    if (shouldUpdateDefaultStore && m_remoteVideoFrameStore) {
+                        m_remoteVideoFrameStore->setFrame(framePtr);
+                    }
+                    if (!framePeerUserId.isEmpty()) {
+                        if (auto* peerStore = ensureRemoteVideoFrameStore(framePeerUserId)) {
+                            peerStore->setFrame(framePtr);
+                        }
+                    }
+                }, renderDelayMs, framePts, framePeerUserId);
+            },
+                Qt::QueuedConnection);
         });
         m_screenShareSession->setCameraSourceCallback([this](bool syntheticFallback) {
             QMetaObject::invokeMethod(this, [this, syntheticFallback]() {
@@ -2625,7 +2898,9 @@ bool MeetingController::sendAudioOfferToPeer(bool force) {
     m_signaling->sendMediaOffer(peerUserId, offer, audioSsrc, 0);
     m_audioOfferSentPeers.insert(peerUserId);
     m_audioAnswerSentPeers.remove(peerUserId);
-    emit infoMessage(QStringLiteral("Audio offer sent to %1").arg(peerUserId));
+    if (shouldEmitVerboseNegotiationLogs()) {
+        emit infoMessage(QStringLiteral("Audio offer sent to %1").arg(peerUserId));
+    }
     return true;
 }
 
@@ -2655,7 +2930,9 @@ bool MeetingController::sendVideoOfferToPeer(bool force) {
     m_signaling->sendMediaOffer(peerUserId, offer, 0, videoSsrc);
     m_videoOfferSentPeers.insert(peerUserId);
     m_videoAnswerSentPeers.remove(peerUserId);
-    emit infoMessage(QStringLiteral("Video offer sent to %1").arg(peerUserId));
+    if (shouldEmitVerboseNegotiationLogs()) {
+        emit infoMessage(QStringLiteral("Video offer sent to %1").arg(peerUserId));
+    }
     return true;
 }
 

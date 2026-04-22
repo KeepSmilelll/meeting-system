@@ -13,13 +13,30 @@ Rectangle {
     required property bool videoOn
     required property bool sharing
 
-    readonly property bool localUser: userId === controller.userId
+    readonly property bool hasController: root.controller !== null && root.controller !== undefined
+    readonly property bool localUser: root.hasController && userId === root.controller.userId
     readonly property bool remoteUser: userId !== "" && !localUser
-    readonly property bool selected: controller.activeShareUserId === userId
-    readonly property bool showLiveFrame: controller.hasActiveShare
-                                           ? selected
-                                           : (remoteUser && videoOn && (userId === controller.activeVideoPeerUserId))
+    readonly property bool selected: root.hasController && root.controller.activeShareUserId === userId
+    readonly property bool activeShareSelected: root.hasController && root.controller.hasActiveShare && selected
+    readonly property bool activeRemoteVideoSelected: root.hasController
+                                                      && !root.controller.hasActiveShare
+                                                      && remoteUser
+                                                      && (userId === root.controller.activeVideoPeerUserId)
+    readonly property bool showLiveFrame: activeShareSelected || activeRemoteVideoSelected
     readonly property bool shareFocusable: remoteUser && sharing && !selected
+    property int frameSourceRevision: 0
+
+    Connections {
+        target: root.hasController ? root.controller : null
+        function onRemoteVideoFrameSourceChanged() {
+            root.frameSourceRevision += 1
+        }
+    }
+
+    function remoteVideoSource() {
+        root.frameSourceRevision
+        return root.hasController ? root.controller.remoteVideoFrameSourceForUser(root.userId) : null
+    }
 
     implicitWidth: 320
     implicitHeight: 240
@@ -32,20 +49,34 @@ Rectangle {
 
     MouseArea {
         anchors.fill: parent
-        enabled: remoteUser && (sharing || videoOn)
+        enabled: root.hasController
+                 && remoteUser
+                 && (sharing || videoOn || (userId === root.controller.activeVideoPeerUserId))
         cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-        onClicked: sharing ? controller.setActiveShareUserId(userId) : controller.setActiveVideoPeerUserId(userId)
+        onClicked: {
+            if (!root.hasController) {
+                return
+            }
+            if (sharing) {
+                root.controller.setActiveShareUserId(userId)
+            } else {
+                root.controller.setActiveVideoPeerUserId(userId)
+            }
+        }
     }
 
     Item {
         anchors.fill: parent
 
         VideoRenderer {
+            id: liveFrameRenderer
             anchors.fill: parent
             anchors.margins: 1
-            frameSource: root.selected && root.sharing
+            frameSource: (!root.hasController || !root.showLiveFrame)
+                        ? null
+                        : (root.activeShareSelected
                         ? root.controller.remoteScreenFrameSource
-                        : root.controller.remoteVideoFrameSource
+                        : root.remoteVideoSource())
             visible: root.showLiveFrame
         }
 

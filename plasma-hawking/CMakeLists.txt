@@ -35,6 +35,8 @@ endif()
 
 unset(FFMPEG_INCLUDE_DIR CACHE)
 unset(FFMPEG_AVCODEC_LIBRARY CACHE)
+unset(FFMPEG_AVDEVICE_LIBRARY CACHE)
+unset(FFMPEG_AVFORMAT_LIBRARY CACHE)
 unset(FFMPEG_AVUTIL_LIBRARY CACHE)
 unset(FFMPEG_SWRESAMPLE_LIBRARY CACHE)
 unset(FFMPEG_SWSCALE_LIBRARY CACHE)
@@ -46,6 +48,16 @@ if(EXISTS "${FFMPEG_ROOT_HINT}")
     )
     find_library(FFMPEG_AVCODEC_LIBRARY
         NAMES avcodec libavcodec
+        HINTS "${FFMPEG_ROOT_HINT}/lib"
+        NO_DEFAULT_PATH
+    )
+    find_library(FFMPEG_AVDEVICE_LIBRARY
+        NAMES avdevice libavdevice
+        HINTS "${FFMPEG_ROOT_HINT}/lib"
+        NO_DEFAULT_PATH
+    )
+    find_library(FFMPEG_AVFORMAT_LIBRARY
+        NAMES avformat libavformat
         HINTS "${FFMPEG_ROOT_HINT}/lib"
         NO_DEFAULT_PATH
     )
@@ -69,13 +81,13 @@ endif()
 find_package(Protobuf REQUIRED)
 qt_standard_project_setup()
 
-if(NOT (FFMPEG_INCLUDE_DIR AND FFMPEG_AVCODEC_LIBRARY AND FFMPEG_AVUTIL_LIBRARY AND FFMPEG_SWRESAMPLE_LIBRARY AND FFMPEG_SWSCALE_LIBRARY))
+if(NOT (FFMPEG_INCLUDE_DIR AND FFMPEG_AVCODEC_LIBRARY AND FFMPEG_AVDEVICE_LIBRARY AND FFMPEG_AVFORMAT_LIBRARY AND FFMPEG_AVUTIL_LIBRARY AND FFMPEG_SWRESAMPLE_LIBRARY AND FFMPEG_SWSCALE_LIBRARY))
     message(FATAL_ERROR "meeting_client requires FFmpeg 7.1 headers/libs under ${FFMPEG_ROOT_HINT}")
 endif()
 
 set(FFMPEG_RUNTIME_DLLS)
 if(WIN32 AND EXISTS "${FFMPEG_ROOT_HINT}/bin")
-    foreach(ffmpeg_dll_name IN ITEMS avcodec-61.dll avutil-59.dll swresample-5.dll swscale-8.dll)
+    foreach(ffmpeg_dll_name IN ITEMS avcodec-61.dll avdevice-61.dll avformat-61.dll avutil-59.dll swresample-5.dll swscale-8.dll)
         set(ffmpeg_dll_path "${FFMPEG_ROOT_HINT}/bin/${ffmpeg_dll_name}")
         if(EXISTS "${ffmpeg_dll_path}")
             list(APPEND FFMPEG_RUNTIME_DLLS "${ffmpeg_dll_path}")
@@ -114,12 +126,39 @@ qt_add_executable(meeting_client
     src/av/codec/AudioDecoder.cpp
     src/av/codec/VideoDecoder.cpp
     src/av/codec/VideoEncoder.cpp
+    src/av/process/AcousticEchoCanceller.cpp
+    src/av/process/NoiseSuppressor.cpp
+    src/av/process/AutoGainControl.cpp
     src/av/render/AudioPlayer.cpp
     src/av/render/NV12Shader.cpp
     src/av/render/VideoFrameStore.cpp
     src/av/render/VideoRenderer.cpp
     src/av/session/AudioCallSession.cpp
     src/av/session/ScreenShareSession.cpp
+    src/av/session/ScreenShareSessionCamera.cpp
+    src/av/session/ScreenShareSessionTransport.cpp
+    src/av/session/CameraFrameRelay.cpp
+    src/av/session/VideoSendFrameRingBuffer.cpp
+    src/av/session/VideoSendPipeline.cpp
+    src/av/session/VideoSendTelemetryPipeline.cpp
+    src/av/session/VideoRecvPipeline.cpp
+    src/av/session/VideoRecvConsumePipeline.cpp
+    src/av/session/VideoRecvErrorPipeline.cpp
+    src/av/session/VideoRecvIngressPipeline.cpp
+    src/av/session/VideoRecvKeyFramePipeline.cpp
+    src/av/session/VideoRecvFrameDispatchPipeline.cpp
+    src/av/session/VideoRecvTelemetryPipeline.cpp
+    src/av/session/VideoRecvRtcpPipeline.cpp
+    src/av/session/VideoRtcpActionPipeline.cpp
+    src/av/session/VideoRtcpFeedbackPipeline.cpp
+    src/av/session/VideoRtcpFeedbackDispatchPipeline.cpp
+    src/av/session/VideoSessionStateMachine.cpp
+    src/av/session/VideoThreadLifecycleStateMachine.cpp
+    src/av/session/VideoThreadRuntime.cpp
+    src/av/session/VideoSessionControlActions.cpp
+    src/av/session/VideoSendControlActions.cpp
+    src/av/session/VideoSendSourcePipeline.cpp
+    src/av/session/VideoSendLoopPipeline.cpp
     src/storage/DatabaseManager.cpp
     src/storage/SettingsRepository.cpp
     src/storage/UserRepository.cpp
@@ -131,6 +170,7 @@ qt_add_executable(meeting_client
     src/net/signaling/Reconnector.cpp
     src/net/media/RTPSender.cpp
     src/net/media/RTPReceiver.cpp
+    src/net/media/H264RtpPayload.cpp
     src/net/media/BandwidthEstimator.cpp
     src/net/media/JitterBuffer.cpp
     proto/pb/signaling.pb.cc
@@ -152,6 +192,8 @@ target_link_libraries(meeting_client PRIVATE
     Qt6::Multimedia
     protobuf::libprotobuf
     ${FFMPEG_AVCODEC_LIBRARY}
+    ${FFMPEG_AVDEVICE_LIBRARY}
+    ${FFMPEG_AVFORMAT_LIBRARY}
     ${FFMPEG_AVUTIL_LIBRARY}
     ${FFMPEG_SWRESAMPLE_LIBRARY}
     ${FFMPEG_SWSCALE_LIBRARY}
@@ -159,7 +201,7 @@ target_link_libraries(meeting_client PRIVATE
 copy_ffmpeg_runtime(meeting_client)
 
 if(WIN32)
-    target_link_libraries(meeting_client PRIVATE ws2_32 bcrypt)
+    target_link_libraries(meeting_client PRIVATE ws2_32 bcrypt opengl32)
 endif()
 
 qt_add_qml_module(meeting_client
@@ -221,8 +263,33 @@ add_executable(test_screen_share_session
     src/av/codec/VideoDecoder.cpp
     src/av/codec/VideoEncoder.cpp
     src/av/session/ScreenShareSession.cpp
+    src/av/session/ScreenShareSessionCamera.cpp
+    src/av/session/ScreenShareSessionTransport.cpp
+    src/av/session/CameraFrameRelay.cpp
+    src/av/session/VideoSendFrameRingBuffer.cpp
+    src/av/session/VideoSendPipeline.cpp
+    src/av/session/VideoSendTelemetryPipeline.cpp
+    src/av/session/VideoRecvPipeline.cpp
+    src/av/session/VideoRecvConsumePipeline.cpp
+    src/av/session/VideoRecvErrorPipeline.cpp
+    src/av/session/VideoRecvIngressPipeline.cpp
+    src/av/session/VideoRecvKeyFramePipeline.cpp
+    src/av/session/VideoRecvFrameDispatchPipeline.cpp
+    src/av/session/VideoRecvTelemetryPipeline.cpp
+    src/av/session/VideoRecvRtcpPipeline.cpp
+    src/av/session/VideoRtcpActionPipeline.cpp
+    src/av/session/VideoRtcpFeedbackPipeline.cpp
+    src/av/session/VideoRtcpFeedbackDispatchPipeline.cpp
+    src/av/session/VideoSessionStateMachine.cpp
+    src/av/session/VideoThreadLifecycleStateMachine.cpp
+    src/av/session/VideoThreadRuntime.cpp
+    src/av/session/VideoSessionControlActions.cpp
+    src/av/session/VideoSendControlActions.cpp
+    src/av/session/VideoSendSourcePipeline.cpp
+    src/av/session/VideoSendLoopPipeline.cpp
     src/net/media/RTPSender.cpp
     src/net/media/RTPReceiver.cpp
+    src/net/media/H264RtpPayload.cpp
 )
 
 target_include_directories(test_screen_share_session PRIVATE
@@ -235,6 +302,8 @@ target_link_libraries(test_screen_share_session PRIVATE
     Qt6::Multimedia
     Qt6::Network
     ${FFMPEG_AVCODEC_LIBRARY}
+    ${FFMPEG_AVDEVICE_LIBRARY}
+    ${FFMPEG_AVFORMAT_LIBRARY}
     ${FFMPEG_AVUTIL_LIBRARY}
     ${FFMPEG_SWSCALE_LIBRARY}
 )
@@ -245,6 +314,69 @@ if(WIN32)
 endif()
 
 add_test(NAME test_screen_share_session COMMAND test_screen_share_session)
+
+add_executable(test_screen_share_session_camera_smoke
+    tests/test_screen_share_session_camera_smoke.cpp
+    src/av/capture/CameraCapture.cpp
+    src/av/capture/ScreenCapture.cpp
+    src/av/codec/VideoDecoder.cpp
+    src/av/codec/VideoEncoder.cpp
+    src/av/session/ScreenShareSession.cpp
+    src/av/session/ScreenShareSessionCamera.cpp
+    src/av/session/ScreenShareSessionTransport.cpp
+    src/av/session/CameraFrameRelay.cpp
+    src/av/session/VideoSendFrameRingBuffer.cpp
+    src/av/session/VideoSendPipeline.cpp
+    src/av/session/VideoSendTelemetryPipeline.cpp
+    src/av/session/VideoRecvPipeline.cpp
+    src/av/session/VideoRecvConsumePipeline.cpp
+    src/av/session/VideoRecvErrorPipeline.cpp
+    src/av/session/VideoRecvIngressPipeline.cpp
+    src/av/session/VideoRecvKeyFramePipeline.cpp
+    src/av/session/VideoRecvFrameDispatchPipeline.cpp
+    src/av/session/VideoRecvTelemetryPipeline.cpp
+    src/av/session/VideoRecvRtcpPipeline.cpp
+    src/av/session/VideoRtcpActionPipeline.cpp
+    src/av/session/VideoRtcpFeedbackPipeline.cpp
+    src/av/session/VideoRtcpFeedbackDispatchPipeline.cpp
+    src/av/session/VideoSessionStateMachine.cpp
+    src/av/session/VideoThreadLifecycleStateMachine.cpp
+    src/av/session/VideoThreadRuntime.cpp
+    src/av/session/VideoSessionControlActions.cpp
+    src/av/session/VideoSendControlActions.cpp
+    src/av/session/VideoSendSourcePipeline.cpp
+    src/av/session/VideoSendLoopPipeline.cpp
+    src/net/media/RTPSender.cpp
+    src/net/media/RTPReceiver.cpp
+    src/net/media/H264RtpPayload.cpp
+)
+
+target_include_directories(test_screen_share_session_camera_smoke PRIVATE
+    src
+    ${FFMPEG_INCLUDE_DIR}
+)
+
+target_link_libraries(test_screen_share_session_camera_smoke PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Multimedia
+    Qt6::Network
+    ${FFMPEG_AVCODEC_LIBRARY}
+    ${FFMPEG_AVDEVICE_LIBRARY}
+    ${FFMPEG_AVFORMAT_LIBRARY}
+    ${FFMPEG_AVUTIL_LIBRARY}
+    ${FFMPEG_SWSCALE_LIBRARY}
+)
+copy_ffmpeg_runtime(test_screen_share_session_camera_smoke)
+
+if(WIN32)
+    target_link_libraries(test_screen_share_session_camera_smoke PRIVATE ws2_32)
+endif()
+
+add_test(NAME test_screen_share_session_camera_smoke COMMAND test_screen_share_session_camera_smoke)
+set_tests_properties(test_screen_share_session_camera_smoke PROPERTIES
+    SKIP_RETURN_CODE 77
+)
 
 add_executable(test_signaling_client_ssrc
     tests/test_signaling_client_ssrc.cpp
@@ -285,6 +417,24 @@ target_include_directories(test_ring_buffer PRIVATE
 
 add_test(NAME test_ring_buffer COMMAND test_ring_buffer)
 
+add_executable(test_video_send_frame_ring_buffer
+    tests/test_video_send_frame_ring_buffer.cpp
+    src/av/session/VideoSendFrameRingBuffer.cpp
+)
+
+target_include_directories(test_video_send_frame_ring_buffer PRIVATE
+    src
+    ${FFMPEG_INCLUDE_DIR}
+)
+
+target_link_libraries(test_video_send_frame_ring_buffer PRIVATE
+    Qt6::Core
+    ${FFMPEG_AVCODEC_LIBRARY}
+    ${FFMPEG_AVUTIL_LIBRARY}
+)
+
+add_test(NAME test_video_send_frame_ring_buffer COMMAND test_video_send_frame_ring_buffer)
+
 add_executable(test_jitter_buffer
     tests/test_jitter_buffer.cpp
     src/net/media/JitterBuffer.cpp
@@ -295,6 +445,74 @@ target_include_directories(test_jitter_buffer PRIVATE
 )
 
 add_test(NAME test_jitter_buffer COMMAND test_jitter_buffer)
+
+add_executable(test_h264_rtp_payload
+    tests/test_h264_rtp_payload.cpp
+    src/net/media/H264RtpPayload.cpp
+)
+
+target_include_directories(test_h264_rtp_payload PRIVATE
+    src
+)
+
+add_test(NAME test_h264_rtp_payload COMMAND test_h264_rtp_payload)
+
+add_executable(test_video_send_pipeline_avframe
+    tests/test_video_send_pipeline_avframe.cpp
+    src/av/codec/VideoEncoder.cpp
+    src/av/session/VideoSendPipeline.cpp
+    src/net/media/RTPSender.cpp
+    src/net/media/H264RtpPayload.cpp
+)
+
+target_include_directories(test_video_send_pipeline_avframe PRIVATE
+    src
+    ${FFMPEG_INCLUDE_DIR}
+)
+
+target_link_libraries(test_video_send_pipeline_avframe PRIVATE
+    ${FFMPEG_AVCODEC_LIBRARY}
+    ${FFMPEG_AVUTIL_LIBRARY}
+)
+
+add_test(NAME test_video_send_pipeline_avframe COMMAND test_video_send_pipeline_avframe)
+set_tests_properties(test_video_send_pipeline_avframe PROPERTIES
+    SKIP_RETURN_CODE 77
+)
+
+add_executable(test_video_recv_pipeline_multistream
+    tests/test_video_recv_pipeline_multistream.cpp
+    src/av/codec/VideoEncoder.cpp
+    src/av/codec/VideoDecoder.cpp
+    src/av/session/VideoSendPipeline.cpp
+    src/av/session/VideoRecvPipeline.cpp
+    src/net/media/RTPSender.cpp
+    src/net/media/RTPReceiver.cpp
+    src/net/media/H264RtpPayload.cpp
+)
+
+target_include_directories(test_video_recv_pipeline_multistream PRIVATE
+    src
+    ${FFMPEG_INCLUDE_DIR}
+)
+
+target_link_libraries(test_video_recv_pipeline_multistream PRIVATE
+    ${FFMPEG_AVCODEC_LIBRARY}
+    ${FFMPEG_AVUTIL_LIBRARY}
+    ${FFMPEG_AVDEVICE_LIBRARY}
+    ${FFMPEG_AVFORMAT_LIBRARY}
+    ${FFMPEG_SWSCALE_LIBRARY}
+)
+copy_ffmpeg_runtime(test_video_recv_pipeline_multistream)
+
+if(WIN32)
+    target_link_libraries(test_video_recv_pipeline_multistream PRIVATE ws2_32)
+endif()
+
+add_test(NAME test_video_recv_pipeline_multistream COMMAND test_video_recv_pipeline_multistream)
+set_tests_properties(test_video_recv_pipeline_multistream PROPERTIES
+    SKIP_RETURN_CODE 77
+)
 
 add_executable(test_security_utils
     tests/test_security_utils.cpp
@@ -346,10 +564,37 @@ add_executable(test_meeting_controller_mute_all
     src/av/codec/AudioDecoder.cpp
     src/av/codec/VideoDecoder.cpp
     src/av/codec/VideoEncoder.cpp
+    src/av/process/AcousticEchoCanceller.cpp
+    src/av/process/NoiseSuppressor.cpp
+    src/av/process/AutoGainControl.cpp
     src/av/render/AudioPlayer.cpp
     src/av/render/VideoFrameStore.cpp
     src/av/session/AudioCallSession.cpp
     src/av/session/ScreenShareSession.cpp
+    src/av/session/ScreenShareSessionCamera.cpp
+    src/av/session/ScreenShareSessionTransport.cpp
+    src/av/session/CameraFrameRelay.cpp
+    src/av/session/VideoSendFrameRingBuffer.cpp
+    src/av/session/VideoSendPipeline.cpp
+    src/av/session/VideoSendTelemetryPipeline.cpp
+    src/av/session/VideoRecvPipeline.cpp
+    src/av/session/VideoRecvConsumePipeline.cpp
+    src/av/session/VideoRecvErrorPipeline.cpp
+    src/av/session/VideoRecvIngressPipeline.cpp
+    src/av/session/VideoRecvKeyFramePipeline.cpp
+    src/av/session/VideoRecvFrameDispatchPipeline.cpp
+    src/av/session/VideoRecvTelemetryPipeline.cpp
+    src/av/session/VideoRecvRtcpPipeline.cpp
+    src/av/session/VideoRtcpActionPipeline.cpp
+    src/av/session/VideoRtcpFeedbackPipeline.cpp
+    src/av/session/VideoRtcpFeedbackDispatchPipeline.cpp
+    src/av/session/VideoSessionStateMachine.cpp
+    src/av/session/VideoThreadLifecycleStateMachine.cpp
+    src/av/session/VideoThreadRuntime.cpp
+    src/av/session/VideoSessionControlActions.cpp
+    src/av/session/VideoSendControlActions.cpp
+    src/av/session/VideoSendSourcePipeline.cpp
+    src/av/session/VideoSendLoopPipeline.cpp
     src/storage/DatabaseManager.cpp
     src/storage/SettingsRepository.cpp
     src/storage/MeetingRepository.cpp
@@ -359,6 +604,7 @@ add_executable(test_meeting_controller_mute_all
     src/net/signaling/Reconnector.cpp
     src/net/media/RTPSender.cpp
     src/net/media/RTPReceiver.cpp
+    src/net/media/H264RtpPayload.cpp
     src/net/media/BandwidthEstimator.cpp
     src/net/media/JitterBuffer.cpp
     proto/pb/signaling.pb.cc
@@ -377,6 +623,8 @@ target_link_libraries(test_meeting_controller_mute_all PRIVATE
     Qt6::Multimedia
     protobuf::libprotobuf
     ${FFMPEG_AVCODEC_LIBRARY}
+    ${FFMPEG_AVDEVICE_LIBRARY}
+    ${FFMPEG_AVFORMAT_LIBRARY}
     ${FFMPEG_AVUTIL_LIBRARY}
     ${FFMPEG_SWRESAMPLE_LIBRARY}
     ${FFMPEG_SWSCALE_LIBRARY}
@@ -404,10 +652,37 @@ add_executable(test_meeting_runtime_smoke
     src/av/codec/AudioDecoder.cpp
     src/av/codec/VideoDecoder.cpp
     src/av/codec/VideoEncoder.cpp
+    src/av/process/AcousticEchoCanceller.cpp
+    src/av/process/NoiseSuppressor.cpp
+    src/av/process/AutoGainControl.cpp
     src/av/render/AudioPlayer.cpp
     src/av/render/VideoFrameStore.cpp
     src/av/session/AudioCallSession.cpp
     src/av/session/ScreenShareSession.cpp
+    src/av/session/ScreenShareSessionCamera.cpp
+    src/av/session/ScreenShareSessionTransport.cpp
+    src/av/session/CameraFrameRelay.cpp
+    src/av/session/VideoSendFrameRingBuffer.cpp
+    src/av/session/VideoSendPipeline.cpp
+    src/av/session/VideoSendTelemetryPipeline.cpp
+    src/av/session/VideoRecvPipeline.cpp
+    src/av/session/VideoRecvConsumePipeline.cpp
+    src/av/session/VideoRecvErrorPipeline.cpp
+    src/av/session/VideoRecvIngressPipeline.cpp
+    src/av/session/VideoRecvKeyFramePipeline.cpp
+    src/av/session/VideoRecvFrameDispatchPipeline.cpp
+    src/av/session/VideoRecvTelemetryPipeline.cpp
+    src/av/session/VideoRecvRtcpPipeline.cpp
+    src/av/session/VideoRtcpActionPipeline.cpp
+    src/av/session/VideoRtcpFeedbackPipeline.cpp
+    src/av/session/VideoRtcpFeedbackDispatchPipeline.cpp
+    src/av/session/VideoSessionStateMachine.cpp
+    src/av/session/VideoThreadLifecycleStateMachine.cpp
+    src/av/session/VideoThreadRuntime.cpp
+    src/av/session/VideoSessionControlActions.cpp
+    src/av/session/VideoSendControlActions.cpp
+    src/av/session/VideoSendSourcePipeline.cpp
+    src/av/session/VideoSendLoopPipeline.cpp
     src/storage/DatabaseManager.cpp
     src/storage/SettingsRepository.cpp
     src/storage/MeetingRepository.cpp
@@ -417,6 +692,7 @@ add_executable(test_meeting_runtime_smoke
     src/net/signaling/Reconnector.cpp
     src/net/media/RTPSender.cpp
     src/net/media/RTPReceiver.cpp
+    src/net/media/H264RtpPayload.cpp
     src/net/media/BandwidthEstimator.cpp
     src/net/media/JitterBuffer.cpp
     proto/pb/signaling.pb.cc
@@ -435,6 +711,8 @@ target_link_libraries(test_meeting_runtime_smoke PRIVATE
     Qt6::Multimedia
     protobuf::libprotobuf
     ${FFMPEG_AVCODEC_LIBRARY}
+    ${FFMPEG_AVDEVICE_LIBRARY}
+    ${FFMPEG_AVFORMAT_LIBRARY}
     ${FFMPEG_AVUTIL_LIBRARY}
     ${FFMPEG_SWRESAMPLE_LIBRARY}
     ${FFMPEG_SWSCALE_LIBRARY}
@@ -447,8 +725,69 @@ endif()
 
 add_test(NAME test_meeting_runtime_smoke COMMAND test_meeting_runtime_smoke)
 
+add_executable(test_camera_capture_smoke
+    tests/test_camera_capture_smoke.cpp
+    src/av/capture/CameraCapture.cpp
+)
+
+target_include_directories(test_camera_capture_smoke PRIVATE
+    src
+    ${FFMPEG_INCLUDE_DIR}
+)
+
+target_link_libraries(test_camera_capture_smoke PRIVATE
+    Qt6::Core
+    Qt6::Multimedia
+    ${FFMPEG_AVCODEC_LIBRARY}
+    ${FFMPEG_AVDEVICE_LIBRARY}
+    ${FFMPEG_AVFORMAT_LIBRARY}
+    ${FFMPEG_AVUTIL_LIBRARY}
+    ${FFMPEG_SWSCALE_LIBRARY}
+)
+copy_ffmpeg_runtime(test_camera_capture_smoke)
+
+add_test(NAME test_camera_capture_smoke COMMAND test_camera_capture_smoke)
+set_tests_properties(test_camera_capture_smoke PROPERTIES
+    SKIP_RETURN_CODE 77
+)
+
+add_executable(test_audio_process
+    tests/test_audio_process.cpp
+    src/av/process/AcousticEchoCanceller.cpp
+    src/av/process/NoiseSuppressor.cpp
+    src/av/process/AutoGainControl.cpp
+)
+
+target_include_directories(test_audio_process PRIVATE
+    src
+)
+
+target_link_libraries(test_audio_process PRIVATE
+    Qt6::Core
+)
+
+add_test(NAME test_audio_process COMMAND test_audio_process)
+
+add_executable(test_audio_process_quality
+    tests/test_audio_process_quality.cpp
+    src/av/process/AcousticEchoCanceller.cpp
+    src/av/process/NoiseSuppressor.cpp
+    src/av/process/AutoGainControl.cpp
+)
+
+target_include_directories(test_audio_process_quality PRIVATE
+    src
+)
+
+target_link_libraries(test_audio_process_quality PRIVATE
+    Qt6::Core
+)
+
+add_test(NAME test_audio_process_quality COMMAND test_audio_process_quality)
+
 add_executable(test_meeting_client_process_smoke
     tests/test_meeting_client_process_smoke.cpp
+    src/av/capture/CameraCapture.cpp
     src/av/codec/VideoEncoder.cpp
 )
 
@@ -462,6 +801,8 @@ target_link_libraries(test_meeting_client_process_smoke PRIVATE
     Qt6::Network
     Qt6::Multimedia
     ${FFMPEG_AVCODEC_LIBRARY}
+    ${FFMPEG_AVDEVICE_LIBRARY}
+    ${FFMPEG_AVFORMAT_LIBRARY}
     ${FFMPEG_AVUTIL_LIBRARY}
     ${FFMPEG_SWSCALE_LIBRARY}
 )
@@ -489,6 +830,9 @@ if(MEETING_BUILD_AUDIO_CODEC_SMOKE)
             src/av/capture/AudioCapture.cpp
             src/av/codec/AudioEncoder.cpp
             src/av/codec/AudioDecoder.cpp
+            src/av/process/AcousticEchoCanceller.cpp
+            src/av/process/NoiseSuppressor.cpp
+            src/av/process/AutoGainControl.cpp
             src/av/render/AudioPlayer.cpp
             src/av/session/AudioCallSession.cpp
             src/net/media/RTPSender.cpp

@@ -1,2 +1,43 @@
 #pragma once
-// TODO: implement
+
+#include "av/capture/AudioCapture.h"
+
+#include <mutex>
+#include <string>
+
+namespace av::process {
+
+class AutoGainControl {
+public:
+    struct Config {
+        int sampleRate{48000};
+        int channels{1};
+        float targetRms{0.12F};
+        float minGain{0.25F};
+        float maxGain{8.0F};
+        float attackCoeff{0.35F};
+        float releaseCoeff{0.08F};
+        float limiterPeak{0.95F};
+    };
+
+    AutoGainControl() = default;
+
+    bool configure(const Config& config);
+    void reset();
+    void setEnabled(bool enabled);
+    bool enabled() const;
+
+    bool processFrame(av::capture::AudioFrame& frame, std::string* error = nullptr);
+
+private:
+    bool frameMatchesConfig(const av::capture::AudioFrame& frame) const;
+
+    Config m_config{};
+    bool m_configured{false};
+    bool m_enabled{true};
+    float m_smoothedGain{1.0F};
+
+    mutable std::mutex m_mutex;
+};
+
+}  // namespace av::process

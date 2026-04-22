@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <string>
@@ -23,8 +24,8 @@ constexpr std::array<const char*, 5> kCodecCandidates = {
     "h264",
 };
 constexpr std::array<AVPixelFormat, 2> kPixelCandidates = {
-    AV_PIX_FMT_YUV420P,
     AV_PIX_FMT_NV12,
+    AV_PIX_FMT_YUV420P,
 };
 
 std::string describeAvError(int errorCode) {
@@ -174,23 +175,57 @@ void prependParameterSetsForKeyFrame(std::vector<uint8_t>& payload,
     payload.insert(payload.begin(), parameterSets.begin(), parameterSets.end());
 }
 
-void applyLowLatencyCodecOptions(const char* codecName, AVCodecContext* context) {
+void applyLowLatencyCodecOptions(const char* codecName, AVCodecContext* context, VideoEncoderPreset preset) {
     if (codecName == nullptr || context == nullptr) {
         return;
     }
 
     const std::string name(codecName);
     if (name.find("nvenc") != std::string::npos) {
-        av_opt_set(context->priv_data, "preset", "p1", 0);
-        av_opt_set(context->priv_data, "tune", "ull", 0);
-        av_opt_set(context->priv_data, "zerolatency", "1", 0);
-        av_opt_set(context->priv_data, "rc", "cbr", 0);
+        const char* presetValue = "p1";
+        const char* tuneValue = "ull";
+        const char* rcValue = "cbr";
+        const char* zeroLatency = "1";
+        switch (preset) {
+        case VideoEncoderPreset::Balanced:
+            presetValue = "p4";
+            tuneValue = "ll";
+            break;
+        case VideoEncoderPreset::Quality:
+            presetValue = "p7";
+            tuneValue = "hq";
+            rcValue = "vbr";
+            zeroLatency = "0";
+            break;
+        case VideoEncoderPreset::Realtime:
+        default:
+            break;
+        }
+        av_opt_set(context->priv_data, "preset", presetValue, 0);
+        av_opt_set(context->priv_data, "tune", tuneValue, 0);
+        av_opt_set(context->priv_data, "zerolatency", zeroLatency, 0);
+        av_opt_set(context->priv_data, "rc", rcValue, 0);
         return;
     }
 
     if (name.find("libx264") != std::string::npos || name == "h264") {
-        av_opt_set(context->priv_data, "preset", "ultrafast", 0);
+        const char* presetValue = "ultrafast";
+        switch (preset) {
+        case VideoEncoderPreset::Balanced:
+            presetValue = "veryfast";
+            break;
+        case VideoEncoderPreset::Quality:
+            presetValue = "medium";
+            break;
+        case VideoEncoderPreset::Realtime:
+        default:
+            break;
+        }
+        av_opt_set(context->priv_data, "preset", presetValue, 0);
         av_opt_set(context->priv_data, "tune", "zerolatency", 0);
+        if (preset == VideoEncoderPreset::Quality) {
+            av_opt_set(context->priv_data, "profile", "high", 0);
+        }
     }
 }
 
@@ -301,15 +336,172 @@ bool fillFrameFromBgra(const capture::ScreenFrame& inFrame, AVFrame& outFrame, A
     return true;
 }
 
+bool fillFrameFromBgraInput(const AVFrame& inFrame, AVFrame& outFrame, AVPixelFormat pixelFormat) {
+    if (inFrame.width <= 0 || inFrame.height <= 0 || (inFrame.width % 2) != 0 || (inFrame.height % 2) != 0) {
+        return false;
+    }
+    if (pixelFormat != AV_PIX_FMT_NV12 && pixelFormat != AV_PIX_FMT_YUV420P) {
+        return false;
+    }
+    if (inFrame.data[0] == nullptr || inFrame.linesize[0] < inFrame.width * 4) {
+        return false;
+    }
+
+    const uint8_t* source = inFrame.data[0];
+    const int width = inFrame.width;
+    const int height = inFrame.height;
+    const int sourceStride = inFrame.linesize[0];
+
+    for (int y = 0; y < height; ++y) {
+        const uint8_t* srcRow = source + static_cast<std::ptrdiff_t>(y) * sourceStride;
+        uint8_t* yRow = outFrame.data[0] + static_cast<std::ptrdiff_t>(y) * outFrame.linesize[0];
+        for (int x = 0; x < width; ++x) {
+            const uint8_t* pixel = srcRow + static_cast<std::ptrdiff_t>(x) * 4;
+            yRow[x] = lumaFromBgra(pixel[0], pixel[1], pixel[2]);
+        }
+    }
+
+    for (int y = 0; y < height; y += 2) {
+        const uint8_t* srcRow0 = source + static_cast<std::ptrdiff_t>(y) * sourceStride;
+        const uint8_t* srcRow1 = source + static_cast<std::ptrdiff_t>(std::min(y + 1, height - 1)) * sourceStride;
+
+        uint8_t* uvRowInterleaved = nullptr;
+        uint8_t* uRowPlanar = nullptr;
+        uint8_t* vRowPlanar = nullptr;
+        if (pixelFormat == AV_PIX_FMT_NV12) {
+            uvRowInterleaved = outFrame.data[1] + static_cast<std::ptrdiff_t>(y / 2) * outFrame.linesize[1];
+        } else {
+            uRowPlanar = outFrame.data[1] + static_cast<std::ptrdiff_t>(y / 2) * outFrame.linesize[1];
+            vRowPlanar = outFrame.data[2] + static_cast<std::ptrdiff_t>(y / 2) * outFrame.linesize[2];
+        }
+
+        for (int x = 0; x < width; x += 2) {
+            const uint8_t* p00 = srcRow0 + static_cast<std::ptrdiff_t>(x) * 4;
+            const uint8_t* p01 = srcRow0 + static_cast<std::ptrdiff_t>(std::min(x + 1, width - 1)) * 4;
+            const uint8_t* p10 = srcRow1 + static_cast<std::ptrdiff_t>(x) * 4;
+            const uint8_t* p11 = srcRow1 + static_cast<std::ptrdiff_t>(std::min(x + 1, width - 1)) * 4;
+
+            const int uAvg = (static_cast<int>(chromaUFromBgra(p00[0], p00[1], p00[2])) +
+                              static_cast<int>(chromaUFromBgra(p01[0], p01[1], p01[2])) +
+                              static_cast<int>(chromaUFromBgra(p10[0], p10[1], p10[2])) +
+                              static_cast<int>(chromaUFromBgra(p11[0], p11[1], p11[2])) +
+                              2) / 4;
+            const int vAvg = (static_cast<int>(chromaVFromBgra(p00[0], p00[1], p00[2])) +
+                              static_cast<int>(chromaVFromBgra(p01[0], p01[1], p01[2])) +
+                              static_cast<int>(chromaVFromBgra(p10[0], p10[1], p10[2])) +
+                              static_cast<int>(chromaVFromBgra(p11[0], p11[1], p11[2])) +
+                              2) / 4;
+
+            if (pixelFormat == AV_PIX_FMT_NV12) {
+                uvRowInterleaved[x] = clampToByte(uAvg);
+                uvRowInterleaved[x + 1] = clampToByte(vAvg);
+            } else {
+                uRowPlanar[x / 2] = clampToByte(uAvg);
+                vRowPlanar[x / 2] = clampToByte(vAvg);
+            }
+        }
+    }
+
+    return true;
+}
+
+bool copyPlaneRows(uint8_t* dst,
+                   int dstStride,
+                   const uint8_t* src,
+                   int srcStride,
+                   int rowBytes,
+                   int rows) {
+    if (dst == nullptr || src == nullptr || rowBytes <= 0 || rows <= 0) {
+        return false;
+    }
+    if (dstStride < rowBytes || srcStride < rowBytes) {
+        return false;
+    }
+    for (int row = 0; row < rows; ++row) {
+        std::memcpy(dst + static_cast<std::ptrdiff_t>(row) * dstStride,
+                    src + static_cast<std::ptrdiff_t>(row) * srcStride,
+                    static_cast<std::size_t>(rowBytes));
+    }
+    return true;
+}
+
+bool fillFrameFromYuvInput(const AVFrame& inFrame, AVFrame& outFrame, AVPixelFormat outputPixelFormat) {
+    const AVPixelFormat inputPixelFormat = static_cast<AVPixelFormat>(inFrame.format);
+    if ((inputPixelFormat != AV_PIX_FMT_NV12 && inputPixelFormat != AV_PIX_FMT_YUV420P) ||
+        (outputPixelFormat != AV_PIX_FMT_NV12 && outputPixelFormat != AV_PIX_FMT_YUV420P)) {
+        return false;
+    }
+
+    const int width = inFrame.width;
+    const int height = inFrame.height;
+    if (width <= 0 || height <= 0 || (width % 2) != 0 || (height % 2) != 0) {
+        return false;
+    }
+
+    if (!copyPlaneRows(outFrame.data[0], outFrame.linesize[0], inFrame.data[0], inFrame.linesize[0], width, height)) {
+        return false;
+    }
+
+    const int chromaHeight = height / 2;
+    const int chromaWidth = width / 2;
+    if (inputPixelFormat == AV_PIX_FMT_NV12 && outputPixelFormat == AV_PIX_FMT_NV12) {
+        return copyPlaneRows(outFrame.data[1], outFrame.linesize[1], inFrame.data[1], inFrame.linesize[1], width, chromaHeight);
+    }
+    if (inputPixelFormat == AV_PIX_FMT_YUV420P && outputPixelFormat == AV_PIX_FMT_YUV420P) {
+        return copyPlaneRows(outFrame.data[1], outFrame.linesize[1], inFrame.data[1], inFrame.linesize[1], chromaWidth, chromaHeight) &&
+               copyPlaneRows(outFrame.data[2], outFrame.linesize[2], inFrame.data[2], inFrame.linesize[2], chromaWidth, chromaHeight);
+    }
+    if (inputPixelFormat == AV_PIX_FMT_NV12 && outputPixelFormat == AV_PIX_FMT_YUV420P) {
+        if (inFrame.data[1] == nullptr || outFrame.data[1] == nullptr || outFrame.data[2] == nullptr) {
+            return false;
+        }
+        for (int y = 0; y < chromaHeight; ++y) {
+            const uint8_t* src = inFrame.data[1] + static_cast<std::ptrdiff_t>(y) * inFrame.linesize[1];
+            uint8_t* dstU = outFrame.data[1] + static_cast<std::ptrdiff_t>(y) * outFrame.linesize[1];
+            uint8_t* dstV = outFrame.data[2] + static_cast<std::ptrdiff_t>(y) * outFrame.linesize[2];
+            for (int x = 0; x < chromaWidth; ++x) {
+                dstU[x] = src[x * 2];
+                dstV[x] = src[x * 2 + 1];
+            }
+        }
+        return true;
+    }
+    if (inputPixelFormat == AV_PIX_FMT_YUV420P && outputPixelFormat == AV_PIX_FMT_NV12) {
+        if (inFrame.data[1] == nullptr || inFrame.data[2] == nullptr || outFrame.data[1] == nullptr) {
+            return false;
+        }
+        for (int y = 0; y < chromaHeight; ++y) {
+            const uint8_t* srcU = inFrame.data[1] + static_cast<std::ptrdiff_t>(y) * inFrame.linesize[1];
+            const uint8_t* srcV = inFrame.data[2] + static_cast<std::ptrdiff_t>(y) * inFrame.linesize[2];
+            uint8_t* dst = outFrame.data[1] + static_cast<std::ptrdiff_t>(y) * outFrame.linesize[1];
+            for (int x = 0; x < chromaWidth; ++x) {
+                dst[x * 2] = srcU[x];
+                dst[x * 2 + 1] = srcV[x];
+            }
+        }
+        return true;
+    }
+
+    return false;
+}
+
 }  // namespace
 
 VideoEncoder::VideoEncoder() = default;
 
 VideoEncoder::~VideoEncoder() = default;
 
-bool VideoEncoder::configure(int width, int height, int frameRate, int bitrate) {
+bool VideoEncoder::configure(int width,
+                             int height,
+                             int frameRate,
+                             int bitrate,
+                             uint8_t payloadType,
+                             VideoEncoderPreset preset) {
     if (width <= 0 || height <= 0 || frameRate <= 0 || bitrate <= 0) {
         return false;
+    }
+    if (payloadType == 0) {
+        payloadType = kScreenSharePayloadType;
     }
 
     width &= ~1;
@@ -344,7 +536,7 @@ bool VideoEncoder::configure(int width, int height, int frameRate, int bitrate) 
             context->max_b_frames = 0;
             context->pix_fmt = outputFormat;
 
-            applyLowLatencyCodecOptions(candidate, context.get());
+            applyLowLatencyCodecOptions(candidate, context.get(), preset);
             av_opt_set(context->priv_data, "repeat_headers", "1", 0);
 
             if (avcodec_open2(context.get(), codec, nullptr) < 0) {
@@ -355,7 +547,8 @@ bool VideoEncoder::configure(int width, int height, int frameRate, int bitrate) 
             m_height = height;
             m_frameRate = frameRate;
             m_bitrate = bitrate;
-            m_payloadType = kScreenSharePayloadType;
+            m_payloadType = payloadType;
+            m_preset = preset;
             m_outputPixelFormat = outputFormat;
             m_codecContext = std::move(context);
             m_codecName = candidate;
@@ -371,7 +564,7 @@ bool VideoEncoder::encode(const capture::ScreenFrame& inFrame,
                           bool forceKeyFrame,
                           std::string* error) {
     if (!m_codecContext) {
-        if (!configure(inFrame.width, inFrame.height, 5, 1500 * 1000)) {
+        if (!configure(inFrame.width, inFrame.height, 5, 1500 * 1000, m_payloadType, m_preset)) {
             if (error != nullptr) {
                 *error = "encoder configure failed";
             }
@@ -406,7 +599,8 @@ bool VideoEncoder::encode(const capture::ScreenFrame& inFrame,
     frame->width = m_width;
     frame->height = m_height;
     frame->pts = inFrame.pts;
-    if (forceKeyFrame) {
+    const bool requestKeyFrame = consumeKeyframeRequest(forceKeyFrame);
+    if (requestKeyFrame) {
         frame->pict_type = AV_PICTURE_TYPE_I;
         frame->key_frame = 1;
     }
@@ -432,6 +626,85 @@ bool VideoEncoder::encode(const capture::ScreenFrame& inFrame,
         return false;
     }
 
+    return receivePacket(inFrame.pts, outFrame, error);
+}
+
+bool VideoEncoder::encode(const AVFrame& inFrame,
+                          EncodedVideoFrame& outFrame,
+                          bool forceKeyFrame,
+                          std::string* error) {
+    const int inputWidth = inFrame.width;
+    const int inputHeight = inFrame.height;
+    if (inputWidth <= 0 || inputHeight <= 0) {
+        if (error != nullptr) {
+            *error = "invalid input frame size";
+        }
+        return false;
+    }
+
+    if (!m_codecContext) {
+        const int configuredFrameRate = m_frameRate > 0 ? m_frameRate : 30;
+        const int configuredBitrate = m_bitrate > 0 ? m_bitrate : 1500 * 1000;
+        if (!configure(inputWidth, inputHeight, configuredFrameRate, configuredBitrate, m_payloadType, m_preset)) {
+            if (error != nullptr) {
+                *error = "encoder configure failed";
+            }
+            return false;
+        }
+    }
+
+    if (inputWidth != m_width || inputHeight != m_height) {
+        if (error != nullptr) {
+            *error = "input size mismatch";
+        }
+        return false;
+    }
+
+    const AVPixelFormat inputPixelFormat = static_cast<AVPixelFormat>(inFrame.format);
+    av::AVFramePtr frame = nullptr;
+    if (inputPixelFormat == m_outputPixelFormat) {
+        frame.reset(av_frame_clone(&inFrame));
+    } else {
+        frame = av::makeFrame();
+        if (frame) {
+            frame->format = static_cast<int>(m_outputPixelFormat);
+            frame->width = m_width;
+            frame->height = m_height;
+            frame->pts = inFrame.pts;
+            const bool allocateOk = av_frame_get_buffer(frame.get(), 32) >= 0;
+            const bool convertOk = inputPixelFormat == AV_PIX_FMT_BGRA
+                ? fillFrameFromBgraInput(inFrame, *frame, m_outputPixelFormat)
+                : fillFrameFromYuvInput(inFrame, *frame, m_outputPixelFormat);
+            if (!allocateOk || !convertOk) {
+                frame.reset();
+            }
+        }
+    }
+    if (!frame) {
+        if (error != nullptr) {
+            *error = "input pixel format mismatch";
+        }
+        return false;
+    }
+
+    const bool requestKeyFrame = consumeKeyframeRequest(forceKeyFrame);
+    if (requestKeyFrame) {
+        frame->pict_type = AV_PICTURE_TYPE_I;
+        frame->key_frame = 1;
+    }
+
+    const int sendResult = avcodec_send_frame(m_codecContext.get(), frame.get());
+    if (sendResult < 0) {
+        if (error != nullptr) {
+            *error = "avcodec_send_frame failed: " + describeAvError(sendResult);
+        }
+        return false;
+    }
+
+    return receivePacket(inFrame.pts, outFrame, error);
+}
+
+bool VideoEncoder::receivePacket(int64_t fallbackPts, EncodedVideoFrame& outFrame, std::string* error) {
     av::AVPacketPtr packet = av::makePacket();
     if (!packet) {
         if (error != nullptr) {
@@ -457,7 +730,7 @@ bool VideoEncoder::encode(const capture::ScreenFrame& inFrame,
     outFrame.width = m_width;
     outFrame.height = m_height;
     outFrame.frameRate = m_frameRate;
-    outFrame.pts = packet->pts != AV_NOPTS_VALUE ? packet->pts : inFrame.pts;
+    outFrame.pts = packet->pts != AV_NOPTS_VALUE ? packet->pts : fallbackPts;
     outFrame.keyFrame = (packet->flags & AV_PKT_FLAG_KEY) != 0;
     outFrame.payloadType = m_payloadType;
     outFrame.payload.assign(packet->data, packet->data + packet->size);
@@ -488,6 +761,52 @@ bool VideoEncoder::encode(const capture::ScreenFrame& inFrame,
     return true;
 }
 
+bool VideoEncoder::setBitrate(int bitrate) {
+    if (bitrate <= 0) {
+        return false;
+    }
+
+    m_bitrate = bitrate;
+    if (m_codecContext) {
+        m_codecContext->bit_rate = bitrate;
+        if (m_codecContext->priv_data != nullptr) {
+            av_opt_set_int(m_codecContext->priv_data, "b", bitrate, 0);
+            av_opt_set_int(m_codecContext->priv_data, "bitrate", bitrate, 0);
+        }
+    }
+    return true;
+}
+
+bool VideoEncoder::setPreset(VideoEncoderPreset preset) {
+    if (!m_codecContext) {
+        m_preset = preset;
+        return true;
+    }
+    if (preset == m_preset) {
+        return true;
+    }
+    return configure(m_width, m_height, m_frameRate, m_bitrate, m_payloadType, preset);
+}
+
+bool VideoEncoder::setPayloadType(uint8_t payloadType) {
+    if (payloadType == 0) {
+        return false;
+    }
+    m_payloadType = payloadType;
+    return true;
+}
+
+bool VideoEncoder::requestKeyframe() {
+    m_forceKeyFrameNext = true;
+    return true;
+}
+
+bool VideoEncoder::consumeKeyframeRequest(bool forceKeyFrame) {
+    const bool requested = forceKeyFrame || m_forceKeyFrameNext;
+    m_forceKeyFrameNext = false;
+    return requested;
+}
+
 int VideoEncoder::width() const {
     return m_width;
 }
@@ -502,6 +821,10 @@ int VideoEncoder::frameRate() const {
 
 int VideoEncoder::bitrate() const {
     return m_bitrate;
+}
+
+VideoEncoderPreset VideoEncoder::preset() const {
+    return m_preset;
 }
 
 uint8_t VideoEncoder::payloadType() const {

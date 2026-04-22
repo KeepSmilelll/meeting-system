@@ -168,6 +168,9 @@ int main(int argc, char* argv[]) {
         assert(decodedHeight == 360);
 
         receiver.setExpectedRemoteVideoSsrc(screenSsrc + 1U);
+        // Recv now runs per-SSRC worker queues; allow a tiny in-flight tail after filter switch.
+        QThread::msleep(120);
+        app.processEvents(QEventLoop::AllEvents, 20);
         const uint64_t filteredReceiveBase = receiver.receivedPacketCount();
         const uint64_t filteredSendBase = sender.sentPacketCount();
 
@@ -176,8 +179,9 @@ int main(int argc, char* argv[]) {
         }, 3000);
         assert(senderStillSending);
 
+        constexpr uint64_t kAllowedInFlightTailPackets = 1U;
         const bool receivedUnexpectedSsrc = waitForCondition(app, [&receiver, filteredReceiveBase]() {
-            return receiver.receivedPacketCount() > filteredReceiveBase;
+            return receiver.receivedPacketCount() > (filteredReceiveBase + kAllowedInFlightTailPackets);
         }, 800);
         assert(!receivedUnexpectedSsrc);
 

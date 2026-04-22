@@ -5,6 +5,7 @@ import QtQuick.Layouts
 Controls.Dialog {
     id: root
     required property var controller
+    readonly property bool hasController: root.controller !== null && root.controller !== undefined
 
     modal: true
     dim: true
@@ -58,7 +59,7 @@ Controls.Dialog {
                     placeholderText: "Meeting title"
                     text: "Quick Meeting"
                     selectByMouse: true
-                    enabled: !root.controller.reconnecting
+                    enabled: root.hasController && !root.controller.reconnecting
                     onAccepted: passwordField.forceActiveFocus()
                 }
 
@@ -68,7 +69,7 @@ Controls.Dialog {
                     placeholderText: "Optional password"
                     echoMode: TextInput.Password
                     selectByMouse: true
-                    enabled: !root.controller.reconnecting
+                    enabled: root.hasController && !root.controller.reconnecting
                     onAccepted: maxParticipantsField.forceActiveFocus()
                 }
 
@@ -89,7 +90,7 @@ Controls.Dialog {
                         to: 256
                         value: 16
                         editable: true
-                        enabled: !root.controller.reconnecting
+                        enabled: root.hasController && !root.controller.reconnecting
                     }
                 }
 
@@ -101,15 +102,18 @@ Controls.Dialog {
 
                     Controls.Button {
                         text: "Cancel"
-                        enabled: !root.controller.reconnecting
+                        enabled: root.hasController && !root.controller.reconnecting
                         onClicked: root.close()
                     }
 
                     Controls.Button {
                         id: confirmButton
-                        text: root.controller.reconnecting ? "Creating..." : "Create"
-                        enabled: !root.controller.reconnecting && titleField.text.trim().length > 0
+                        text: root.hasController && root.controller.reconnecting ? "Creating..." : "Create"
+                        enabled: root.hasController && !root.controller.reconnecting && titleField.text.trim().length > 0
                         onClicked: {
+                            if (!root.hasController) {
+                                return
+                            }
                             root.controller.createMeeting(titleField.text, passwordField.text, maxParticipantsField.value)
                             root.close()
                         }
@@ -118,7 +122,7 @@ Controls.Dialog {
 
                 Controls.Label {
                     Layout.fillWidth: true
-                    text: root.controller.statusText
+                    text: root.hasController ? root.controller.statusText : "Shutting down"
                     color: "#93c5fd"
                     wrapMode: Text.WordWrap
                 }

@@ -23,8 +23,8 @@ public:
     static bool shouldDropVideoFrameByAudioClock(int64_t videoPts90k,
                                                  int64_t audioPts,
                                                  int audioSampleRate,
-                                                 int maxLeadMs = 1200,
-                                                 int maxLagMs = 1500);
+                                                 int maxLeadMs = 40,
+                                                 int maxLagMs = 40);
     static int suggestVideoRenderDelayMsByAudioClock(int64_t videoPts90k,
                                                      int64_t audioPts,
                                                      int audioSampleRate,
@@ -86,7 +86,7 @@ inline int64_t av::sync::AVSync::videoAudioSkewMs(int64_t videoPts90k, int64_t a
     const int64_t videoMs = videoPts90kToTimeMs(videoPts90k);
     const int64_t audioMs = audioPtsToTimeMs(audioPts, audioSampleRate);
     if (videoMs < 0 || audioMs < 0) {
-        return std::numeric_limits<int64_t>::min();
+        return (std::numeric_limits<int64_t>::min)();
     }
     return videoMs - audioMs;
 }
@@ -101,7 +101,7 @@ inline bool av::sync::AVSync::shouldDropVideoFrameByAudioClock(int64_t videoPts9
     }
 
     const int64_t skewMs = videoAudioSkewMs(videoPts90k, audioPts, audioSampleRate);
-    if (skewMs == std::numeric_limits<int64_t>::min()) {
+    if (skewMs == (std::numeric_limits<int64_t>::min)()) {
         return false;
     }
     return skewMs > maxLeadMs || skewMs < -maxLagMs;
@@ -116,7 +116,7 @@ inline int av::sync::AVSync::suggestVideoRenderDelayMsByAudioClock(int64_t video
     }
 
     const int64_t skewMs = videoAudioSkewMs(videoPts90k, audioPts, audioSampleRate);
-    if (skewMs == std::numeric_limits<int64_t>::min() || skewMs <= 0) {
+    if (skewMs == (std::numeric_limits<int64_t>::min)() || skewMs <= 0) {
         return 0;
     }
 

@@ -6,8 +6,10 @@
 #include <string>
 #include <vector>
 
+extern "C" {
 #include <libavutil/dict.h>
 #include <libavutil/opt.h>
+}
 
 namespace av::codec {
 namespace {
@@ -304,6 +306,22 @@ bool AudioEncoder::encode(const capture::AudioFrame& inFrame, EncodedAudioFrame&
             *error = "encoder produced empty opus packet";
         }
         return false;
+    }
+    return true;
+}
+
+bool AudioEncoder::setBitrate(int bitrate) {
+    if (bitrate <= 0) {
+        return false;
+    }
+
+    m_bitrate = bitrate;
+    if (m_codecContext) {
+        m_codecContext->bit_rate = bitrate;
+        if (m_codecContext->priv_data != nullptr) {
+            av_opt_set_int(m_codecContext->priv_data, "b", bitrate, 0);
+            av_opt_set_int(m_codecContext->priv_data, "bitrate", bitrate, 0);
+        }
     }
     return true;
 }

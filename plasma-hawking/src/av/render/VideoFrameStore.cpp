@@ -1,5 +1,8 @@
 #include "VideoFrameStore.h"
 
+#include <QMutexLocker>
+
+#include <memory>
 #include <utility>
 
 namespace av::render {
@@ -9,16 +12,20 @@ VideoFrameStore::VideoFrameStore(QObject* parent)
 
 void VideoFrameStore::clear() {
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        m_latestFrame = {};
+        QMutexLocker lock(&m_mutex);
+        m_latestFrame.reset();
         ++m_revision;
     }
     emit frameChanged();
 }
 
 void VideoFrameStore::setFrame(av::codec::DecodedVideoFrame frame) {
+    setFrame(std::make_shared<av::codec::DecodedVideoFrame>(std::move(frame)));
+}
+
+void VideoFrameStore::setFrame(FramePtr frame) {
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        QMutexLocker lock(&m_mutex);
         m_latestFrame = std::move(frame);
         ++m_revision;
     }
@@ -26,17 +33,26 @@ void VideoFrameStore::setFrame(av::codec::DecodedVideoFrame frame) {
 }
 
 bool VideoFrameStore::snapshot(av::codec::DecodedVideoFrame& outFrame, uint64_t* revision) const {
-    std::lock_guard<std::mutex> lock(m_mutex);
-    if (m_latestFrame.width <= 0 || m_latestFrame.height <= 0 ||
-        m_latestFrame.yPlane.empty() || m_latestFrame.uvPlane.empty()) {
+    const FramePtr frame = snapshotFrame(revision);
+    if (!frame) {
         return false;
     }
 
-    outFrame = m_latestFrame;
+    outFrame = *frame;
+    return true;
+}
+
+VideoFrameStore::FramePtr VideoFrameStore::snapshotFrame(uint64_t* revision) const {
+    QMutexLocker lock(&m_mutex);
     if (revision != nullptr) {
         *revision = m_revision;
     }
-    return true;
+
+    if (!m_latestFrame || !m_latestFrame->hasRenderableData()) {
+        return {};
+    }
+
+    return m_latestFrame;
 }
 
 }  // namespace av::render

@@ -5,6 +5,7 @@ import QtQuick.Layouts
 Item {
     id: root
     required property var controller
+    readonly property bool hasController: root.controller !== null && root.controller !== undefined
 
     implicitWidth: 520
     implicitHeight: 420
@@ -55,8 +56,8 @@ Item {
                 id: usernameField
                 Layout.fillWidth: true
                 placeholderText: "Username"
-                text: root.controller.username
-                enabled: !root.controller.reconnecting
+                text: root.hasController ? root.controller.username : ""
+                enabled: root.hasController && !root.controller.reconnecting
                 selectByMouse: true
                 onAccepted: passwordField.forceActiveFocus()
             }
@@ -66,22 +67,30 @@ Item {
                 Layout.fillWidth: true
                 placeholderText: "Password"
                 echoMode: TextInput.Password
-                enabled: !root.controller.reconnecting
+                enabled: root.hasController && !root.controller.reconnecting
                 selectByMouse: true
-                onAccepted: root.controller.login(usernameField.text, passwordField.text)
+                onAccepted: {
+                    if (root.hasController) {
+                        root.controller.login(usernameField.text, passwordField.text)
+                    }
+                }
             }
 
             Controls.Button {
                 id: signInButton
                 Layout.fillWidth: true
-                text: root.controller.reconnecting ? "Connecting..." : "Sign in"
-                enabled: !root.controller.reconnecting
-                onClicked: root.controller.login(usernameField.text, passwordField.text)
+                text: root.hasController && root.controller.reconnecting ? "Connecting..." : "Sign in"
+                enabled: root.hasController && !root.controller.reconnecting
+                onClicked: {
+                    if (root.hasController) {
+                        root.controller.login(usernameField.text, passwordField.text)
+                    }
+                }
             }
 
             Controls.Label {
                 Layout.fillWidth: true
-                text: root.controller.statusText
+                text: root.hasController ? root.controller.statusText : "Shutting down"
                 color: "#93c5fd"
                 wrapMode: Text.WordWrap
             }

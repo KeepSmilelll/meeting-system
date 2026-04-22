@@ -5,6 +5,7 @@ import QtQuick.Layouts
 Item {
     id: root
     required property var controller
+    readonly property bool hasController: root.controller !== null && root.controller !== undefined
 
     function computeColumns(count, availableWidth) {
         if (count <= 1) {
@@ -33,13 +34,15 @@ Item {
     readonly property real tileHeight: hasParticipants
                                       ? Math.max(oneOnOne ? 240 : 180, (height - (rows - 1) * grid.rowSpacing) / rows)
                                       : height
-    readonly property string statusHint: !root.controller.inMeeting
+    readonly property string statusHint: !root.hasController
+                                         ? "Meeting view is closing."
+                                         : (!root.controller.inMeeting
                                          ? "Create or join a meeting to enter the room."
                                          : (root.controller.hasActiveShare
                                                 ? ("Focused share: " + root.controller.activeShareDisplayName)
                                                 : (participantCount <= 1
                                                        ? "Waiting for a remote participant. Your local tile stays visible."
-                                                       : "Tap a sharing tile to focus the shared stream."))
+                                                       : "Tap a sharing tile to focus the shared stream.")))
 
     ColumnLayout {
         anchors.fill: parent
@@ -51,7 +54,7 @@ Item {
             color: "#94a3b8"
             font.pixelSize: 12
             wrapMode: Text.WordWrap
-            visible: root.controller.inMeeting || !root.hasParticipants
+            visible: (root.hasController && root.controller.inMeeting) || !root.hasParticipants
         }
 
         Item {
@@ -61,7 +64,9 @@ Item {
 
             Controls.Label {
                 anchors.centerIn: parent
-                text: root.controller.inMeeting ? "No participants are available yet." : "Enter a meeting to show video tiles."
+                text: (root.hasController && root.controller.inMeeting)
+                      ? "No participants are available yet."
+                      : "Enter a meeting to show video tiles."
                 color: "#64748b"
                 font.pixelSize: 12
                 visible: !root.hasParticipants
@@ -77,7 +82,7 @@ Item {
 
                 Repeater {
                     id: participantRepeater
-                    model: root.controller.participantModel
+                    model: root.hasController ? root.controller.participantModel : null
 
                     delegate: VideoTile {
                         controller: root.controller

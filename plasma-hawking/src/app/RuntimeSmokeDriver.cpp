@@ -12,7 +12,10 @@
 #include <QTimer>
 #include <QtGlobal>
 #include <algorithm>
+#include <chrono>
+#include <cstdio>
 #include <cstdlib>
+#include <thread>
 
 namespace {
 
@@ -83,7 +86,7 @@ bool hasDecodedVideoFrame(av::render::VideoFrameStore* frameStore) {
         return false;
     }
 
-    return frame.width > 0 && frame.height > 0 && !frame.yPlane.empty() && !frame.uvPlane.empty();
+    return frame.hasRenderableData();
 }
 
 struct AudioSmokeSnapshot {
@@ -98,6 +101,17 @@ struct AvSyncSmokeSnapshot {
     qint64 lastSkewMs{0};
     qint64 maxAbsSkewMs{0};
     quint64 sampleCount{0};
+    quint64 candidateCount{0};
+    quint64 noClockCount{0};
+    quint64 invalidVideoPtsCount{0};
+    quint64 invalidAudioClockCount{0};
+    quint64 decodedFrameCount{0};
+    quint64 droppedByAudioClockCount{0};
+    quint64 queuedFrameCount{0};
+    quint64 renderedFrameCount{0};
+    quint64 stalePtsDropCount{0};
+    quint64 rescheduledFrameCount{0};
+    quint64 queueResetCount{0};
 };
 
 AudioSmokeSnapshot collectAudioSmokeSnapshot(const MeetingController* controller) {
@@ -123,6 +137,17 @@ AvSyncSmokeSnapshot collectAvSyncSnapshot(const MeetingController* controller) {
     snapshot.lastSkewMs = controller->videoLastAudioSkewMs();
     snapshot.maxAbsSkewMs = controller->videoMaxAbsAudioSkewMs();
     snapshot.sampleCount = controller->videoAudioSkewSampleCount();
+    snapshot.candidateCount = controller->videoAudioSkewCandidateCount();
+    snapshot.noClockCount = controller->videoAudioSkewNoClockCount();
+    snapshot.invalidVideoPtsCount = controller->videoAudioSkewInvalidVideoPtsCount();
+    snapshot.invalidAudioClockCount = controller->videoAudioSkewInvalidAudioClockCount();
+    snapshot.decodedFrameCount = controller->remoteVideoDecodedFrameCount();
+    snapshot.droppedByAudioClockCount = controller->remoteVideoDroppedByAudioClockCount();
+    snapshot.queuedFrameCount = controller->remoteVideoQueuedFrameCount();
+    snapshot.renderedFrameCount = controller->remoteVideoRenderedFrameCount();
+    snapshot.stalePtsDropCount = controller->remoteVideoStalePtsDropCount();
+    snapshot.rescheduledFrameCount = controller->remoteVideoRescheduledFrameCount();
+    snapshot.queueResetCount = controller->remoteVideoQueueResetCount();
     return snapshot;
 }
 
@@ -137,11 +162,17 @@ bool hasAudioEvidence(const AudioSmokeSnapshot& snapshot) {
            snapshot.targetBitrateBps <= kMaxAudioBitrateBps;
 }
 
-bool hasAvSyncEvidence(const AvSyncSmokeSnapshot& snapshot, int maxSkewMs) {
-    if (snapshot.sampleCount == 0 || maxSkewMs < 0) {
+bool hasAvSyncEvidence(const AvSyncSmokeSnapshot& snapshot,
+                       int maxSkewMs,
+                       int minSamples,
+                       int maxAbsSkewMs) {
+    if (snapshot.sampleCount < static_cast<quint64>((std::max)(1, minSamples)) ||
+        maxSkewMs < 0 ||
+        maxAbsSkewMs < 0) {
         return false;
     }
-    return std::llabs(snapshot.lastSkewMs) <= maxSkewMs;
+    return std::llabs(snapshot.lastSkewMs) <= maxSkewMs &&
+           snapshot.maxAbsSkewMs <= maxAbsSkewMs;
 }
 
 QString formatAudioSmokeSnapshot(const AudioSmokeSnapshot& snapshot, bool evidenceReady) {
@@ -154,13 +185,62 @@ QString formatAudioSmokeSnapshot(const AudioSmokeSnapshot& snapshot, bool eviden
         .arg(evidenceReady ? 1 : 0);
 }
 
-QString formatAvSyncSnapshot(const AvSyncSmokeSnapshot& snapshot, bool evidenceReady, int maxSkewMs) {
-    return QStringLiteral("avsync_pipeline=last_skew_ms:%1,max_abs_skew_ms:%2,samples:%3,max_skew_ms:%4,evidence:%5")
+QString formatAvSyncSnapshot(const AvSyncSmokeSnapshot& snapshot,
+                             bool evidenceReady,
+                             int maxSkewMs,
+                             int minSamples,
+                             int maxAbsSkewMs) {
+    return QStringLiteral(
+               "avsync_pipeline=last_skew_ms:%1,max_abs_skew_ms:%2,samples:%3,candidates:%4,no_clock:%5,invalid_video_pts:%6,invalid_audio_clock:%7,decoded:%8,dropped_by_audio:%9,queued:%10,rendered:%11,stale_pts_drop:%12,rescheduled:%13,queue_reset:%14,max_skew_ms:%15,min_samples:%16,max_abs_skew_ms:%17,evidence:%18")
         .arg(snapshot.lastSkewMs)
         .arg(snapshot.maxAbsSkewMs)
         .arg(snapshot.sampleCount)
+        .arg(snapshot.candidateCount)
+        .arg(snapshot.noClockCount)
+        .arg(snapshot.invalidVideoPtsCount)
+        .arg(snapshot.invalidAudioClockCount)
+        .arg(snapshot.decodedFrameCount)
+        .arg(snapshot.droppedByAudioClockCount)
+        .arg(snapshot.queuedFrameCount)
+        .arg(snapshot.renderedFrameCount)
+        .arg(snapshot.stalePtsDropCount)
+        .arg(snapshot.rescheduledFrameCount)
+        .arg(snapshot.queueResetCount)
         .arg(maxSkewMs)
+        .arg((std::max)(1, minSamples))
+        .arg(maxAbsSkewMs)
         .arg(evidenceReady ? 1 : 0);
+}
+
+QString avSyncPendingReason(const AvSyncSmokeSnapshot& snapshot,
+                            int maxSkewMs,
+                            int minSamples,
+                            int maxAbsSkewMs) {
+    if (snapshot.sampleCount < static_cast<quint64>((std::max)(1, minSamples))) {
+        return QStringLiteral("avsync sample count below minimum");
+    }
+    if (snapshot.maxAbsSkewMs > maxAbsSkewMs) {
+        return QStringLiteral("avsync max abs skew out of bounds");
+    }
+    if (snapshot.sampleCount > 0 && std::llabs(snapshot.lastSkewMs) > maxSkewMs) {
+        return QStringLiteral("avsync skew out of bounds");
+    }
+    if (snapshot.sampleCount > 0) {
+        return QStringLiteral("avsync sampling pending");
+    }
+    if (snapshot.candidateCount == 0) {
+        if (snapshot.noClockCount > 0) {
+            return QStringLiteral("avsync clock missing");
+        }
+        return QStringLiteral("avsync candidate frame pending");
+    }
+    if (snapshot.invalidAudioClockCount > 0) {
+        return QStringLiteral("avsync audio clock not ready");
+    }
+    if (snapshot.invalidVideoPtsCount > 0) {
+        return QStringLiteral("avsync video pts invalid");
+    }
+    return QStringLiteral("avsync evidence pending");
 }
 
 QString normalizeExpectedCameraSource(const QString& raw) {
@@ -203,8 +283,12 @@ RuntimeSmokeDriver::RuntimeSmokeDriver(MeetingController* controller, QObject* p
     , m_requireAvSyncEvidence(envFlag("MEETING_SMOKE_REQUIRE_AVSYNC"))
     , m_disableLocalVideo(envFlag("MEETING_SMOKE_DISABLE_LOCAL_VIDEO"))
     , m_avSyncMaxSkewMs(std::max(0, envInt("MEETING_SMOKE_AVSYNC_MAX_SKEW_MS", 40)))
+    , m_avSyncMinSamples(std::max(1, envInt("MEETING_SMOKE_AVSYNC_MIN_SAMPLES", 10)))
+    , m_avSyncMaxAbsSkewMs(std::max(0, envInt("MEETING_SMOKE_AVSYNC_MAX_ABS_SKEW_MS", (std::max)(300, m_avSyncMaxSkewMs * 3))))
     , m_soakDurationMs(std::max(0, envInt("MEETING_SMOKE_SOAK_MS", 0)))
     , m_soakPollIntervalMs(std::max(200, envInt("MEETING_SMOKE_SOAK_POLL_INTERVAL_MS", 1000)))
+    , m_cameraStartMaxRetries(std::max(0, envInt("MEETING_SMOKE_CAMERA_START_MAX_RETRIES", 6)))
+    , m_cameraStartRetryDelayMs(std::max(100, envInt("MEETING_SMOKE_CAMERA_START_RETRY_DELAY_MS", 500)))
     , m_expectedCameraSource([]() {
         const QString configured = normalizeExpectedCameraSource(envValue("MEETING_SMOKE_EXPECT_CAMERA_SOURCE"));
         if (!configured.isEmpty()) {
@@ -218,6 +302,16 @@ RuntimeSmokeDriver::RuntimeSmokeDriver(MeetingController* controller, QObject* p
     m_meetingIdPath = normalizeSmokeArtifactPath(m_meetingIdPath, QStringLiteral("meeting_id.txt"));
     m_resultPath = normalizeSmokeArtifactPath(m_resultPath, QStringLiteral("result.txt"));
     m_peerResultPath = normalizeSmokeArtifactPath(m_peerResultPath, QStringLiteral("peer.result.txt"));
+
+    const QString helperSkipAvSyncRaw = envValue("MEETING_SMOKE_GUEST_SKIP_AVSYNC").trimmed();
+    const bool helperSkipAvSync = helperSkipAvSyncRaw.isEmpty()
+        ? true
+        : helperSkipAvSyncRaw.toInt() != 0;
+    if (helperSkipAvSync &&
+        m_role == QStringLiteral("guest") &&
+        !m_peerResultPath.isEmpty()) {
+        m_requireAvSyncEvidence = false;
+    }
 }
 
 bool RuntimeSmokeDriver::enabled() const {
@@ -366,7 +460,11 @@ QString RuntimeSmokeDriver::avSyncSummary() const {
         return {};
     }
 
-    return formatAvSyncSnapshot(snapshot, m_avSyncEvidenceReady, m_avSyncMaxSkewMs);
+    return formatAvSyncSnapshot(snapshot,
+                                m_avSyncEvidenceReady,
+                                m_avSyncMaxSkewMs,
+                                m_avSyncMinSamples,
+                                m_avSyncMaxAbsSkewMs);
 }
 
 QString RuntimeSmokeDriver::withStageTag(const QString& reason) const {
@@ -387,6 +485,9 @@ QString RuntimeSmokeDriver::withStageTag(const QString& reason) const {
     if (!m_videoEncodeDetail.trimmed().isEmpty()) {
         annotated += QStringLiteral("; video_encode_detail=%1").arg(m_videoEncodeDetail.trimmed());
     }
+    if (!m_videoCameraDetail.trimmed().isEmpty()) {
+        annotated += QStringLiteral("; video_camera_detail=%1").arg(m_videoCameraDetail.trimmed());
+    }
     return annotated;
 }
 
@@ -399,8 +500,24 @@ void RuntimeSmokeDriver::handleInfoMessage(const QString& message) {
         }
     }
 
-        if (message.contains(QStringLiteral("Video camera frame observed"), Qt::CaseInsensitive)) {
+    if (message.contains(QStringLiteral("Video camera frame observed"), Qt::CaseInsensitive)) {
         m_videoCameraFrameObserved = true;
+        m_videoCameraDetail.clear();
+    }
+    if (message.contains(QStringLiteral("Video camera frame convert failed:"), Qt::CaseInsensitive)) {
+        const QString prefix = QStringLiteral("Video camera frame convert failed:");
+        const int index = message.indexOf(prefix, 0, Qt::CaseInsensitive);
+        m_videoCameraDetail = index >= 0 ? message.mid(index + prefix.size()).trimmed() : message.trimmed();
+    }
+    if (message.contains(QStringLiteral("Video camera frame timeout:"), Qt::CaseInsensitive)) {
+        const QString prefix = QStringLiteral("Video camera frame timeout:");
+        const int index = message.indexOf(prefix, 0, Qt::CaseInsensitive);
+        m_videoCameraDetail = index >= 0 ? message.mid(index + prefix.size()).trimmed() : message.trimmed();
+    }
+    if (message.contains(QStringLiteral("Failed to start screen session:"), Qt::CaseInsensitive)) {
+        const QString prefix = QStringLiteral("Failed to start screen session:");
+        const int index = message.indexOf(prefix, 0, Qt::CaseInsensitive);
+        m_videoCameraDetail = index >= 0 ? message.mid(index + prefix.size()).trimmed() : message.trimmed();
     }
     if (message.contains(QStringLiteral("Video peer configured"), Qt::CaseInsensitive)) {
         m_videoPeerConfiguredObserved = true;
@@ -434,12 +551,22 @@ void RuntimeSmokeDriver::handleInfoMessage(const QString& message) {
         return;
     }
 
+    if (maybeHandleRetriableCameraStartFailure(message)) {
+        return;
+    }
+
     if (message.contains(QStringLiteral("Failed"), Qt::CaseInsensitive)) {
         fail(message);
         return;
     }
 
+    const bool guestCanExitOnNegotiationOnly =
+        !m_requireAudioEvidence &&
+        !m_requireVideoEvidence &&
+        !m_requireAvSyncEvidence &&
+        m_expectedCameraSource.isEmpty();
     if (m_role == QStringLiteral("guest") &&
+        guestCanExitOnNegotiationOnly &&
         (message.contains(QStringLiteral("Audio answer sent"), Qt::CaseInsensitive) ||
          message.contains(QStringLiteral("Video answer sent"), Qt::CaseInsensitive))) {
         maybeCompleteSuccess(message);
@@ -477,9 +604,13 @@ void RuntimeSmokeDriver::handleInMeetingChanged() {
         return;
     }
 
-    if (m_disableLocalVideo && !m_appliedLocalVideoPolicy) {
+    if (!m_appliedLocalVideoPolicy) {
         m_appliedLocalVideoPolicy = true;
-        if (!m_controller->videoMuted()) {
+        if (m_disableLocalVideo) {
+            if (!m_controller->videoMuted()) {
+                m_controller->toggleVideo();
+            }
+        } else if (m_requireVideoEvidence && m_controller->videoMuted()) {
             m_controller->toggleVideo();
         }
     }
@@ -510,12 +641,67 @@ void RuntimeSmokeDriver::handleStatusTextChanged() {
     }
 
     if (status.contains(QStringLiteral("failed"), Qt::CaseInsensitive)) {
+        if (maybeHandleRetriableCameraStartFailure(status)) {
+            return;
+        }
         if (isDegradableVideoEncoderFailure(status, m_requireVideoEvidence)) {
             writeResult(QStringLiteral("DEGRADED_VIDEO"), withStageTag(status));
             return;
         }
         fail(status);
     }
+}
+
+bool RuntimeSmokeDriver::maybeHandleRetriableCameraStartFailure(const QString& message) {
+    if (m_reportedResult || !m_controller) {
+        return false;
+    }
+    const bool startFailed = message.contains(QStringLiteral("Failed to start camera sending"), Qt::CaseInsensitive) &&
+                             message.contains(QStringLiteral("camera capture start failed"), Qt::CaseInsensitive);
+    const bool noFramesProduced = message.contains(QStringLiteral("camera capture produced no frames"), Qt::CaseInsensitive);
+    if (!startFailed && !noFramesProduced) {
+        return false;
+    }
+    if (!m_requireVideoEvidence || m_disableLocalVideo) {
+        return false;
+    }
+    if (!m_expectedCameraSource.isEmpty() && m_expectedCameraSource != QStringLiteral("real-device")) {
+        return false;
+    }
+    if (m_cameraStartRetryCount >= m_cameraStartMaxRetries) {
+        return false;
+    }
+
+    ++m_cameraStartRetryCount;
+    const QStringList availableDevices = m_controller->availableCameraDevices();
+    const QString deviceList = availableDevices.isEmpty() ? QStringLiteral("<none>") : availableDevices.join(QStringLiteral("|"));
+    m_videoCameraDetail = QStringLiteral("camera-start-retry=%1/%2 devices=%3")
+                              .arg(m_cameraStartRetryCount)
+                              .arg(m_cameraStartMaxRetries)
+                              .arg(deviceList);
+    writeResult(QStringLiteral("WAITING_VIDEO"),
+                withStageTag(QStringLiteral("camera start retry %1/%2")
+                                 .arg(m_cameraStartRetryCount)
+                                 .arg(m_cameraStartMaxRetries)));
+
+    QTimer::singleShot(m_cameraStartRetryDelayMs, this, [this]() {
+        if (m_reportedResult || !m_controller || !m_controller->inMeeting()) {
+            return;
+        }
+
+        if (!m_controller->videoMuted()) {
+            m_controller->toggleVideo();
+        }
+        QTimer::singleShot(80, this, [this]() {
+            if (m_reportedResult || !m_controller || !m_controller->inMeeting()) {
+                return;
+            }
+            if (m_controller->videoMuted()) {
+                m_controller->toggleVideo();
+            }
+        });
+    });
+    return true;
 }
 
 void RuntimeSmokeDriver::pollMeetingId() {
@@ -538,9 +724,16 @@ void RuntimeSmokeDriver::pollPeerSuccess() {
         return;
     }
 
-    if (readPeerResult().startsWith(QStringLiteral("SUCCESS"))) {
+    const QString peerResult = readPeerResult();
+    if (peerResult.startsWith(QStringLiteral("SUCCESS"))) {
         m_peerSuccessObserved = true;
         maybeCompleteSuccess(m_pendingSuccessReason.isEmpty() ? QStringLiteral("peer success observed") : m_pendingSuccessReason);
+        return;
+    }
+    if (peerResult.startsWith(QStringLiteral("FAIL"))) {
+        const QStringList lines = peerResult.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+        const QString peerReason = lines.size() > 1 ? lines.at(1).trimmed() : peerResult.trimmed();
+        fail(QStringLiteral("peer reported failure: %1").arg(peerReason));
         return;
     }
 
@@ -582,7 +775,11 @@ void RuntimeSmokeDriver::maybeUpdateAvSyncEvidence() {
     }
 
     const AvSyncSmokeSnapshot snapshot = collectAvSyncSnapshot(m_controller);
-    if (hasAvSyncEvidence(snapshot, m_avSyncMaxSkewMs)) {
+    const bool avSyncStable = hasAvSyncEvidence(snapshot,
+                                                m_avSyncMaxSkewMs,
+                                                m_avSyncMinSamples,
+                                                m_avSyncMaxAbsSkewMs);
+    if (avSyncStable) {
         m_avSyncEvidenceReady = true;
         maybeCompleteSuccess(m_pendingSuccessReason.isEmpty() ? QStringLiteral("avsync evidence observed") : m_pendingSuccessReason);
         return;
@@ -612,7 +809,12 @@ void RuntimeSmokeDriver::maybeCompleteSuccess(const QString& reason) {
 
     if (m_requireAvSyncEvidence && !m_avSyncEvidenceReady) {
         m_pendingSuccessReason = normalizedReason;
-        writeResult(QStringLiteral("WAITING_AVSYNC"), withStageTag(QStringLiteral("avsync evidence pending")));
+        const AvSyncSmokeSnapshot snapshot = collectAvSyncSnapshot(m_controller);
+        writeResult(QStringLiteral("WAITING_AVSYNC"),
+                    withStageTag(avSyncPendingReason(snapshot,
+                                                     m_avSyncMaxSkewMs,
+                                                     m_avSyncMinSamples,
+                                                     m_avSyncMaxAbsSkewMs)));
         return;
     }
 
@@ -621,6 +823,19 @@ void RuntimeSmokeDriver::maybeCompleteSuccess(const QString& reason) {
         writeResult(QStringLiteral("WAITING_CAMERA_SOURCE"),
                     withStageTag(QStringLiteral("camera source evidence pending: %1").arg(m_expectedCameraSource)));
         return;
+    }
+
+    const bool helperMediaSoakNeeded =
+        m_role == QStringLiteral("guest") &&
+        !m_peerResultPath.isEmpty() &&
+        (m_requireAudioEvidence || m_requireVideoEvidence || m_requireAvSyncEvidence || !m_expectedCameraSource.isEmpty());
+    if (helperMediaSoakNeeded) {
+        const int helperSoakDefaultMs =
+            (m_requireAudioEvidence || m_requireAvSyncEvidence) ? 25000 : 5000;
+        const int helperSoakMs = std::max(0, envInt("MEETING_SMOKE_GUEST_MEDIA_SOAK_MS", helperSoakDefaultMs));
+        if (m_soakDurationMs < helperSoakMs) {
+            m_soakDurationMs = helperSoakMs;
+        }
     }
 
     if (m_soakDurationMs > 0) {
@@ -697,6 +912,38 @@ void RuntimeSmokeDriver::pollSoakProgress() {
     QTimer::singleShot(m_soakPollIntervalMs, this, &RuntimeSmokeDriver::pollSoakProgress);
 }
 
+void RuntimeSmokeDriver::requestExit(int code) {
+    if (m_exitRequested) {
+        return;
+    }
+
+    m_exitRequested = true;
+    const bool hardExit = !qEnvironmentVariableIsSet("MEETING_SMOKE_HARD_EXIT") ||
+                          qEnvironmentVariableIntValue("MEETING_SMOKE_HARD_EXIT") != 0;
+    if (hardExit) {
+        QTimer::singleShot(0, qApp, [code]() {
+            std::fflush(nullptr);
+            std::_Exit(code);
+        });
+        return;
+    }
+
+    const bool gracefulShutdown = qEnvironmentVariableIntValue("MEETING_SMOKE_GRACEFUL_SHUTDOWN") != 0;
+    if (gracefulShutdown && m_controller) {
+        m_controller->shutdownMediaForRuntimeSmoke();
+    }
+    QTimer::singleShot(0, qApp, [code]() {
+        QCoreApplication::exit(code);
+    });
+
+    // Runtime smoke occasionally gets stuck in shutdown due pending cross-thread teardown.
+    // Keep graceful exit first, then force-stop if event loop never returns.
+    std::thread([code]() {
+        std::this_thread::sleep_for(std::chrono::seconds(6));
+        std::_Exit(code);
+    }).detach();
+}
+
 void RuntimeSmokeDriver::completeSuccess(const QString& reason) {
     if (m_reportedResult) {
         return;
@@ -705,9 +952,7 @@ void RuntimeSmokeDriver::completeSuccess(const QString& reason) {
     m_reportedResult = true;
     writeResult(QStringLiteral("SUCCESS"), reason);
     qInfo().noquote() << "[runtime-smoke]" << m_role << "success:" << reason;
-    QTimer::singleShot(0, qApp, []() {
-        QCoreApplication::exit(0);
-    });
+    requestExit(0);
 }
 
 void RuntimeSmokeDriver::fail(const QString& reason) {
@@ -719,9 +964,7 @@ void RuntimeSmokeDriver::fail(const QString& reason) {
     m_reportedResult = true;
     writeResult(QStringLiteral("FAIL"), annotatedReason);
     qCritical().noquote() << "[runtime-smoke]" << m_role << "failed:" << annotatedReason;
-    QTimer::singleShot(0, qApp, []() {
-        QCoreApplication::exit(2);
-    });
+    requestExit(2);
 }
 
 bool RuntimeSmokeDriver::writeMeetingId(const QString& meetingId) {

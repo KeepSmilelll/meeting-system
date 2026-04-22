@@ -16,6 +16,7 @@
 #include <deque>
 #include <memory>
 #include <string>
+#include <thread>
 #include <utility>
 
 #if defined(_MSC_VER)
@@ -32,6 +33,9 @@ namespace {
 constexpr int kTargetSampleRate = 48000;
 constexpr int kTargetChannels = 1;
 constexpr int kTargetFrameSamples = 960;
+constexpr float kSyntheticToneHz = 440.0F;
+constexpr float kSyntheticAmplitude = 0.05F;
+constexpr double kPi = 3.14159265358979323846;
 
 bool allowSyntheticCapture() {
     return qEnvironmentVariableIntValue("MEETING_SYNTHETIC_AUDIO") != 0;
@@ -127,7 +131,55 @@ struct AudioCapture::Impl {
     explicit Impl(AudioCapture* owner)
         : owner(owner) {}
 
+    void startSyntheticDevice() {
+        syntheticMode = true;
+        inputSampleRate = kTargetSampleRate;
+        inputChannels = kTargetChannels;
+        inputBytesPerSample = static_cast<int>(sizeof(float));
+        resampleRatio = 1.0;
+        nextPts = 0;
+        running = true;
+        error.clear();
+        qWarning().noquote() << "[audio-capture] synthetic mode enabled";
+        syntheticThread = std::thread([this]() {
+            syntheticLoop();
+        });
+    }
+
+    void syntheticLoop() {
+        double phase = 0.0;
+        const double phaseStep = (2.0 * kPi * static_cast<double>(kSyntheticToneHz)) /
+                                 static_cast<double>(kTargetSampleRate);
+        int64_t pts = 0;
+        auto nextWake = std::chrono::steady_clock::now();
+        while (running.load(std::memory_order_acquire)) {
+            AudioFrame frame;
+            frame.sampleRate = kTargetSampleRate;
+            frame.channels = kTargetChannels;
+            frame.pts = pts;
+            frame.samples.resize(kTargetFrameSamples);
+            for (float& sample : frame.samples) {
+                sample = static_cast<float>(std::sin(phase) * static_cast<double>(kSyntheticAmplitude));
+                phase += phaseStep;
+                if (phase >= 2.0 * kPi) {
+                    phase -= 2.0 * kPi;
+                }
+            }
+            if (owner != nullptr) {
+                (void)owner->m_ringBuffer.push(std::move(frame));
+            }
+            pts += kTargetFrameSamples;
+            nextWake += std::chrono::milliseconds(20);
+            std::this_thread::sleep_until(nextWake);
+        }
+    }
+
     void startDevice() {
+        if (allowSyntheticCapture()) {
+            startSyntheticDevice();
+            return;
+        }
+
         if (QCoreApplication::instance() == nullptr) {
             error = "no Qt application instance";
             return;
@@ -135,11 +187,6 @@ struct AudioCapture::Impl {
 
         device = resolvePreferredInputDevice(preferredDeviceName);
         if (device.isNull()) {
-            if (allowSyntheticCapture()) {
-                qWarning().noquote() << "[audio-capture] synthetic mode: no audio input";
-                running = true;
-                return;
-            }
             error = "no default audio input";
             return;
         }
@@ -187,6 +234,10 @@ struct AudioCapture::Impl {
 
     void stopDevice() {
         running = false;
+        if (syntheticThread.joinable()) {
+            syntheticThread.join();
+        }
+        syntheticMode = false;
         if (audioSource) {
             audioSource->stop();
         }
@@ -308,13 +359,15 @@ struct AudioCapture::Impl {
     std::deque<float> pendingSamples;
     QByteArray pendingBytes;
     QString preferredDeviceName;
+    std::thread syntheticThread;
     int inputSampleRate{kTargetSampleRate};
     int inputChannels{kTargetChannels};
     int inputBytesPerSample{2};
     double resampleRatio{1.0};
     double inputCursor{0.0};
     int64_t nextPts{0};
-    bool running{false};
+    std::atomic<bool> running{false};
+    bool syntheticMode{false};
     bool loggedFirstFrame{false};
     std::string error;
 };
@@ -340,11 +393,14 @@ bool AudioCapture::start() {
         return false;
     }
 
+    m_ringBuffer.reset();
     m_impl = std::make_unique<Impl>(this);
     m_impl->preferredDeviceName = m_preferredDeviceName;
     m_impl->startDevice();
     if (!m_impl->running) {
         m_impl.reset();
+        m_running.store(false, std::memory_order_release);
+        return false;
     }
 
     return true;

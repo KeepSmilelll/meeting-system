@@ -54,5 +54,28 @@ int main() {
     assert(out.header.sequenceNumber == 200);
     producer.join();
 
+    media::JitterBuffer prebuffered(8, 3, std::chrono::milliseconds(20));
+    assert(prebuffered.push(makePacket(10, 0x0A)));
+    assert(!prebuffered.pop(out));
+    assert(prebuffered.push(makePacket(12, 0x0C)));
+    assert(!prebuffered.pop(out));
+    assert(prebuffered.push(makePacket(11, 0x0B)));
+    assert(prebuffered.pop(out));
+    assert(out.header.sequenceNumber == 10);
+    assert(prebuffered.pop(out));
+    assert(out.header.sequenceNumber == 11);
+    assert(prebuffered.pop(out));
+    assert(out.header.sequenceNumber == 12);
+
+    media::JitterBuffer gapBuffer(8, 1, std::chrono::milliseconds(10));
+    assert(gapBuffer.push(makePacket(300, 1)));
+    assert(gapBuffer.pop(out));
+    assert(out.header.sequenceNumber == 300);
+    assert(gapBuffer.push(makePacket(302, 3)));
+    assert(!gapBuffer.pop(out));
+    std::this_thread::sleep_for(std::chrono::milliseconds(15));
+    assert(gapBuffer.pop(out));
+    assert(out.header.sequenceNumber == 302);
+
     return 0;
 }

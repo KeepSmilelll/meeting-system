@@ -5,9 +5,13 @@ import QtQuick.Layouts
 Controls.Pane {
     id: root
     required property var controller
-    readonly property bool hasCameraDevices: root.controller.availableCameraDevices.length > 0
-    readonly property bool hasAudioInputDevices: root.controller.availableAudioInputDevices.length > 0
-    readonly property bool hasAudioOutputDevices: root.controller.availableAudioOutputDevices.length > 0
+    readonly property bool hasController: root.controller !== null && root.controller !== undefined
+    readonly property var cameraDevices: root.hasController ? root.controller.availableCameraDevices : []
+    readonly property var audioInputDevices: root.hasController ? root.controller.availableAudioInputDevices : []
+    readonly property var audioOutputDevices: root.hasController ? root.controller.availableAudioOutputDevices : []
+    readonly property bool hasCameraDevices: root.cameraDevices.length > 0
+    readonly property bool hasAudioInputDevices: root.audioInputDevices.length > 0
+    readonly property bool hasAudioOutputDevices: root.audioOutputDevices.length > 0
 
     implicitHeight: 82
     padding: 16
@@ -23,21 +27,33 @@ Controls.Pane {
         spacing: 12
 
         Controls.Button {
-            text: root.controller.audioMuted ? "Unmute mic" : "Mute mic"
-            enabled: root.controller.inMeeting
-            onClicked: root.controller.toggleAudio()
+            text: root.hasController && root.controller.audioMuted ? "Unmute mic" : "Mute mic"
+            enabled: root.hasController && root.controller.inMeeting
+            onClicked: {
+                if (root.hasController) {
+                    root.controller.toggleAudio()
+                }
+            }
         }
 
         Controls.Button {
-            text: root.controller.videoMuted ? "Unmute camera" : "Mute camera"
-            enabled: root.controller.inMeeting
-            onClicked: root.controller.toggleVideo()
+            text: root.hasController && root.controller.videoMuted ? "Unmute camera" : "Mute camera"
+            enabled: root.hasController && root.controller.inMeeting
+            onClicked: {
+                if (root.hasController) {
+                    root.controller.toggleVideo()
+                }
+            }
         }
 
         Controls.Button {
-            text: root.controller.screenSharing ? "Stop share" : "Share screen"
-            enabled: root.controller.inMeeting
-            onClicked: root.controller.toggleScreenSharing()
+            text: root.hasController && root.controller.screenSharing ? "Stop share" : "Share screen"
+            enabled: root.hasController && root.controller.inMeeting
+            onClicked: {
+                if (root.hasController) {
+                    root.controller.toggleScreenSharing()
+                }
+            }
         }
 
         Controls.Label {
@@ -50,11 +66,11 @@ Controls.Pane {
         Controls.ComboBox {
             id: micSelector
             Layout.preferredWidth: 180
-            model: ["System default"].concat(root.controller.availableAudioInputDevices)
+            model: ["System default"].concat(root.audioInputDevices)
             enabled: root.hasAudioInputDevices
 
             function syncSelection() {
-                if (count <= 1) {
+                if (!root.hasController || count <= 1) {
                     currentIndex = 0
                     return
                 }
@@ -64,7 +80,7 @@ Controls.Pane {
             }
 
             onActivated: {
-                if (currentIndex >= 0) {
+                if (root.hasController && currentIndex >= 0) {
                     root.controller.setPreferredMicrophoneDevice(currentIndex === 0 ? "" : currentText)
                 }
             }
@@ -82,11 +98,11 @@ Controls.Pane {
         Controls.ComboBox {
             id: speakerSelector
             Layout.preferredWidth: 180
-            model: ["System default"].concat(root.controller.availableAudioOutputDevices)
+            model: ["System default"].concat(root.audioOutputDevices)
             enabled: root.hasAudioOutputDevices
 
             function syncSelection() {
-                if (count <= 1) {
+                if (!root.hasController || count <= 1) {
                     currentIndex = 0
                     return
                 }
@@ -96,7 +112,7 @@ Controls.Pane {
             }
 
             onActivated: {
-                if (currentIndex >= 0) {
+                if (root.hasController && currentIndex >= 0) {
                     root.controller.setPreferredSpeakerDevice(currentIndex === 0 ? "" : currentText)
                 }
             }
@@ -114,11 +130,11 @@ Controls.Pane {
         Controls.ComboBox {
             id: cameraSelector
             Layout.preferredWidth: 180
-            model: ["System default"].concat(root.controller.availableCameraDevices)
+            model: ["System default"].concat(root.cameraDevices)
             enabled: root.hasCameraDevices
 
             function syncSelection() {
-                if (count <= 1) {
+                if (!root.hasController || count <= 1) {
                     currentIndex = 0
                     return
                 }
@@ -128,7 +144,7 @@ Controls.Pane {
             }
 
             onActivated: {
-                if (currentIndex >= 0) {
+                if (root.hasController && currentIndex >= 0) {
                     root.controller.setPreferredCameraDevice(currentIndex === 0 ? "" : currentText)
                 }
             }
@@ -137,7 +153,7 @@ Controls.Pane {
         }
 
         Connections {
-            target: root.controller
+            target: root.hasController ? root.controller : null
 
             function onPreferredCameraDeviceChanged() {
                 cameraSelector.syncSelection()
@@ -173,16 +189,18 @@ Controls.Pane {
             spacing: 2
 
             Controls.Label {
-                text: root.controller.meetingTitle !== ""
+                text: !root.hasController
+                      ? "Closing meeting"
+                      : (root.controller.meetingTitle !== ""
                           ? root.controller.meetingTitle + (root.controller.meetingId !== "" ? " (" + root.controller.meetingId + ")" : "")
-                          : ((root.controller.meetingId === "") ? "No meeting selected" : "Meeting ID: " + root.controller.meetingId)
+                          : ((root.controller.meetingId === "") ? "No meeting selected" : "Meeting ID: " + root.controller.meetingId))
                 color: "#e2e8f0"
                 font.pixelSize: 12
                 horizontalAlignment: Text.AlignRight
             }
 
             Controls.Label {
-                text: root.controller.statusText
+                text: root.hasController ? root.controller.statusText : "Shutting down"
                 color: "#94a3b8"
                 font.pixelSize: 11
                 horizontalAlignment: Text.AlignRight
@@ -191,8 +209,12 @@ Controls.Pane {
 
         Controls.Button {
             text: "Leave"
-            enabled: root.controller.inMeeting
-            onClicked: root.controller.leaveMeeting()
+            enabled: root.hasController && root.controller.inMeeting
+            onClicked: {
+                if (root.hasController) {
+                    root.controller.leaveMeeting()
+                }
+            }
         }
     }
 }

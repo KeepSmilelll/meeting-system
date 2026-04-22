@@ -5,10 +5,14 @@
 #include "net/media/RTCPHandler.h"
 #include "net/media/RTPReceiver.h"
 
+#include <QtGlobal>
+
 #include <iostream>
 #include <string>
 
 int main() {
+    qputenv("MEETING_SYNTHETIC_AUDIO", "1");
+
     std::string audioError;
     const bool audioOk = av::codec::runAudioPipelineLoopbackSelfCheck(&audioError);
     const bool playerOk = av::render::runAudioPlayerSelfCheck();

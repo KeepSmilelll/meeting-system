@@ -25,6 +25,7 @@ public:
 
     bool configure(int sampleRate, int channels, int bitrate);
     bool encode(const capture::AudioFrame& inFrame, EncodedAudioFrame& outFrame, std::string* error = nullptr) const;
+    bool setBitrate(int bitrate);
 
     int sampleRate() const;
     int channels() const;

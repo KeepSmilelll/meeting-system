@@ -22,12 +22,29 @@ in vec2 vTexCoord;
 out vec4 fragColor;
 uniform sampler2D texY;
 uniform sampler2D texUV;
+uniform sampler2D texU;
+uniform sampler2D texV;
+uniform int u_inputFormat;
 void main() {
+    if (u_inputFormat == 2) {
+        fragColor = texture(texY, vTexCoord);
+        return;
+    }
+
     float y = texture(texY, vTexCoord).r;
-    vec2 uv = texture(texUV, vTexCoord).rg - vec2(0.5, 0.5);
-    float r = y + 1.5748 * uv.y;
-    float g = y - 0.1873 * uv.x - 0.4681 * uv.y;
-    float b = y + 1.8556 * uv.x;
+    float u = 0.0;
+    float v = 0.0;
+    if (u_inputFormat == 1) {
+        u = texture(texU, vTexCoord).r - 0.5;
+        v = texture(texV, vTexCoord).r - 0.5;
+    } else {
+        vec2 uv = texture(texUV, vTexCoord).rg - vec2(0.5, 0.5);
+        u = uv.x;
+        v = uv.y;
+    }
+    float r = y + 1.5748 * v;
+    float g = y - 0.1873 * u - 0.4681 * v;
+    float b = y + 1.8556 * u;
     fragColor = vec4(r, g, b, 1.0);
 }
 )";
@@ -77,13 +94,33 @@ bool NV12Shader::initialize(QOpenGLFunctions_4_5_Core* gl) {
     gl->glUseProgram(m_program);
     gl->glUniform1i(gl->glGetUniformLocation(m_program, "texY"), 0);
     gl->glUniform1i(gl->glGetUniformLocation(m_program, "texUV"), 1);
+    gl->glUniform1i(gl->glGetUniformLocation(m_program, "texU"), 1);
+    gl->glUniform1i(gl->glGetUniformLocation(m_program, "texV"), 2);
+    m_inputFormatLocation = gl->glGetUniformLocation(m_program, "u_inputFormat");
+    if (m_inputFormatLocation >= 0) {
+        gl->glUniform1i(m_inputFormatLocation, static_cast<GLint>(InputFormat::Nv12));
+    }
     gl->glUseProgram(0);
     return true;
+}
+
+void NV12Shader::cleanup(QOpenGLFunctions_4_5_Core* gl) {
+    if (gl != nullptr && m_program != 0) {
+        gl->glDeleteProgram(m_program);
+        m_program = 0;
+        m_inputFormatLocation = -1;
+    }
 }
 
 void NV12Shader::bind(QOpenGLFunctions_4_5_Core* gl) const {
     if (gl != nullptr && m_program != 0) {
         gl->glUseProgram(m_program);
+    }
+}
+
+void NV12Shader::setInputFormat(QOpenGLFunctions_4_5_Core* gl, InputFormat format) const {
+    if (gl != nullptr && m_program != 0 && m_inputFormatLocation >= 0) {
+        gl->glUniform1i(m_inputFormatLocation, static_cast<GLint>(format));
     }
 }
 

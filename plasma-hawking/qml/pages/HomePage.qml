@@ -5,6 +5,8 @@ import QtQuick.Layouts
 Item {
     id: root
     required property var controller
+    readonly property bool hasController: root.controller !== null && root.controller !== undefined
+    readonly property int participantCount: root.hasController ? root.controller.participants.length : 0
 
     implicitWidth: 1100
     implicitHeight: 760
@@ -37,14 +39,16 @@ Item {
                     spacing: 6
 
                     Controls.Label {
-                        text: "Welcome, %1".arg(root.controller.username || "guest")
+                        text: "Welcome, %1".arg(root.hasController ? (root.controller.username || "guest") : "guest")
                         color: "#f8fafc"
                         font.pixelSize: 28
                         font.bold: true
                     }
 
                     Controls.Label {
-                        text: (root.controller.userId === "") ? "Ready to create or join a meeting." : "User ID: " + root.controller.userId
+                        text: !root.hasController
+                              ? "Session view is closing."
+                              : ((root.controller.userId === "") ? "Ready to create or join a meeting." : "User ID: " + root.controller.userId)
                         color: "#94a3b8"
                         font.pixelSize: 13
                         wrapMode: Text.WordWrap
@@ -56,15 +60,15 @@ Item {
                     spacing: 6
 
                     Controls.Label {
-                        text: root.controller.loggedIn ? "Connected" : "Offline"
-                        color: root.controller.loggedIn ? "#22c55e" : "#f87171"
+                        text: root.hasController && root.controller.loggedIn ? "Connected" : "Offline"
+                        color: root.hasController && root.controller.loggedIn ? "#22c55e" : "#f87171"
                         horizontalAlignment: Text.AlignRight
                         font.pixelSize: 13
                         font.bold: true
                     }
 
                     Controls.Label {
-                        text: root.controller.statusText
+                        text: root.hasController ? root.controller.statusText : "Shutting down"
                         color: "#cbd5e1"
                         horizontalAlignment: Text.AlignRight
                         font.pixelSize: 12
@@ -130,8 +134,12 @@ Item {
                     Controls.Button {
                         Layout.fillWidth: true
                         text: "Create meeting"
-                        enabled: root.controller.loggedIn && !root.controller.reconnecting
-                        onClicked: root.controller.createMeeting(createTitleField.text, createPasswordField.text)
+                        enabled: root.hasController && root.controller.loggedIn && !root.controller.reconnecting
+                        onClicked: {
+                            if (root.hasController) {
+                                root.controller.createMeeting(createTitleField.text, createPasswordField.text)
+                            }
+                        }
                     }
                 }
             }
@@ -184,8 +192,12 @@ Item {
                     Controls.Button {
                         Layout.fillWidth: true
                         text: "Join meeting"
-                        enabled: root.controller.loggedIn && !root.controller.reconnecting
-                        onClicked: root.controller.joinMeeting(meetingIdField.text, joinPasswordField.text)
+                        enabled: root.hasController && root.controller.loggedIn && !root.controller.reconnecting
+                        onClicked: {
+                            if (root.hasController) {
+                                root.controller.joinMeeting(meetingIdField.text, joinPasswordField.text)
+                            }
+                        }
                     }
                 }
             }
@@ -216,7 +228,7 @@ Item {
                     }
 
                     Controls.Label {
-                        text: root.controller.participants.length > 0 ? "Participants: " + root.controller.participants.length : "No active meeting members yet."
+                        text: root.participantCount > 0 ? "Participants: " + root.participantCount : "No active meeting members yet."
                         color: "#94a3b8"
                         font.pixelSize: 12
                     }
@@ -224,8 +236,12 @@ Item {
 
                 Controls.Button {
                     text: "Logout"
-                    enabled: root.controller.loggedIn
-                    onClicked: root.controller.logout()
+                    enabled: root.hasController && root.controller.loggedIn
+                    onClicked: {
+                        if (root.hasController) {
+                            root.controller.logout()
+                        }
+                    }
                 }
             }
         }

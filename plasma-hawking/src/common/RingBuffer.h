@@ -64,6 +64,13 @@ public:
         m_queue.clear();
     }
 
+    void reset() {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_queue.clear();
+        m_closed = false;
+        m_cv.notify_all();
+    }
+
     void close() {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_closed = true;

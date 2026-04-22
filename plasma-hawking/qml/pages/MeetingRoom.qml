@@ -7,6 +7,7 @@ import "../components"
 Item {
     id: root
     required property var controller
+    readonly property bool hasController: root.controller !== null && root.controller !== undefined
 
     implicitWidth: 1280
     implicitHeight: 800
@@ -14,6 +15,9 @@ Item {
     readonly property bool wideLayout: width >= 1040
 
     function videoGridHint() {
+        if (!root.hasController) {
+            return "Meeting view is closing."
+        }
         if (!root.controller.inMeeting) {
             return "Create or join a meeting to enter the room."
         }
@@ -49,16 +53,20 @@ Item {
                     spacing: 6
 
                     Controls.Label {
-                        text: root.controller.meetingTitle !== ""
+                        text: root.hasController && root.controller.meetingTitle !== ""
                                   ? root.controller.meetingTitle
-                                  : ((root.controller.meetingId === "") ? "Meeting room" : "Meeting: " + root.controller.meetingId)
+                                  : ((root.hasController && root.controller.meetingId !== "") ? "Meeting: " + root.controller.meetingId : "Meeting room")
                         color: "#f8fafc"
                         font.pixelSize: 24
                         font.bold: true
                     }
 
                     Controls.Label {
-                        text: root.controller.meetingId === "" ? root.controller.statusText : ("Meeting ID: " + root.controller.meetingId + "  |  " + root.controller.statusText)
+                        text: !root.hasController
+                              ? "Meeting window is closing."
+                              : (root.controller.meetingId === ""
+                                  ? root.controller.statusText
+                                  : ("Meeting ID: " + root.controller.meetingId + "  |  " + root.controller.statusText))
                         color: "#94a3b8"
                         font.pixelSize: 12
                         wrapMode: Text.WordWrap
@@ -70,22 +78,22 @@ Item {
                     spacing: 6
 
                     Controls.Label {
-                        text: root.controller.audioMuted ? "Mic muted" : "Mic live"
-                        color: root.controller.audioMuted ? "#f87171" : "#22c55e"
+                        text: root.hasController && root.controller.audioMuted ? "Mic muted" : "Mic live"
+                        color: root.hasController && root.controller.audioMuted ? "#f87171" : "#22c55e"
                         horizontalAlignment: Text.AlignRight
                         font.pixelSize: 12
                     }
 
                     Controls.Label {
-                        text: root.controller.videoMuted ? "Camera muted" : "Camera live"
-                        color: root.controller.videoMuted ? "#f87171" : "#22c55e"
+                        text: root.hasController && root.controller.videoMuted ? "Camera muted" : "Camera live"
+                        color: root.hasController && root.controller.videoMuted ? "#f87171" : "#22c55e"
                         horizontalAlignment: Text.AlignRight
                         font.pixelSize: 12
                     }
 
                     Controls.Label {
-                        text: root.controller.screenSharing ? "Screen sharing" : "Screen idle"
-                        color: root.controller.screenSharing ? "#38bdf8" : "#94a3b8"
+                        text: root.hasController && root.controller.screenSharing ? "Screen sharing" : "Screen idle"
+                        color: root.hasController && root.controller.screenSharing ? "#38bdf8" : "#94a3b8"
                         horizontalAlignment: Text.AlignRight
                         font.pixelSize: 12
                     }

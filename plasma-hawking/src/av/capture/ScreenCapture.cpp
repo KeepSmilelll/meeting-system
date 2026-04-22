@@ -89,17 +89,24 @@ struct ScreenCapture::Impl {
     void captureLoop() {
         using namespace std::chrono;
         const auto frameInterval = milliseconds(std::max(1, 1000 / config.frameRate));
-        int64_t nextPts = 0;
+        const auto captureStartedAt = steady_clock::now();
+        int64_t lastAssignedPts = -1;
 
         while (running) {
             const auto frameStart = steady_clock::now();
+            const auto elapsedSinceStartMs =
+                duration_cast<milliseconds>(frameStart - captureStartedAt).count();
+            int64_t framePts = static_cast<int64_t>((elapsedSinceStartMs * config.frameRate) / 1000);
+            if (framePts <= lastAssignedPts) {
+                framePts = lastAssignedPts + 1;
+            }
 
             ScreenFrame frame;
             if (synthetic) {
-                frame = makeSyntheticFrame(nextPts);
+                frame = makeSyntheticFrame(framePts);
             } else {
 #ifdef _WIN32
-                frame = captureDesktopFrame(nextPts);
+                frame = captureDesktopFrame(framePts);
 #endif
             }
 
@@ -107,10 +114,10 @@ struct ScreenCapture::Impl {
                 owner->m_ringBuffer.push(std::move(frame));
                 if (!loggedFirstFrame) {
                     loggedFirstFrame = true;
-                    qInfo().noquote() << "[screen-capture] first frame pts=" << nextPts
+                    qInfo().noquote() << "[screen-capture] first frame pts=" << framePts
                                       << "size=" << config.targetWidth << "x" << config.targetHeight;
                 }
-                ++nextPts;
+                lastAssignedPts = framePts;
             }
 
             const auto elapsed = duration_cast<milliseconds>(steady_clock::now() - frameStart);

@@ -24,6 +24,7 @@
 #include <windows.h>
 #include <psapi.h>
 #endif
+#include "av/capture/CameraCapture.h"
 #include "av/codec/VideoEncoder.h"
 
 namespace {
@@ -73,13 +74,38 @@ bool allowSingleRealCameraMode() {
     return qEnvironmentVariableIntValue("MEETING_PROCESS_SMOKE_SINGLE_REAL_CAMERA") != 0;
 }
 
+bool allowSingleRealAudioMode() {
+    return qEnvironmentVariableIntValue("MEETING_PROCESS_SMOKE_SINGLE_REAL_AUDIO") != 0;
+}
+
 bool hasDefaultAudioDevices() {
-    return !QMediaDevices::defaultAudioInput().isNull() &&
-           !QMediaDevices::defaultAudioOutput().isNull();
+    if (!QMediaDevices::defaultAudioInput().isNull() &&
+        !QMediaDevices::defaultAudioOutput().isNull()) {
+        return true;
+    }
+
+    // In headless smoke harnesses, QMediaDevices can fail to surface defaults
+    // even when explicit device routing works inside spawned meeting clients.
+    const QString hostInput = qEnvironmentVariable("MEETING_PROCESS_SMOKE_HOST_AUDIO_INPUT_DEVICE").trimmed();
+    const QString hostOutput = qEnvironmentVariable("MEETING_PROCESS_SMOKE_HOST_AUDIO_OUTPUT_DEVICE").trimmed();
+    const QString guestInput = qEnvironmentVariable("MEETING_PROCESS_SMOKE_GUEST_AUDIO_INPUT_DEVICE").trimmed();
+    const QString guestOutput = qEnvironmentVariable("MEETING_PROCESS_SMOKE_GUEST_AUDIO_OUTPUT_DEVICE").trimmed();
+    return !hostInput.isEmpty() || !hostOutput.isEmpty() || !guestInput.isEmpty() || !guestOutput.isEmpty();
 }
 
 bool hasVideoInputDevices() {
-    return !QMediaDevices::videoInputs().isEmpty();
+    if (!QMediaDevices::videoInputs().isEmpty()) {
+        return true;
+    }
+
+    if (!av::capture::CameraCapture::availableDeviceNames().isEmpty()) {
+        return true;
+    }
+
+    // Allow explicit camera pinning to bypass harness-level enumeration gaps.
+    const QString hostCamera = qEnvironmentVariable("MEETING_PROCESS_SMOKE_HOST_CAMERA_DEVICE").trimmed();
+    const QString guestCamera = qEnvironmentVariable("MEETING_PROCESS_SMOKE_GUEST_CAMERA_DEVICE").trimmed();
+    return !hostCamera.isEmpty() || !guestCamera.isEmpty();
 }
 
 bool canEncodeVideoForProcessSmoke() {
@@ -511,7 +537,7 @@ QString resolveGoExecutable() {
         return found;
     }
 
-    const QString fallback = QStringLiteral("D:/go-env/go/bin/go.exe");
+    const QString fallback = QStringLiteral("D:\\go-env\\go\\bin\\go.exe");
     if (QFileInfo::exists(fallback)) {
         return fallback;
     }
@@ -534,6 +560,7 @@ int main(int argc, char* argv[]) {
     const bool syntheticAudio = useSyntheticAudio();
     const bool syntheticCamera = useSyntheticCamera();
     const bool singleRealCameraMode = allowSingleRealCameraMode();
+    const bool singleRealAudioMode = allowSingleRealAudioMode();
     const bool requireVideoEvidence = requireDualVideoEvidence();
     const bool requireAudioEvidence = requireAudioEvidenceForProcessSmoke(syntheticAudio);
     const bool requireAvSyncEvidence = requireAvSyncEvidenceForProcessSmoke(requireVideoEvidence);
@@ -545,6 +572,12 @@ int main(int argc, char* argv[]) {
     const int cpuVideoHeight = (std::max)(180, envIntValue("MEETING_PROCESS_SMOKE_CPU_VIDEO_HEIGHT", 1080));
     const int cpuVideoFps = (std::max)(1, envIntValue("MEETING_PROCESS_SMOKE_CPU_VIDEO_FPS", 30));
     const int cpuVideoBitrateBps = (std::max)(300000, envIntValue("MEETING_PROCESS_SMOKE_CPU_VIDEO_BITRATE_BPS", 4000000));
+    const QString hostCameraDevice = qEnvironmentVariable("MEETING_PROCESS_SMOKE_HOST_CAMERA_DEVICE").trimmed();
+    const QString guestCameraDevice = qEnvironmentVariable("MEETING_PROCESS_SMOKE_GUEST_CAMERA_DEVICE").trimmed();
+    const QString hostAudioInputDevice = qEnvironmentVariable("MEETING_PROCESS_SMOKE_HOST_AUDIO_INPUT_DEVICE").trimmed();
+    const QString hostAudioOutputDevice = qEnvironmentVariable("MEETING_PROCESS_SMOKE_HOST_AUDIO_OUTPUT_DEVICE").trimmed();
+    const QString guestAudioInputDevice = qEnvironmentVariable("MEETING_PROCESS_SMOKE_GUEST_AUDIO_INPUT_DEVICE").trimmed();
+    const QString guestAudioOutputDevice = qEnvironmentVariable("MEETING_PROCESS_SMOKE_GUEST_AUDIO_OUTPUT_DEVICE").trimmed();
     const int soakDurationMs = processSmokeSoakDurationMs();
     const int waitTimeoutMs = processSmokeTimeoutMs(soakDurationMs);
     const int runtimeTimeoutForClientMs = runtimeSmokeTimeoutMs(soakDurationMs);
@@ -560,28 +593,75 @@ int main(int argc, char* argv[]) {
         return 77;
     }
 
-    const quint16 serverPort = reserveTcpPort();
-    if (serverPort == 0) {
-        printFailure(QStringLiteral("failed to reserve tcp port"));
-        printStageHint(QStringLiteral("bootstrap_port_reserve"), QStringLiteral("runtime-bootstrap"));
-        return 1;
+    const QString configuredSignalingHost = qEnvironmentVariable("MEETING_PROCESS_SMOKE_SIGNALING_HOST").trimmed();
+    const int configuredSignalingPort = envIntValue("MEETING_PROCESS_SMOKE_SIGNALING_PORT", 0);
+    const quint16 externalSignalingPort =
+        configuredSignalingPort > 0 && configuredSignalingPort <= 65535
+            ? static_cast<quint16>(configuredSignalingPort)
+            : 0;
+    const bool useExternalSignaling = externalSignalingPort != 0;
+    const QString signalingHost = configuredSignalingHost.isEmpty() ? QStringLiteral("127.0.0.1") : configuredSignalingHost;
+
+    quint16 serverPort = externalSignalingPort;
+    if (!useExternalSignaling) {
+        serverPort = reserveTcpPort();
+        if (serverPort == 0) {
+            printFailure(QStringLiteral("failed to reserve tcp port"));
+            printStageHint(QStringLiteral("bootstrap_port_reserve"), QStringLiteral("runtime-bootstrap"));
+            return 1;
+        }
     }
 
     QProcess server;
-    QProcessEnvironment serverEnv = QProcessEnvironment::systemEnvironment();
-    serverEnv.insert(QStringLiteral("SIGNALING_LISTEN_ADDR"), QStringLiteral("127.0.0.1:%1").arg(serverPort));
-    serverEnv.insert(QStringLiteral("SIGNALING_ENABLE_REDIS"), QStringLiteral("false"));
-    serverEnv.insert(QStringLiteral("SIGNALING_MYSQL_DSN"), QString());
-    server.setProcessEnvironment(serverEnv);
-    server.setWorkingDirectory(QStringLiteral("D:/meeting/meeting-server/signaling"));
-    const QString goExecutable = resolveGoExecutable();
-    server.start(goExecutable, {QStringLiteral("run"), QStringLiteral(".")});
-    if (!server.waitForStarted(10000)) {
-        const QString startError = QStringLiteral("failed to start signaling server with %1, error=%2")
-                               .arg(goExecutable, server.errorString());
-        printFailure(startError);
-        printStageHint(QStringLiteral("signaling_server_start"), QStringLiteral("signaling-or-negotiation"), startError);
-        return 1;
+    bool internalSignalingServerStarted = false;
+    if (!useExternalSignaling) {
+        server.setProcessChannelMode(QProcess::ForwardedChannels);
+        QProcessEnvironment serverEnv = QProcessEnvironment::systemEnvironment();
+        serverEnv.insert(QStringLiteral("SIGNALING_LISTEN_ADDR"), QStringLiteral("%1:%2").arg(signalingHost).arg(serverPort));
+        serverEnv.insert(QStringLiteral("SIGNALING_ENABLE_REDIS"), QStringLiteral("false"));
+        serverEnv.insert(QStringLiteral("SIGNALING_MYSQL_DSN"), QString());
+        server.setProcessEnvironment(serverEnv);
+        server.setWorkingDirectory(QStringLiteral("D:/meeting/meeting-server/signaling"));
+        const QString resolvedGoExecutable = resolveGoExecutable();
+        const QStringList goCandidates = {
+            resolvedGoExecutable,
+            QDir::toNativeSeparators(resolvedGoExecutable),
+            QStringLiteral("go")
+        };
+        QString startError;
+        QString startedWith;
+        for (const QString& goExecutable : goCandidates) {
+            if (goExecutable.trimmed().isEmpty()) {
+                continue;
+            }
+            server.start(goExecutable, {QStringLiteral("run"), QStringLiteral(".")});
+            if (server.waitForStarted(10000)) {
+                startedWith = goExecutable;
+                internalSignalingServerStarted = true;
+                break;
+            }
+            const QString candidateError = QStringLiteral("%1 => %2").arg(goExecutable, server.errorString());
+            if (startError.isEmpty()) {
+                startError = candidateError;
+            } else if (!startError.contains(candidateError)) {
+                startError += QStringLiteral(" | %1").arg(candidateError);
+            }
+        }
+        if (startedWith.isEmpty()) {
+            const QString startMessage = QStringLiteral("failed to start signaling server, tried: %1")
+                                             .arg(startError.isEmpty() ? resolvedGoExecutable : startError);
+            printFailure(startMessage);
+            printStageHint(QStringLiteral("signaling_server_start"), QStringLiteral("signaling-or-negotiation"), startMessage);
+            return 1;
+        }
+        std::cout << "signaling_start_command=" << startedWith.toLocal8Bit().constData() << std::endl;
+    } else {
+        std::cout << QStringLiteral("using external signaling at %1:%2")
+                         .arg(signalingHost)
+                         .arg(serverPort)
+                         .toLocal8Bit()
+                         .constData()
+                  << std::endl;
     }
 
     const auto stopProcess = [](QProcess& process) {
@@ -594,14 +674,22 @@ int main(int argc, char* argv[]) {
             process.waitForFinished(5000);
         }
     };
+    const auto stopInternalServer = [&]() {
+        if (internalSignalingServerStarted) {
+            stopProcess(server);
+        }
+    };
 
-    if (!waitForCondition(app, [serverPort] {
-            return canConnect(QStringLiteral("127.0.0.1"), serverPort);
+    if (!waitForCondition(app, [signalingHost, serverPort] {
+            return canConnect(signalingHost, serverPort);
         }, 20000)) {
-        const QString listenError = QStringLiteral("server did not listen in time\n%1").arg(readAllOutput(server));
+        QString listenError = QStringLiteral("server did not listen in time");
+        if (internalSignalingServerStarted) {
+            listenError += QStringLiteral("\n%1").arg(readAllOutput(server));
+        }
         printFailure(listenError);
         printStageHint(QStringLiteral("signaling_server_listen"), QStringLiteral("signaling-or-negotiation"), listenError);
-        stopProcess(server);
+        stopInternalServer();
         return 1;
     }
 
@@ -611,7 +699,7 @@ int main(int argc, char* argv[]) {
         const QString clientMissing = QStringLiteral("meeting_client.exe not found at %1").arg(clientExe);
         printFailure(clientMissing);
         printStageHint(QStringLiteral("client_binary_lookup"), QStringLiteral("runtime-bootstrap"), clientMissing);
-        stopProcess(server);
+        stopInternalServer();
         return 1;
     }
 
@@ -631,6 +719,8 @@ int main(int argc, char* argv[]) {
         env.insert(QStringLiteral("MEETING_SYNTHETIC_SCREEN"), QStringLiteral("1"));
         const bool useSyntheticCameraForRole =
             syntheticCamera || (singleRealCameraMode && role == QStringLiteral("guest"));
+        const bool useSyntheticAudioForRole =
+            syntheticAudio || (singleRealAudioMode && role == QStringLiteral("guest"));
         if (useSyntheticCameraForRole) {
             env.insert(QStringLiteral("MEETING_SYNTHETIC_CAMERA"), QStringLiteral("1"));
             env.insert(QStringLiteral("MEETING_SMOKE_EXPECT_CAMERA_SOURCE"), QStringLiteral("synthetic-fallback"));
@@ -640,15 +730,38 @@ int main(int argc, char* argv[]) {
             env.insert(QStringLiteral("MEETING_SMOKE_EXPECT_CAMERA_SOURCE"), QStringLiteral("real-device"));
             env.remove(QStringLiteral("MEETING_SMOKE_EXPECT_REAL_CAMERA"));
         }
-        if (syntheticAudio) {
+        const QString preferredCameraDevice = role == QStringLiteral("host") ? hostCameraDevice :
+                                              (role == QStringLiteral("guest") ? guestCameraDevice : QString{});
+        if (!preferredCameraDevice.isEmpty()) {
+            env.insert(QStringLiteral("MEETING_CAMERA_DEVICE_NAME"), preferredCameraDevice);
+        } else {
+            env.remove(QStringLiteral("MEETING_CAMERA_DEVICE_NAME"));
+        }
+        if (useSyntheticAudioForRole) {
             env.insert(QStringLiteral("MEETING_SYNTHETIC_AUDIO"), QStringLiteral("1"));
+            env.remove(QStringLiteral("MEETING_AUDIO_INPUT_DEVICE_NAME"));
+            env.remove(QStringLiteral("MEETING_AUDIO_OUTPUT_DEVICE_NAME"));
         } else {
             env.remove(QStringLiteral("MEETING_SYNTHETIC_AUDIO"));
+            const QString preferredAudioInputDevice = role == QStringLiteral("host") ? hostAudioInputDevice :
+                                                      (role == QStringLiteral("guest") ? guestAudioInputDevice : QString{});
+            const QString preferredAudioOutputDevice = role == QStringLiteral("host") ? hostAudioOutputDevice :
+                                                       (role == QStringLiteral("guest") ? guestAudioOutputDevice : QString{});
+            if (!preferredAudioInputDevice.isEmpty()) {
+                env.insert(QStringLiteral("MEETING_AUDIO_INPUT_DEVICE_NAME"), preferredAudioInputDevice);
+            } else {
+                env.remove(QStringLiteral("MEETING_AUDIO_INPUT_DEVICE_NAME"));
+            }
+            if (!preferredAudioOutputDevice.isEmpty()) {
+                env.insert(QStringLiteral("MEETING_AUDIO_OUTPUT_DEVICE_NAME"), preferredAudioOutputDevice);
+            } else {
+                env.remove(QStringLiteral("MEETING_AUDIO_OUTPUT_DEVICE_NAME"));
+            }
         }
         env.insert(QStringLiteral("MEETING_SMOKE_ROLE"), role);
         env.insert(QStringLiteral("MEETING_SMOKE_USERNAME"), username);
         env.insert(QStringLiteral("MEETING_SMOKE_PASSWORD"), password);
-        env.insert(QStringLiteral("MEETING_SERVER_HOST"), QStringLiteral("127.0.0.1"));
+        env.insert(QStringLiteral("MEETING_SERVER_HOST"), signalingHost);
         env.insert(QStringLiteral("MEETING_SERVER_PORT"), QString::number(serverPort));
         env.insert(QStringLiteral("MEETING_DB_PATH"), tempDir.filePath(dbName));
         env.insert(QStringLiteral("MEETING_SMOKE_MEETING_ID_PATH"), meetingIdPath);
@@ -670,9 +783,17 @@ int main(int argc, char* argv[]) {
         if (requireAvSyncEvidence) {
             env.insert(QStringLiteral("MEETING_SMOKE_REQUIRE_AVSYNC"), QStringLiteral("1"));
             env.insert(QStringLiteral("MEETING_SMOKE_AVSYNC_MAX_SKEW_MS"), QString::number(avSyncMaxSkewMs));
+            env.insert(QStringLiteral("MEETING_VIDEO_AUDIO_DRIVEN_MAX_DELAY_MS"), QStringLiteral("20"));
+            env.insert(QStringLiteral("MEETING_VIDEO_RENDER_QUEUE_DEPTH"), QStringLiteral("4"));
+            env.insert(QStringLiteral("MEETING_VIDEO_MAX_FRAMES_PER_DRAIN"), QStringLiteral("4"));
+            env.insert(QStringLiteral("MEETING_VIDEO_MAX_CADENCE_MS"), QStringLiteral("40"));
         } else {
             env.remove(QStringLiteral("MEETING_SMOKE_REQUIRE_AVSYNC"));
             env.remove(QStringLiteral("MEETING_SMOKE_AVSYNC_MAX_SKEW_MS"));
+            env.remove(QStringLiteral("MEETING_VIDEO_AUDIO_DRIVEN_MAX_DELAY_MS"));
+            env.remove(QStringLiteral("MEETING_VIDEO_RENDER_QUEUE_DEPTH"));
+            env.remove(QStringLiteral("MEETING_VIDEO_MAX_FRAMES_PER_DRAIN"));
+            env.remove(QStringLiteral("MEETING_VIDEO_MAX_CADENCE_MS"));
         }
         if (requireAudioEvidence) {
             env.insert(QStringLiteral("MEETING_SMOKE_REQUIRE_AUDIO"), QStringLiteral("1"));
@@ -694,17 +815,19 @@ int main(int argc, char* argv[]) {
     };
 
     QProcess host;
+    host.setProcessChannelMode(QProcess::ForwardedChannels);
     host.setProcessEnvironment(buildClientEnv(QStringLiteral("host"), QStringLiteral("demo"), QStringLiteral("demo"), QStringLiteral("host.sqlite"), hostResultPath, guestResultPath));
     host.setWorkingDirectory(appDir);
     host.start(clientExe, {});
     if (!host.waitForStarted(10000)) {
         printFailure(QStringLiteral("failed to start host client"));
         printStageHint(QStringLiteral("host_process_start"), QStringLiteral("runtime-bootstrap"));
-        stopProcess(server);
+        stopInternalServer();
         return 1;
     }
 
     QProcess guest;
+    guest.setProcessChannelMode(QProcess::ForwardedChannels);
     guest.setProcessEnvironment(buildClientEnv(QStringLiteral("guest"), QStringLiteral("alice"), QStringLiteral("alice"), QStringLiteral("guest.sqlite"), guestResultPath, hostResultPath));
     guest.setWorkingDirectory(appDir);
     guest.start(clientExe, {});
@@ -712,7 +835,7 @@ int main(int argc, char* argv[]) {
         printFailure(QStringLiteral("failed to start guest client"));
         printStageHint(QStringLiteral("guest_process_start"), QStringLiteral("runtime-bootstrap"));
         stopProcess(host);
-        stopProcess(server);
+        stopInternalServer();
         return 1;
     }
 
@@ -769,6 +892,16 @@ int main(int argc, char* argv[]) {
                          .arg(cpuVideoBitrateBps));
         printFailure(QStringLiteral("single_real_camera_mode=%1")
                          .arg(singleRealCameraMode ? 1 : 0));
+        printFailure(QStringLiteral("single_real_audio_mode=%1")
+                         .arg(singleRealAudioMode ? 1 : 0));
+        printFailure(QStringLiteral("camera_device_override host=%1 guest=%2")
+                         .arg(hostCameraDevice.isEmpty() ? QStringLiteral("<default>") : hostCameraDevice,
+                              guestCameraDevice.isEmpty() ? QStringLiteral("<default>") : guestCameraDevice));
+        printFailure(QStringLiteral("audio_device_override host_in=%1 host_out=%2 guest_in=%3 guest_out=%4")
+                         .arg(hostAudioInputDevice.isEmpty() ? QStringLiteral("<default>") : hostAudioInputDevice,
+                              hostAudioOutputDevice.isEmpty() ? QStringLiteral("<default>") : hostAudioOutputDevice,
+                              guestAudioInputDevice.isEmpty() ? QStringLiteral("<default>") : guestAudioInputDevice,
+                              guestAudioOutputDevice.isEmpty() ? QStringLiteral("<default>") : guestAudioOutputDevice));
         printFailure(QStringLiteral("cpu peak threshold percent=%1")
                          .arg(QString::number(maxCpuPeakPercent, 'f', 2)));
         printFailure(QStringLiteral("soak_ms=%1 process_timeout_ms=%2 runtime_timeout_ms=%3 max_ws_growth_mb=%4 memory_baseline_delay_ms=%5")
@@ -804,10 +937,12 @@ int main(int argc, char* argv[]) {
                          .arg(guestResult));
         printFailure(QStringLiteral("host:\n%1").arg(readAllOutput(host)));
         printFailure(QStringLiteral("guest:\n%1").arg(readAllOutput(guest)));
-        printFailure(QStringLiteral("server:\n%1").arg(readAllOutput(server)));
+        if (internalSignalingServerStarted) {
+            printFailure(QStringLiteral("server:\n%1").arg(readAllOutput(server)));
+        }
         stopProcess(host);
         stopProcess(guest);
-        stopProcess(server);
+        stopInternalServer();
         return 1;
     }
 
@@ -822,7 +957,7 @@ int main(int argc, char* argv[]) {
                          .arg(memoryBaselineDelayMs));
             printFailure(formatProcessMemory(hostMemory));
             printFailure(formatProcessMemory(guestMemory));
-            stopProcess(server);
+            stopInternalServer();
             return 1;
         }
     }
@@ -845,7 +980,7 @@ int main(int argc, char* argv[]) {
             printFailure(formatProcessCpu(guestCpu));
             printFailure(formatProcessMemory(hostMemory));
             printFailure(formatProcessMemory(guestMemory));
-            stopProcess(server);
+            stopInternalServer();
             return 1;
         }
     }
@@ -853,8 +988,27 @@ int main(int argc, char* argv[]) {
     std::cout << formatProcessMemory(guestMemory).toLocal8Bit().constData() << std::endl;
     std::cout << formatProcessCpu(hostCpu).toLocal8Bit().constData() << std::endl;
     std::cout << formatProcessCpu(guestCpu).toLocal8Bit().constData() << std::endl;
+    std::cout << QStringLiteral("camera_device_override host=%1 guest=%2")
+                     .arg(hostCameraDevice.isEmpty() ? QStringLiteral("<default>") : hostCameraDevice,
+                          guestCameraDevice.isEmpty() ? QStringLiteral("<default>") : guestCameraDevice)
+                     .toLocal8Bit()
+                     .constData()
+              << std::endl;
+    std::cout << QStringLiteral("audio_device_override host_in=%1 host_out=%2 guest_in=%3 guest_out=%4")
+                     .arg(hostAudioInputDevice.isEmpty() ? QStringLiteral("<default>") : hostAudioInputDevice,
+                          hostAudioOutputDevice.isEmpty() ? QStringLiteral("<default>") : hostAudioOutputDevice,
+                          guestAudioInputDevice.isEmpty() ? QStringLiteral("<default>") : guestAudioInputDevice,
+                          guestAudioOutputDevice.isEmpty() ? QStringLiteral("<default>") : guestAudioOutputDevice)
+                     .toLocal8Bit()
+                     .constData()
+              << std::endl;
 
-    stopProcess(server);
+    stopProcess(host);
+    stopProcess(guest);
+    stopInternalServer();
+    host.close();
+    guest.close();
+    server.close();
     std::cout << "test_meeting_client_process_smoke passed" << std::endl;
     return 0;
 }

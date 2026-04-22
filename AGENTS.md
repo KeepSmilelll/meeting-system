@@ -60,6 +60,7 @@ D:\meeting\
 │   ├── proto/                          ← 客户端 proto 生成代码
 │   └── tests/                          ← 单元测试
 └── docs/                               ← 设计文档 (在 Antigravity workspace)
+	└── audit/                          ← 审计文档
 ```
 
 ## 3. 技术栈 (严格版本)

@@ -102,6 +102,18 @@ public:
     qint64 videoLastAudioSkewMs() const;
     qint64 videoMaxAbsAudioSkewMs() const;
     quint64 videoAudioSkewSampleCount() const;
+    quint64 videoAudioSkewCandidateCount() const;
+    quint64 videoAudioSkewNoClockCount() const;
+    quint64 videoAudioSkewInvalidVideoPtsCount() const;
+    quint64 videoAudioSkewInvalidAudioClockCount() const;
+    quint64 remoteVideoDecodedFrameCount() const;
+    quint64 remoteVideoDroppedByAudioClockCount() const;
+    quint64 remoteVideoQueuedFrameCount() const;
+    quint64 remoteVideoRenderedFrameCount() const;
+    quint64 remoteVideoStalePtsDropCount() const;
+    quint64 remoteVideoRescheduledFrameCount() const;
+    quint64 remoteVideoQueueResetCount() const;
+    void shutdownMediaForRuntimeSmoke();
 
     Q_INVOKABLE void login(const QString& username, const QString& password);
     Q_INVOKABLE void setServerEndpoint(const QString& host, quint16 port);
@@ -155,6 +167,7 @@ private:
         int64_t videoPts90k{-1};
         uint64_t enqueueSeq{0};
         uint64_t ticket{0};
+        QString peerUserId;
         std::function<void()> render;
     };
 
@@ -176,14 +189,19 @@ private:
     QString currentVideoPeerUserId() const;
     quint32 currentVideoSsrc() const;
     quint32 remoteVideoSsrcForPeer(const QString& peerUserId) const;
+    QString resolvePeerUserIdForRemoteVideoSsrc(quint32 remoteSsrc) const;
     void updateExpectedRemoteVideoSsrcForCurrentPeer();
     void updateAudioSessionSettings();
     void updateVideoSessionSettings();
     void updateActiveShareSelection();
     void updateActiveVideoPeerSelection();
-    void enqueueRemoteVideoRenderTask(std::function<void()> renderTask, int renderDelayMs, int64_t videoPts90k);
+    void enqueueRemoteVideoRenderTask(std::function<void()> renderTask,
+                                      int renderDelayMs,
+                                      int64_t videoPts90k,
+                                      const QString& peerUserId);
     void drainRemoteVideoRenderQueue();
     void invalidateRemoteVideoRenderQueue(bool clearFrameStore);
+    void resetRemoteVideoAvSyncStats();
     void resetAudioPeerState();
     void resetVideoPeerState(bool clearRemoteFrame);
     bool hasRemoteParticipant(const QString& userId) const;
@@ -217,7 +235,7 @@ private:
     bool m_reconnecting{false};
     bool m_inMeeting{false};
     bool m_audioMuted{false};
-    bool m_videoMuted{false};
+    bool m_videoMuted{true};
     bool m_screenSharing{false};
     bool m_waitingLeaveResponse{false};
     bool m_currentMeetingHost{false};
@@ -250,6 +268,20 @@ private:
     qint64 m_maxAbsVideoAudioSkewMs{0};
     quint64 m_videoAudioSkewSampleCount{0};
     bool m_hasVideoAudioSkewSample{false};
+    bool m_videoAudioSkewBaselineReady{false};
+    qint64 m_videoAudioSkewBaselineVideoMs{0};
+    qint64 m_videoAudioSkewBaselineAudioMs{0};
+    quint64 m_videoAudioSkewCandidateCount{0};
+    quint64 m_videoAudioSkewNoClockCount{0};
+    quint64 m_videoAudioSkewInvalidVideoPtsCount{0};
+    quint64 m_videoAudioSkewInvalidAudioClockCount{0};
+    quint64 m_remoteVideoDecodedFrameCount{0};
+    quint64 m_remoteVideoDroppedByAudioClockCount{0};
+    quint64 m_remoteVideoQueuedFrameCount{0};
+    quint64 m_remoteVideoRenderedFrameCount{0};
+    quint64 m_remoteVideoStalePtsDropCount{0};
+    quint64 m_remoteVideoRescheduledFrameCount{0};
+    quint64 m_remoteVideoQueueResetCount{0};
 
     QString m_serverHost{QStringLiteral("127.0.0.1")};
     quint16 m_serverPort{8443};

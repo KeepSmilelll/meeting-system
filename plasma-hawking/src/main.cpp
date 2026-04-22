@@ -1,4 +1,5 @@
 #include <QGuiApplication>
+#include <QQuickWindow>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <qqml.h>
@@ -13,6 +14,7 @@
 
 int main(int argc, char* argv[]) {
     QGuiApplication app(argc, argv);
+    QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
 
     QQmlApplicationEngine engine;
     qmlRegisterType<av::render::VideoRenderer>("MeetingApp", 1, 0, "VideoRenderer");

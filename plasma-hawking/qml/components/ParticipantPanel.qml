@@ -5,6 +5,8 @@ import QtQuick.Layouts
 Controls.Pane {
     id: root
     required property var controller
+    readonly property bool hasController: root.controller !== null && root.controller !== undefined
+    readonly property int participantCount: root.hasController ? root.controller.participants.length : 0
 
     implicitWidth: 320
     implicitHeight: 560
@@ -34,7 +36,7 @@ Controls.Pane {
             Item { Layout.fillWidth: true }
 
             Controls.Label {
-                text: root.controller.participants.length
+                text: root.participantCount
                 color: "#38bdf8"
                 font.pixelSize: 12
             }
@@ -42,7 +44,7 @@ Controls.Pane {
 
         Controls.Label {
             Layout.fillWidth: true
-            text: root.controller.participants.length > 0 ? "Everyone in the room is listed below." : "The room is empty right now."
+            text: root.participantCount > 0 ? "Everyone in the room is listed below." : "The room is empty right now."
             color: "#94a3b8"
             font.pixelSize: 12
             wrapMode: Text.WordWrap
@@ -54,15 +56,15 @@ Controls.Pane {
             Layout.fillHeight: true
             clip: true
             spacing: 10
-            model: root.controller.participantModel
+            model: root.hasController ? root.controller.participantModel : null
 
             delegate: Rectangle {
-                readonly property bool remoteSharer: sharing && userId !== root.controller.userId
+                readonly property bool remoteSharer: root.hasController && sharing && userId !== root.controller.userId
                 readonly property bool activeShare: remoteSharer && userId === root.controller.activeShareUserId
                 width: ListView.view.width
                 height: 88
                 radius: 16
-                color: userId === root.controller.userId ? "#132238" : (index % 2 === 0 ? "#0f172a" : "#111827")
+                color: root.hasController && userId === root.controller.userId ? "#132238" : (index % 2 === 0 ? "#0f172a" : "#111827")
                 border.color: activeShare ? "#38bdf8" : (host ? "#f59e0b" : "#1f2937")
                 border.width: activeShare ? 2 : 1
 
@@ -100,7 +102,7 @@ Controls.Pane {
                         }
 
                         Rectangle {
-                            visible: userId === root.controller.userId
+                            visible: root.hasController && userId === root.controller.userId
                             radius: 999
                             color: "#22c55e"
                             implicitWidth: 54
@@ -177,7 +179,11 @@ Controls.Pane {
                     anchors.fill: parent
                     enabled: remoteSharer
                     cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                    onClicked: root.controller.setActiveShareUserId(userId)
+                    onClicked: {
+                        if (root.hasController) {
+                            root.controller.setActiveShareUserId(userId)
+                        }
+                    }
                 }
             }
         }

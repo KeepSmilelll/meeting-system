@@ -1,28 +1,29 @@
 #pragma once
 
+#include "CameraFrameRelay.h"
+#include "VideoThreadRuntime.h"
+#include "VideoRtcpFeedbackPipeline.h"
+#include "VideoRtcpFeedbackDispatchPipeline.h"
+#include "VideoRtcpActionPipeline.h"
+#include "VideoSendFrameRingBuffer.h"
+
 #include "av/capture/ScreenCapture.h"
 #include "av/codec/VideoDecoder.h"
 #include "av/codec/VideoEncoder.h"
-#include "net/media/RTCPHandler.h"
 #include "net/media/RTPReceiver.h"
 #include "net/media/RTPSender.h"
+#include "net/media/UdpPeerSocket.h"
 
 #include <atomic>
 #include <cstdint>
-#include <deque>
 #include <functional>
 #include <memory>
-#include <mutex>
 #include <string>
-#include <thread>
 #include <utility>
 #include <vector>
 
-#ifdef _WIN32
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#pragma comment(lib, "Ws2_32.lib")
-#endif
+#include <QMutex>
+#include <QWaitCondition>
 
 namespace av::capture {
 class CameraCapture;
@@ -40,6 +41,8 @@ struct ScreenShareSessionConfig {
     int height{720};
     int frameRate{5};
     int bitrate{1500 * 1000};
+    av::codec::VideoEncoderPreset encoderPreset{av::codec::VideoEncoderPreset::Realtime};
+    uint8_t cameraPayloadType{96};
     uint8_t payloadType{97};
     std::size_t maxPayloadBytes{1200};
 };
@@ -63,6 +66,8 @@ public:
 
     void setPeer(const std::string& address, uint16_t port);
     void setDecodedFrameCallback(std::function<void(av::codec::DecodedVideoFrame)> callback);
+    void setDecodedFrameWithSsrcCallback(
+        std::function<void(av::codec::DecodedVideoFrame, uint32_t)> callback);
     void setErrorCallback(std::function<void(std::string)> callback);
     void setCameraSourceCallback(std::function<void(bool syntheticFallback)> callback);
     void setStatusCallback(std::function<void(std::string)> callback);
@@ -81,34 +86,26 @@ public:
     uint32_t appliedBitrateBps() const;
 
 private:
-    struct CameraFrameRelay;
-
-#ifdef _WIN32
     bool openSocketLocked();
     void closeSocketLocked();
-    bool resolvePeerLocked(sockaddr_in& outPeer) const;
     void setErrorLocked(std::string message);
     bool startCaptureLocked();
     void stopCaptureLocked();
     bool startCameraCaptureLocked();
     void stopCameraFallbackCaptureLocked();
     void stopCameraCaptureLocked();
-    bool shouldAcceptSenderLocked(const sockaddr_in& from) const;
+    void captureLoop();
     void sendLoop();
     void recvLoop();
-    bool handleRtcpFeedbackLocked(const uint8_t* data, std::size_t len);
-    bool retransmitPacketLocked(uint16_t sequenceNumber);
-    void cacheSentPacketLocked(uint16_t sequenceNumber, std::vector<uint8_t> packetBytes);
-    static bool looksLikeRtcp(const uint8_t* data, std::size_t len);
-    static uint16_t parseSequenceNumber(const std::vector<uint8_t>& packetBytes);
-#endif
+    bool applyRtcpDispatchPlanLocked(const VideoRtcpFeedbackDispatchPlan& dispatchPlan);
 
     ScreenShareSessionConfig m_config;
-    mutable std::mutex m_mutex;
-    std::thread m_sendThread;
-    std::thread m_recvThread;
+    mutable QMutex m_mutex;
+    QWaitCondition m_stateWaitCondition;
+    VideoThreadRuntime m_threadRuntime;
     std::string m_lastError;
     std::function<void(av::codec::DecodedVideoFrame)> m_decodedFrameCallback;
+    std::function<void(av::codec::DecodedVideoFrame, uint32_t)> m_decodedFrameWithSsrcCallback;
     std::function<void(std::string)> m_errorCallback;
     std::function<void(bool)> m_cameraSourceCallback;
     std::function<void(std::string)> m_statusCallback;
@@ -131,18 +128,14 @@ private:
     std::unique_ptr<av::capture::CameraCapture> m_cameraCapture;
     std::shared_ptr<av::capture::ScreenCapture> m_cameraFallbackCapture;
     std::shared_ptr<CameraFrameRelay> m_cameraRelay;
-    av::codec::VideoDecoder m_decoder;
     media::RTPSender m_sender;
     media::RTPReceiver m_receiver;
-    media::RTCPHandler m_rtcpHandler;
-    static constexpr std::size_t kRetransmitCacheLimit = 512U;
-    std::deque<std::pair<uint16_t, std::vector<uint8_t>>> m_sentPacketCache;
+    VideoRtcpActionPipeline m_rtcpActionPipeline;
+    VideoRtcpFeedbackPipeline m_rtcpFeedbackPipeline;
+    VideoRtcpFeedbackDispatchPipeline m_rtcpFeedbackDispatchPipeline;
+    VideoSendFrameRingBuffer m_sendFrameRingBuffer{4U};
 
-#ifdef _WIN32
-    SOCKET m_socket{INVALID_SOCKET};
-    sockaddr_in m_peer{};
-    bool m_peerValid{false};
-#endif
+    media::UdpPeerSocket m_mediaSocket;
 };
 
 }  // namespace av::session

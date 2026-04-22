@@ -20,6 +20,7 @@
 #include <QDebug>
 
 #include "app/MeetingController.h"
+#include "av/capture/CameraCapture.h"
 #include "av/codec/VideoEncoder.h"
 #include "av/render/VideoFrameStore.h"
 
@@ -137,7 +138,11 @@ bool useSyntheticCameraForRuntimeSmoke() {
 }
 
 bool hasVideoInputDevices() {
-    return !QMediaDevices::videoInputs().isEmpty();
+    if (!QMediaDevices::videoInputs().isEmpty()) {
+        return true;
+    }
+
+    return !av::capture::CameraCapture::availableDeviceNames().isEmpty();
 }
 
 QString collectedOutput(QProcess& process) {
@@ -167,6 +172,10 @@ bool hasCameraSourceEvidence(const QStringList& messages, bool syntheticFallback
                                        : QStringLiteral("Video camera source: real-device"));
 }
 
+av::render::VideoFrameStore* resolveRemoteVideoFrameStore(const MeetingController& controller) {
+    return qobject_cast<av::render::VideoFrameStore*>(controller.remoteVideoFrameSource());
+}
+
 bool hasDecodedVideoFrame(av::render::VideoFrameStore* frameStore) {
     if (frameStore == nullptr) {
         return false;
@@ -177,7 +186,11 @@ bool hasDecodedVideoFrame(av::render::VideoFrameStore* frameStore) {
         return false;
     }
 
-    return frame.width > 0 && frame.height > 0 && !frame.yPlane.empty() && !frame.uvPlane.empty();
+    return frame.hasRenderableData();
+}
+
+bool hasDecodedVideoFrame(const MeetingController& controller) {
+    return hasDecodedVideoFrame(resolveRemoteVideoFrameStore(controller));
 }
 
 AudioSmokeDiagnostics collectAudioSmokeDiagnostics(const MeetingController& hostController,
@@ -302,8 +315,8 @@ QString inferAvSyncFailureBucket(const AvSyncSmokeDiagnostics& diagnostics, qint
 
 VideoSmokeDiagnostics collectVideoSmokeDiagnostics(const ControllerProbe& hostProbe,
                                                    const ControllerProbe& guestProbe,
-                                                   av::render::VideoFrameStore* hostRemoteVideoFrameStore,
-                                                   av::render::VideoFrameStore* guestRemoteVideoFrameStore) {
+                                                   const MeetingController& hostController,
+                                                   const MeetingController& guestController) {
     VideoSmokeDiagnostics diagnostics;
     diagnostics.hostVideoSignalReady = hasVideoNegotiationEvidence(hostProbe.infoMessages);
     diagnostics.guestVideoSignalReady = hasVideoNegotiationEvidence(guestProbe.infoMessages);
@@ -313,8 +326,8 @@ VideoSmokeDiagnostics collectVideoSmokeDiagnostics(const ControllerProbe& hostPr
                                                     QStringLiteral("Video encoder unavailable"));
     diagnostics.guestVideoDegraded = containsMessage(guestProbe.infoMessages,
                                                      QStringLiteral("Video encoder unavailable"));
-    diagnostics.hostDecodedFrameReady = hasDecodedVideoFrame(hostRemoteVideoFrameStore);
-    diagnostics.guestDecodedFrameReady = hasDecodedVideoFrame(guestRemoteVideoFrameStore);
+    diagnostics.hostDecodedFrameReady = hasDecodedVideoFrame(hostController);
+    diagnostics.guestDecodedFrameReady = hasDecodedVideoFrame(guestController);
     return diagnostics;
 }
 
@@ -381,6 +394,7 @@ QString resolveGoExecutable() {
 
 int main(int argc, char* argv[]) {
     QCoreApplication app(argc, argv);
+    qputenv("MEETING_RUNTIME_SMOKE", "1");
     const bool syntheticAudio = useSyntheticAudioForRuntimeSmoke();
     if (syntheticAudio) {
         qputenv("MEETING_SYNTHETIC_AUDIO", "1");
@@ -467,9 +481,8 @@ int main(int argc, char* argv[]) {
         guestProbe.infoMessages.push_back(message);
     });
 
-    auto* hostRemoteVideoFrameStore = qobject_cast<av::render::VideoFrameStore*>(hostController.remoteVideoFrameSource());
-    auto* guestRemoteVideoFrameStore = qobject_cast<av::render::VideoFrameStore*>(guestController.remoteVideoFrameSource());
-    if (hostRemoteVideoFrameStore == nullptr || guestRemoteVideoFrameStore == nullptr) {
+    if (resolveRemoteVideoFrameStore(hostController) == nullptr ||
+        resolveRemoteVideoFrameStore(guestController) == nullptr) {
         qCritical().noquote() << "runtime smoke failed to acquire remote video frame stores";
         qCritical().noquote() << "likely-stage=client_frame_source_init";
         qCritical().noquote() << "likely-module=media-transport-or-decoder";
@@ -540,8 +553,8 @@ int main(int argc, char* argv[]) {
         const VideoSmokeDiagnostics diagnostics =
             collectVideoSmokeDiagnostics(hostProbe,
                                          guestProbe,
-                                         hostRemoteVideoFrameStore,
-                                         guestRemoteVideoFrameStore);
+                                         hostController,
+                                         guestController);
         qCritical().noquote() << "media negotiation smoke failed";
         qCritical().noquote() << formatSignalingStageDiagnostics(signalingStageDiagnostics);
         qCritical().noquote() << inferSignalingFailureStage(signalingStageDiagnostics);
@@ -562,8 +575,8 @@ int main(int argc, char* argv[]) {
         const VideoSmokeDiagnostics videoDiagnostics =
             collectVideoSmokeDiagnostics(hostProbe,
                                          guestProbe,
-                                         hostRemoteVideoFrameStore,
-                                         guestRemoteVideoFrameStore);
+                                         hostController,
+                                         guestController);
         const AudioSmokeDiagnostics audioDiagnostics =
             collectAudioSmokeDiagnostics(hostController, guestController);
         qCritical().noquote() << "dual-end audio smoke failed";
@@ -590,8 +603,8 @@ int main(int argc, char* argv[]) {
         const VideoSmokeDiagnostics videoDiagnostics =
             collectVideoSmokeDiagnostics(hostProbe,
                                          guestProbe,
-                                         hostRemoteVideoFrameStore,
-                                         guestRemoteVideoFrameStore);
+                                         hostController,
+                                         guestController);
         const AudioSmokeDiagnostics audioDiagnostics =
             collectAudioSmokeDiagnostics(hostController, guestController);
         qCritical().noquote() << "audio RTCP RTT smoke failed";
@@ -636,8 +649,8 @@ int main(int argc, char* argv[]) {
         const VideoSmokeDiagnostics diagnostics =
             collectVideoSmokeDiagnostics(hostProbe,
                                          guestProbe,
-                                         hostRemoteVideoFrameStore,
-                                         guestRemoteVideoFrameStore);
+                                         hostController,
+                                         guestController);
         qCritical().noquote() << "strict video negotiation smoke failed";
         qCritical().noquote() << formatSignalingStageDiagnostics(signalingStageDiagnostics);
         qCritical().noquote() << inferSignalingFailureStage(signalingStageDiagnostics);
@@ -651,15 +664,15 @@ int main(int argc, char* argv[]) {
     }
 
     if (requireVideoDecodeEvidence &&
-        !waitForCondition(app, [hostRemoteVideoFrameStore, guestRemoteVideoFrameStore] {
-            return hasDecodedVideoFrame(hostRemoteVideoFrameStore) &&
-                   hasDecodedVideoFrame(guestRemoteVideoFrameStore);
+        !waitForCondition(app, [&hostController, &guestController] {
+            return hasDecodedVideoFrame(hostController) &&
+                   hasDecodedVideoFrame(guestController);
         }, 20000)) {
         const VideoSmokeDiagnostics diagnostics =
             collectVideoSmokeDiagnostics(hostProbe,
                                          guestProbe,
-                                         hostRemoteVideoFrameStore,
-                                         guestRemoteVideoFrameStore);
+                                         hostController,
+                                         guestController);
         qCritical().noquote() << "dual-end remote video decode smoke failed";
         qCritical().noquote() << formatSignalingStageDiagnostics(signalingStageDiagnostics);
         qCritical().noquote() << inferSignalingFailureStage(signalingStageDiagnostics);
@@ -684,8 +697,8 @@ int main(int argc, char* argv[]) {
         const VideoSmokeDiagnostics videoDiagnostics =
             collectVideoSmokeDiagnostics(hostProbe,
                                          guestProbe,
-                                         hostRemoteVideoFrameStore,
-                                         guestRemoteVideoFrameStore);
+                                         hostController,
+                                         guestController);
         const AvSyncSmokeDiagnostics avSyncDiagnostics =
             collectAvSyncSmokeDiagnostics(hostController, guestController);
         qCritical().noquote() << "dual-end AVSync smoke failed";
@@ -712,8 +725,8 @@ int main(int argc, char* argv[]) {
         const VideoSmokeDiagnostics diagnostics =
             collectVideoSmokeDiagnostics(hostProbe,
                                          guestProbe,
-                                         hostRemoteVideoFrameStore,
-                                         guestRemoteVideoFrameStore);
+                                         hostController,
+                                         guestController);
         qCritical().noquote() << "strict video smoke detected unexpected encoder downgrade";
         qCritical().noquote() << formatSignalingStageDiagnostics(signalingStageDiagnostics);
         qCritical().noquote() << inferSignalingFailureStage(signalingStageDiagnostics);
@@ -731,8 +744,8 @@ int main(int argc, char* argv[]) {
         const VideoSmokeDiagnostics diagnostics =
             collectVideoSmokeDiagnostics(hostProbe,
                                          guestProbe,
-                                         hostRemoteVideoFrameStore,
-                                         guestRemoteVideoFrameStore);
+                                         hostController,
+                                         guestController);
         qCritical().noquote() << "runtime smoke observed failure messages";
         qCritical().noquote() << formatSignalingStageDiagnostics(signalingStageDiagnostics);
         qCritical().noquote() << inferSignalingFailureStage(signalingStageDiagnostics);

@@ -330,7 +330,7 @@ QString MediaSessionManager::buildDescription(const QString& kind, const QString
         video.insert(QStringLiteral("host"), m_localHost);
         video.insert(QStringLiteral("port"), static_cast<int>(m_localVideoPort));
         video.insert(QStringLiteral("payload"), m_videoPayloadType);
-        video.insert(QStringLiteral("source"), QStringLiteral("screen"));
+        video.insert(QStringLiteral("source"), m_videoPayloadType == 97 ? QStringLiteral("screen") : QStringLiteral("camera"));
         if (m_localVideoSsrc != 0) {
             obj.insert(QStringLiteral("video_ssrc"), static_cast<qint64>(m_localVideoSsrc));
             video.insert(QStringLiteral("ssrc"), static_cast<qint64>(m_localVideoSsrc));
