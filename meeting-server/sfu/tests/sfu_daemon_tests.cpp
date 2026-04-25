@@ -618,7 +618,7 @@ bool TestDaemonReportsPublisherQualityToSignaling() {
     addReq.set_user_id("alice");
     addReq.set_audio_ssrc(0x11111111U);
     sfu_rpc::AddPublisherRsp addRsp;
-    if (!service->HandleAddPublisher(addReq, &addRsp) || !addRsp.success() || addRsp.udp_port() == 0) {
+    if (!service->HandleAddPublisher(addReq, &addRsp) || !addRsp.success() || daemon.MediaPort() == 0) {
         daemon.Stop();
         CloseSocket(listener);
         if (serverThread.joinable()) {
@@ -648,7 +648,7 @@ bool TestDaemonReportsPublisherQualityToSignaling() {
         0xAB, 0xCD, 0xEF
     };
 
-    (void)SendUdpPacket(sendSocket, addRsp.udp_port(), rtpPacket.data(), rtpPacket.size());
+    (void)SendUdpPacket(sendSocket, daemon.MediaPort(), rtpPacket.data(), rtpPacket.size());
     const std::vector<uint8_t> srPacket = {
         0x80, 0xC8, 0x00, 0x06,
         0x11, 0x11, 0x11, 0x11,
@@ -658,7 +658,7 @@ bool TestDaemonReportsPublisherQualityToSignaling() {
         0x00, 0x00, 0x00, 0x01,
         0x00, 0x00, 0x00, 0x03,
     };
-    (void)SendUdpPacket(sendSocket, addRsp.udp_port(), srPacket.data(), srPacket.size());
+    (void)SendUdpPacket(sendSocket, daemon.MediaPort(), srPacket.data(), srPacket.size());
     std::this_thread::sleep_for(std::chrono::milliseconds(40));
     const std::vector<uint8_t> rrPacket = {
         0x81, 0xC9, 0x00, 0x07,
@@ -670,9 +670,9 @@ bool TestDaemonReportsPublisherQualityToSignaling() {
         0x00, 0x01, 0x00, 0x00,
         0x00, 0x00, 0x00, 0x00,
     };
-    (void)SendUdpPacket(sendSocket, addRsp.udp_port(), rrPacket.data(), rrPacket.size());
+    (void)SendUdpPacket(sendSocket, daemon.MediaPort(), rrPacket.data(), rrPacket.size());
     std::this_thread::sleep_for(std::chrono::milliseconds(150));
-    (void)SendUdpPacket(sendSocket, addRsp.udp_port(), rtpPacket.data(), rtpPacket.size());
+    (void)SendUdpPacket(sendSocket, daemon.MediaPort(), rtpPacket.data(), rtpPacket.size());
 
     auto tryParseRemb = [&](const std::vector<uint8_t>& packet) -> bool {
         if (packet.size() < 24 ||

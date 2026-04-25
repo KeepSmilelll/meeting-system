@@ -27,6 +27,8 @@ ParticipantListModel::ParticipantItem itemFromDescriptor(const QString& descript
     item.videoOn = true;
     item.sharing = false;
     item.host = false;
+    item.audioSsrc = 0;
+    item.videoSsrc = 0;
     return item;
 }
 
@@ -65,6 +67,10 @@ QVariant ParticipantListModel::data(const QModelIndex& index, int role) const {
         return item.sharing;
     case HostRole:
         return item.host;
+    case AudioSsrcRole:
+        return item.audioSsrc;
+    case VideoSsrcRole:
+        return item.videoSsrc;
     default:
         return {};
     }
@@ -80,6 +86,8 @@ QHash<int, QByteArray> ParticipantListModel::roleNames() const {
         {VideoOnRole, "videoOn"},
         {SharingRole, "sharing"},
         {HostRole, "host"},
+        {AudioSsrcRole, "audioSsrc"},
+        {VideoSsrcRole, "videoSsrc"},
     };
     return roles;
 }
@@ -126,7 +134,9 @@ void ParticipantListModel::upsertParticipant(const QString& userId,
                                              int role,
                                              bool audioOn,
                                              bool videoOn,
-                                             bool sharing) {
+                                             bool sharing,
+                                             quint32 audioSsrc,
+                                             quint32 videoSsrc) {
     const QString trimmedUserId = userId.trimmed();
     if (trimmedUserId.isEmpty()) {
         return;
@@ -142,10 +152,23 @@ void ParticipantListModel::upsertParticipant(const QString& userId,
     item.videoOn = videoOn;
     item.sharing = sharing;
     item.host = (trimmedUserId == m_hostUserId) || role == 1;
+    item.audioSsrc = audioSsrc;
+    item.videoSsrc = videoSsrc;
 
     if (row >= 0) {
         m_items[row] = item;
-        emit dataChanged(index(row, 0), index(row, 0), {UserIdRole, DisplayNameRole, AvatarUrlRole, RoleRole, AudioOnRole, VideoOnRole, SharingRole, HostRole});
+        emit dataChanged(index(row, 0),
+                         index(row, 0),
+                         {UserIdRole,
+                          DisplayNameRole,
+                          AvatarUrlRole,
+                          RoleRole,
+                          AudioOnRole,
+                          VideoOnRole,
+                          SharingRole,
+                          HostRole,
+                          AudioSsrcRole,
+                          VideoSsrcRole});
     } else {
         const int insertRow = m_items.size();
         beginInsertRows(QModelIndex(), insertRow, insertRow);
@@ -228,6 +251,8 @@ ParticipantListModel::ParticipantItem ParticipantListModel::fromProto(const meet
     item.videoOn = participant.is_video_on();
     item.sharing = participant.is_sharing();
     item.host = participant.role() == 1;
+    item.audioSsrc = participant.audio_ssrc();
+    item.videoSsrc = participant.video_ssrc();
     return item;
 }
 

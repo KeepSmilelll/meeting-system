@@ -1,0 +1,104 @@
+[
+{
+  "directory": "D:/meeting/third_party/libsrtp-build",
+  "command": "C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo -DHAVE_CONFIG_H -D_CRT_SECURE_NO_WARNINGS -ID:\\meeting\\third_party\\libsrtp-build -ID:\\meeting\\third_party\\libsrtp-src\\crypto\\include -ID:\\meeting\\third_party\\libsrtp-src\\include -external:ID:\\LOL\\英雄联盟(26)\\Cross\\coach\\agent\\lol_ai_coach\\Python311\\Library\\include -external:W0 /DWIN32 /D_WINDOWS /O2 /Ob2 /DNDEBUG -MD /W4 /permissive- /w44062 /FoCMakeFiles\\srtp2.dir\\srtp\\srtp.c.obj /FdCMakeFiles\\srtp2.dir\\srtp2.pdb /FS -c D:\\meeting\\third_party\\libsrtp-src\\srtp\\srtp.c",
+  "file": "D:\\meeting\\third_party\\libsrtp-src\\srtp\\srtp.c",
+  "output": "CMakeFiles\\srtp2.dir\\srtp\\srtp.c.obj"
+},
+{
+  "directory": "D:/meeting/third_party/libsrtp-build",
+  "command": "C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo -DHAVE_CONFIG_H -D_CRT_SECURE_NO_WARNINGS -ID:\\meeting\\third_party\\libsrtp-build -ID:\\meeting\\third_party\\libsrtp-src\\crypto\\include -ID:\\meeting\\third_party\\libsrtp-src\\include -external:ID:\\LOL\\英雄联盟(26)\\Cross\\coach\\agent\\lol_ai_coach\\Python311\\Library\\include -external:W0 /DWIN32 /D_WINDOWS /O2 /Ob2 /DNDEBUG -MD /W4 /permissive- /w44062 /FoCMakeFiles\\srtp2.dir\\crypto\\cipher\\cipher.c.obj /FdCMakeFiles\\srtp2.dir\\srtp2.pdb /FS -c D:\\meeting\\third_party\\libsrtp-src\\crypto\\cipher\\cipher.c",
+  "file": "D:\\meeting\\third_party\\libsrtp-src\\crypto\\cipher\\cipher.c",
+  "output": "CMakeFiles\\srtp2.dir\\crypto\\cipher\\cipher.c.obj"
+},
+{
+  "directory": "D:/meeting/third_party/libsrtp-build",
+  "command": "C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo -DHAVE_CONFIG_H -D_CRT_SECURE_NO_WARNINGS -ID:\\meeting\\third_party\\libsrtp-build -ID:\\meeting\\third_party\\libsrtp-src\\crypto\\include -ID:\\meeting\\third_party\\libsrtp-src\\include -external:ID:\\LOL\\英雄联盟(26)\\Cross\\coach\\agent\\lol_ai_coach\\Python311\\Library\\include -external:W0 /DWIN32 /D_WINDOWS /O2 /Ob2 /DNDEBUG -MD /W4 /permissive- /w44062 /FoCMakeFiles\\srtp2.dir\\crypto\\cipher\\cipher_test_cases.c.obj /FdCMakeFiles\\srtp2.dir\\srtp2.pdb /FS -c D:\\meeting\\third_party\\libsrtp-src\\crypto\\cipher\\cipher_test_cases.c",
+  "file": "D:\\meeting\\third_party\\libsrtp-src\\crypto\\cipher\\cipher_test_cases.c",
+  "output": "CMakeFiles\\srtp2.dir\\crypto\\cipher\\cipher_test_cases.c.obj"
+},
+{
+  "directory": "D:/meeting/third_party/libsrtp-build",
+  "command": "C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo -DHAVE_CONFIG_H -D_CRT_SECURE_NO_WARNINGS -ID:\\meeting\\third_party\\libsrtp-build -ID:\\meeting\\third_party\\libsrtp-src\\crypto\\include -ID:\\meeting\\third_party\\libsrtp-src\\include -external:ID:\\LOL\\英雄联盟(26)\\Cross\\coach\\agent\\lol_ai_coach\\Python311\\Library\\include -external:W0 /DWIN32 /D_WINDOWS /O2 /Ob2 /DNDEBUG -MD /W4 /permissive- /w44062 /FoCMakeFiles\\srtp2.dir\\crypto\\cipher\\null_cipher.c.obj /FdCMakeFiles\\srtp2.dir\\srtp2.pdb /FS -c D:\\meeting\\third_party\\libsrtp-src\\crypto\\cipher\\null_cipher.c",
+  "file": "D:\\meeting\\third_party\\libsrtp-src\\crypto\\cipher\\null_cipher.c",
+  "output": "CMakeFiles\\srtp2.dir\\crypto\\cipher\\null_cipher.c.obj"
+},
+{
+  "directory": "D:/meeting/third_party/libsrtp-build",
+  "command": "C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo -DHAVE_CONFIG_H -D_CRT_SECURE_NO_WARNINGS -ID:\\meeting\\third_party\\libsrtp-build -ID:\\meeting\\third_party\\libsrtp-src\\crypto\\include -ID:\\meeting\\third_party\\libsrtp-src\\include -external:ID:\\LOL\\英雄联盟(26)\\Cross\\coach\\agent\\lol_ai_coach\\Python311\\Library\\include -external:W0 /DWIN32 /D_WINDOWS /O2 /Ob2 /DNDEBUG -MD /W4 /permissive- /w44062 /FoCMakeFiles\\srtp2.dir\\crypto\\cipher\\aes_icm_ossl.c.obj /FdCMakeFiles\\srtp2.dir\\srtp2.pdb /FS -c D:\\meeting\\third_party\\libsrtp-src\\crypto\\cipher\\aes_icm_ossl.c",
+  "file": "D:\\meeting\\third_party\\libsrtp-src\\crypto\\cipher\\aes_icm_ossl.c",
+  "output": "CMakeFiles\\srtp2.dir\\crypto\\cipher\\aes_icm_ossl.c.obj"
+},
+{
+  "directory": "D:/meeting/third_party/libsrtp-build",
+  "command": "C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo -DHAVE_CONFIG_H -D_CRT_SECURE_NO_WARNINGS -ID:\\meeting\\third_party\\libsrtp-build -ID:\\meeting\\third_party\\libsrtp-src\\crypto\\include -ID:\\meeting\\third_party\\libsrtp-src\\include -external:ID:\\LOL\\英雄联盟(26)\\Cross\\coach\\agent\\lol_ai_coach\\Python311\\Library\\include -external:W0 /DWIN32 /D_WINDOWS /O2 /Ob2 /DNDEBUG -MD /W4 /permissive- /w44062 /FoCMakeFiles\\srtp2.dir\\crypto\\cipher\\aes_gcm_ossl.c.obj /FdCMakeFiles\\srtp2.dir\\srtp2.pdb /FS -c D:\\meeting\\third_party\\libsrtp-src\\crypto\\cipher\\aes_gcm_ossl.c",
+  "file": "D:\\meeting\\third_party\\libsrtp-src\\crypto\\cipher\\aes_gcm_ossl.c",
+  "output": "CMakeFiles\\srtp2.dir\\crypto\\cipher\\aes_gcm_ossl.c.obj"
+},
+{
+  "directory": "D:/meeting/third_party/libsrtp-build",
+  "command": "C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo -DHAVE_CONFIG_H -D_CRT_SECURE_NO_WARNINGS -ID:\\meeting\\third_party\\libsrtp-build -ID:\\meeting\\third_party\\libsrtp-src\\crypto\\include -ID:\\meeting\\third_party\\libsrtp-src\\include -external:ID:\\LOL\\英雄联盟(26)\\Cross\\coach\\agent\\lol_ai_coach\\Python311\\Library\\include -external:W0 /DWIN32 /D_WINDOWS /O2 /Ob2 /DNDEBUG -MD /W4 /permissive- /w44062 /FoCMakeFiles\\srtp2.dir\\crypto\\hash\\auth.c.obj /FdCMakeFiles\\srtp2.dir\\srtp2.pdb /FS -c D:\\meeting\\third_party\\libsrtp-src\\crypto\\hash\\auth.c",
+  "file": "D:\\meeting\\third_party\\libsrtp-src\\crypto\\hash\\auth.c",
+  "output": "CMakeFiles\\srtp2.dir\\crypto\\hash\\auth.c.obj"
+},
+{
+  "directory": "D:/meeting/third_party/libsrtp-build",
+  "command": "C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo -DHAVE_CONFIG_H -D_CRT_SECURE_NO_WARNINGS -ID:\\meeting\\third_party\\libsrtp-build -ID:\\meeting\\third_party\\libsrtp-src\\crypto\\include -ID:\\meeting\\third_party\\libsrtp-src\\include -external:ID:\\LOL\\英雄联盟(26)\\Cross\\coach\\agent\\lol_ai_coach\\Python311\\Library\\include -external:W0 /DWIN32 /D_WINDOWS /O2 /Ob2 /DNDEBUG -MD /W4 /permissive- /w44062 /FoCMakeFiles\\srtp2.dir\\crypto\\hash\\auth_test_cases.c.obj /FdCMakeFiles\\srtp2.dir\\srtp2.pdb /FS -c D:\\meeting\\third_party\\libsrtp-src\\crypto\\hash\\auth_test_cases.c",
+  "file": "D:\\meeting\\third_party\\libsrtp-src\\crypto\\hash\\auth_test_cases.c",
+  "output": "CMakeFiles\\srtp2.dir\\crypto\\hash\\auth_test_cases.c.obj"
+},
+{
+  "directory": "D:/meeting/third_party/libsrtp-build",
+  "command": "C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo -DHAVE_CONFIG_H -D_CRT_SECURE_NO_WARNINGS -ID:\\meeting\\third_party\\libsrtp-build -ID:\\meeting\\third_party\\libsrtp-src\\crypto\\include -ID:\\meeting\\third_party\\libsrtp-src\\include -external:ID:\\LOL\\英雄联盟(26)\\Cross\\coach\\agent\\lol_ai_coach\\Python311\\Library\\include -external:W0 /DWIN32 /D_WINDOWS /O2 /Ob2 /DNDEBUG -MD /W4 /permissive- /w44062 /FoCMakeFiles\\srtp2.dir\\crypto\\hash\\null_auth.c.obj /FdCMakeFiles\\srtp2.dir\\srtp2.pdb /FS -c D:\\meeting\\third_party\\libsrtp-src\\crypto\\hash\\null_auth.c",
+  "file": "D:\\meeting\\third_party\\libsrtp-src\\crypto\\hash\\null_auth.c",
+  "output": "CMakeFiles\\srtp2.dir\\crypto\\hash\\null_auth.c.obj"
+},
+{
+  "directory": "D:/meeting/third_party/libsrtp-build",
+  "command": "C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo -DHAVE_CONFIG_H -D_CRT_SECURE_NO_WARNINGS -ID:\\meeting\\third_party\\libsrtp-build -ID:\\meeting\\third_party\\libsrtp-src\\crypto\\include -ID:\\meeting\\third_party\\libsrtp-src\\include -external:ID:\\LOL\\英雄联盟(26)\\Cross\\coach\\agent\\lol_ai_coach\\Python311\\Library\\include -external:W0 /DWIN32 /D_WINDOWS /O2 /Ob2 /DNDEBUG -MD /W4 /permissive- /w44062 /FoCMakeFiles\\srtp2.dir\\crypto\\hash\\hmac_ossl.c.obj /FdCMakeFiles\\srtp2.dir\\srtp2.pdb /FS -c D:\\meeting\\third_party\\libsrtp-src\\crypto\\hash\\hmac_ossl.c",
+  "file": "D:\\meeting\\third_party\\libsrtp-src\\crypto\\hash\\hmac_ossl.c",
+  "output": "CMakeFiles\\srtp2.dir\\crypto\\hash\\hmac_ossl.c.obj"
+},
+{
+  "directory": "D:/meeting/third_party/libsrtp-build",
+  "command": "C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo -DHAVE_CONFIG_H -D_CRT_SECURE_NO_WARNINGS -ID:\\meeting\\third_party\\libsrtp-build -ID:\\meeting\\third_party\\libsrtp-src\\crypto\\include -ID:\\meeting\\third_party\\libsrtp-src\\include -external:ID:\\LOL\\英雄联盟(26)\\Cross\\coach\\agent\\lol_ai_coach\\Python311\\Library\\include -external:W0 /DWIN32 /D_WINDOWS /O2 /Ob2 /DNDEBUG -MD /W4 /permissive- /w44062 /FoCMakeFiles\\srtp2.dir\\crypto\\kernel\\alloc.c.obj /FdCMakeFiles\\srtp2.dir\\srtp2.pdb /FS -c D:\\meeting\\third_party\\libsrtp-src\\crypto\\kernel\\alloc.c",
+  "file": "D:\\meeting\\third_party\\libsrtp-src\\crypto\\kernel\\alloc.c",
+  "output": "CMakeFiles\\srtp2.dir\\crypto\\kernel\\alloc.c.obj"
+},
+{
+  "directory": "D:/meeting/third_party/libsrtp-build",
+  "command": "C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo -DHAVE_CONFIG_H -D_CRT_SECURE_NO_WARNINGS -ID:\\meeting\\third_party\\libsrtp-build -ID:\\meeting\\third_party\\libsrtp-src\\crypto\\include -ID:\\meeting\\third_party\\libsrtp-src\\include -external:ID:\\LOL\\英雄联盟(26)\\Cross\\coach\\agent\\lol_ai_coach\\Python311\\Library\\include -external:W0 /DWIN32 /D_WINDOWS /O2 /Ob2 /DNDEBUG -MD /W4 /permissive- /w44062 /FoCMakeFiles\\srtp2.dir\\crypto\\kernel\\crypto_kernel.c.obj /FdCMakeFiles\\srtp2.dir\\srtp2.pdb /FS -c D:\\meeting\\third_party\\libsrtp-src\\crypto\\kernel\\crypto_kernel.c",
+  "file": "D:\\meeting\\third_party\\libsrtp-src\\crypto\\kernel\\crypto_kernel.c",
+  "output": "CMakeFiles\\srtp2.dir\\crypto\\kernel\\crypto_kernel.c.obj"
+},
+{
+  "directory": "D:/meeting/third_party/libsrtp-build",
+  "command": "C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo -DHAVE_CONFIG_H -D_CRT_SECURE_NO_WARNINGS -ID:\\meeting\\third_party\\libsrtp-build -ID:\\meeting\\third_party\\libsrtp-src\\crypto\\include -ID:\\meeting\\third_party\\libsrtp-src\\include -external:ID:\\LOL\\英雄联盟(26)\\Cross\\coach\\agent\\lol_ai_coach\\Python311\\Library\\include -external:W0 /DWIN32 /D_WINDOWS /O2 /Ob2 /DNDEBUG -MD /W4 /permissive- /w44062 /FoCMakeFiles\\srtp2.dir\\crypto\\kernel\\err.c.obj /FdCMakeFiles\\srtp2.dir\\srtp2.pdb /FS -c D:\\meeting\\third_party\\libsrtp-src\\crypto\\kernel\\err.c",
+  "file": "D:\\meeting\\third_party\\libsrtp-src\\crypto\\kernel\\err.c",
+  "output": "CMakeFiles\\srtp2.dir\\crypto\\kernel\\err.c.obj"
+},
+{
+  "directory": "D:/meeting/third_party/libsrtp-build",
+  "command": "C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo -DHAVE_CONFIG_H -D_CRT_SECURE_NO_WARNINGS -ID:\\meeting\\third_party\\libsrtp-build -ID:\\meeting\\third_party\\libsrtp-src\\crypto\\include -ID:\\meeting\\third_party\\libsrtp-src\\include -external:ID:\\LOL\\英雄联盟(26)\\Cross\\coach\\agent\\lol_ai_coach\\Python311\\Library\\include -external:W0 /DWIN32 /D_WINDOWS /O2 /Ob2 /DNDEBUG -MD /W4 /permissive- /w44062 /FoCMakeFiles\\srtp2.dir\\crypto\\kernel\\key.c.obj /FdCMakeFiles\\srtp2.dir\\srtp2.pdb /FS -c D:\\meeting\\third_party\\libsrtp-src\\crypto\\kernel\\key.c",
+  "file": "D:\\meeting\\third_party\\libsrtp-src\\crypto\\kernel\\key.c",
+  "output": "CMakeFiles\\srtp2.dir\\crypto\\kernel\\key.c.obj"
+},
+{
+  "directory": "D:/meeting/third_party/libsrtp-build",
+  "command": "C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo -DHAVE_CONFIG_H -D_CRT_SECURE_NO_WARNINGS -ID:\\meeting\\third_party\\libsrtp-build -ID:\\meeting\\third_party\\libsrtp-src\\crypto\\include -ID:\\meeting\\third_party\\libsrtp-src\\include -external:ID:\\LOL\\英雄联盟(26)\\Cross\\coach\\agent\\lol_ai_coach\\Python311\\Library\\include -external:W0 /DWIN32 /D_WINDOWS /O2 /Ob2 /DNDEBUG -MD /W4 /permissive- /w44062 /FoCMakeFiles\\srtp2.dir\\crypto\\math\\datatypes.c.obj /FdCMakeFiles\\srtp2.dir\\srtp2.pdb /FS -c D:\\meeting\\third_party\\libsrtp-src\\crypto\\math\\datatypes.c",
+  "file": "D:\\meeting\\third_party\\libsrtp-src\\crypto\\math\\datatypes.c",
+  "output": "CMakeFiles\\srtp2.dir\\crypto\\math\\datatypes.c.obj"
+},
+{
+  "directory": "D:/meeting/third_party/libsrtp-build",
+  "command": "C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo -DHAVE_CONFIG_H -D_CRT_SECURE_NO_WARNINGS -ID:\\meeting\\third_party\\libsrtp-build -ID:\\meeting\\third_party\\libsrtp-src\\crypto\\include -ID:\\meeting\\third_party\\libsrtp-src\\include -external:ID:\\LOL\\英雄联盟(26)\\Cross\\coach\\agent\\lol_ai_coach\\Python311\\Library\\include -external:W0 /DWIN32 /D_WINDOWS /O2 /Ob2 /DNDEBUG -MD /W4 /permissive- /w44062 /FoCMakeFiles\\srtp2.dir\\crypto\\replay\\rdb.c.obj /FdCMakeFiles\\srtp2.dir\\srtp2.pdb /FS -c D:\\meeting\\third_party\\libsrtp-src\\crypto\\replay\\rdb.c",
+  "file": "D:\\meeting\\third_party\\libsrtp-src\\crypto\\replay\\rdb.c",
+  "output": "CMakeFiles\\srtp2.dir\\crypto\\replay\\rdb.c.obj"
+},
+{
+  "directory": "D:/meeting/third_party/libsrtp-build",
+  "command": "C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo -DHAVE_CONFIG_H -D_CRT_SECURE_NO_WARNINGS -ID:\\meeting\\third_party\\libsrtp-build -ID:\\meeting\\third_party\\libsrtp-src\\crypto\\include -ID:\\meeting\\third_party\\libsrtp-src\\include -external:ID:\\LOL\\英雄联盟(26)\\Cross\\coach\\agent\\lol_ai_coach\\Python311\\Library\\include -external:W0 /DWIN32 /D_WINDOWS /O2 /Ob2 /DNDEBUG -MD /W4 /permissive- /w44062 /FoCMakeFiles\\srtp2.dir\\crypto\\replay\\rdbx.c.obj /FdCMakeFiles\\srtp2.dir\\srtp2.pdb /FS -c D:\\meeting\\third_party\\libsrtp-src\\crypto\\replay\\rdbx.c",
+  "file": "D:\\meeting\\third_party\\libsrtp-src\\crypto\\replay\\rdbx.c",
+  "output": "CMakeFiles\\srtp2.dir\\crypto\\replay\\rdbx.c.obj"
+}
+]

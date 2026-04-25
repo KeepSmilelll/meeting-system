@@ -34,8 +34,18 @@ public:
     void joinMeeting(const QString& meetingId, const QString& password);
     void leaveMeeting();
     void sendChat(int type, const QString& content, const QString& replyToId = {});
-    void sendMediaOffer(const QString& targetUserId, const QString& sdp, quint32 audioSsrc = 0, quint32 videoSsrc = 0);
-    void sendMediaAnswer(const QString& targetUserId, const QString& sdp, quint32 audioSsrc = 0, quint32 videoSsrc = 0);
+    void sendTransportOffer(const QString& meetingId,
+                            bool publishAudio,
+                            bool publishVideo,
+                            const QString& clientIceUfrag,
+                            const QString& clientIcePwd,
+                            const QString& clientDtlsFingerprint,
+                            const QStringList& clientCandidates);
+    void sendTransportIceCandidate(const QString& meetingId,
+                                   const QString& candidate,
+                                   const QString& sdpMid,
+                                   int sdpMlineIndex,
+                                   bool endOfCandidates);
     void sendMediaMuteToggle(int mediaType, bool muted);
     void sendMediaScreenShare(bool sharing);
 
@@ -49,6 +59,7 @@ signals:
     void joinMeetingFinished(bool success,
                              const QString& meetingId,
                              const QString& title,
+                             const QString& sfuAddress,
                              const QStringList& participants,
                              const QString& hostUserId,
                              const QString& error);
@@ -61,14 +72,13 @@ signals:
                       const QString& content,
                       const QString& replyToId,
                       qint64 timestamp);
-    void mediaOfferReceived(const QString& targetUserId,
-                            const QString& sdp,
-                            quint32 audioSsrc,
-                            quint32 videoSsrc);
-    void mediaAnswerReceived(const QString& targetUserId,
-                             const QString& sdp,
-                             quint32 audioSsrc,
-                             quint32 videoSsrc);
+    void mediaTransportAnswerReceived(const QString& meetingId,
+                                      const QString& serverIceUfrag,
+                                      const QString& serverIcePwd,
+                                      const QString& serverDtlsFingerprint,
+                                      const QStringList& serverCandidates,
+                                      quint32 assignedAudioSsrc,
+                                      quint32 assignedVideoSsrc);
 
     // Forward-compatible escape hatch for unhandled protobuf messages.
     void protobufMessageReceived(quint16 signalType, const QByteArray& payload);

@@ -83,13 +83,80 @@ bool RpcService::HandleDestroyRoom(const sfu_rpc::DestroyRoomReq& req, sfu_rpc::
     return true;
 }
 
+bool RpcService::HandleSetupTransport(const sfu_rpc::SetupTransportReq& req, sfu_rpc::SetupTransportRsp* rsp) const {
+    if (rsp == nullptr) {
+        return false;
+    }
+
+    rsp->set_success(false);
+    if (req.meeting_id().empty() || req.user_id().empty() || !mediaIngress_) {
+        return true;
+    }
+
+    MediaIngress::TransportSetupResult setup{};
+    const bool success = mediaIngress_->SetupTransport(req.meeting_id(),
+                                                       req.user_id(),
+                                                       req.publish_audio(),
+                                                       req.publish_video(),
+                                                       req.client_ice_ufrag(),
+                                                       req.client_ice_pwd(),
+                                                       req.client_dtls_fingerprint(),
+                                                       std::vector<std::string>(req.client_candidates().begin(), req.client_candidates().end()),
+                                                       advertisedAddress_,
+                                                       &setup);
+    rsp->set_success(success && setup.success);
+    if (!rsp->success()) {
+        return true;
+    }
+    rsp->set_server_ice_ufrag(setup.serverIceUfrag);
+    rsp->set_server_ice_pwd(setup.serverIcePwd);
+    rsp->set_server_dtls_fingerprint(setup.serverDtlsFingerprint);
+    for (const auto& candidate : setup.serverCandidates) {
+        rsp->add_server_candidates(candidate);
+    }
+    rsp->set_assigned_audio_ssrc(setup.assignedAudioSsrc);
+    rsp->set_assigned_video_ssrc(setup.assignedVideoSsrc);
+    return true;
+}
+
+bool RpcService::HandleTrickleIceCandidate(const sfu_rpc::TrickleIceCandidateReq& req, sfu_rpc::TrickleIceCandidateRsp* rsp) const {
+    if (rsp == nullptr) {
+        return false;
+    }
+
+    rsp->set_success(false);
+    if (req.meeting_id().empty() || req.user_id().empty() || !mediaIngress_) {
+        return true;
+    }
+
+    rsp->set_success(mediaIngress_->TrickleIceCandidate(req.meeting_id(),
+                                                        req.user_id(),
+                                                        req.candidate(),
+                                                        req.sdp_mid(),
+                                                        req.end_of_candidates()));
+    return true;
+}
+
+bool RpcService::HandleCloseTransport(const sfu_rpc::CloseTransportReq& req, sfu_rpc::CloseTransportRsp* rsp) const {
+    if (rsp == nullptr) {
+        return false;
+    }
+
+    rsp->set_success(false);
+    if (req.meeting_id().empty() || req.user_id().empty() || !mediaIngress_) {
+        return true;
+    }
+
+    rsp->set_success(mediaIngress_->CloseTransport(req.meeting_id(), req.user_id()));
+    return true;
+}
+
 bool RpcService::HandleAddPublisher(const sfu_rpc::AddPublisherReq& req, sfu_rpc::AddPublisherRsp* rsp) const {
     if (rsp == nullptr) {
         return false;
     }
 
     rsp->set_success(false);
-    rsp->set_udp_port(0);
 
     if (req.meeting_id().empty() || req.user_id().empty() || !mediaIngress_) {
         return true;
@@ -97,9 +164,23 @@ bool RpcService::HandleAddPublisher(const sfu_rpc::AddPublisherReq& req, sfu_rpc
 
     const bool bound = mediaIngress_->BindPublisher(req.meeting_id(), req.user_id(), req.audio_ssrc(), req.video_ssrc());
     rsp->set_success(bound);
-    if (bound) {
-        rsp->set_udp_port(mediaIngress_->Port());
+    return true;
+}
+
+bool RpcService::HandleAddSubscriber(const sfu_rpc::AddSubscriberReq& req, sfu_rpc::AddSubscriberRsp* rsp) const {
+    if (rsp == nullptr) {
+        return false;
     }
+
+    rsp->set_success(false);
+    if (req.meeting_id().empty() || req.user_id().empty() || !mediaIngress_) {
+        return true;
+    }
+
+    rsp->set_success(mediaIngress_->BindSubscriber(req.meeting_id(),
+                                                   req.user_id(),
+                                                   req.audio_ssrc(),
+                                                   req.video_ssrc()));
     return true;
 }
 
@@ -114,6 +195,20 @@ bool RpcService::HandleRemovePublisher(const sfu_rpc::RemovePublisherReq& req, s
     }
 
     rsp->set_success(mediaIngress_->RemovePublisher(req.meeting_id(), req.user_id()));
+    return true;
+}
+
+bool RpcService::HandleRemoveSubscriber(const sfu_rpc::RemoveSubscriberReq& req, sfu_rpc::RemoveSubscriberRsp* rsp) const {
+    if (rsp == nullptr) {
+        return false;
+    }
+
+    rsp->set_success(false);
+    if (req.meeting_id().empty() || req.user_id().empty() || !mediaIngress_) {
+        return true;
+    }
+
+    rsp->set_success(mediaIngress_->RemoveSubscriber(req.meeting_id(), req.user_id()));
     return true;
 }
 
@@ -174,6 +269,50 @@ bool RpcService::Dispatch(RpcMethod method, const uint8_t* payload, std::size_t 
         }
         return SerializeMessage(rsp, responsePayload);
     }
+    case RpcMethod::kSetupTransport: {
+        sfu_rpc::SetupTransportReq req;
+        sfu_rpc::SetupTransportRsp rsp;
+        if (payload != nullptr && len > 0) {
+            req.ParseFromArray(payload, static_cast<int>(len));
+        }
+        if (!HandleSetupTransport(req, &rsp)) {
+            return false;
+        }
+        return SerializeMessage(rsp, responsePayload);
+    }
+    case RpcMethod::kTrickleIceCandidate: {
+        sfu_rpc::TrickleIceCandidateReq req;
+        sfu_rpc::TrickleIceCandidateRsp rsp;
+        if (payload != nullptr && len > 0) {
+            req.ParseFromArray(payload, static_cast<int>(len));
+        }
+        if (!HandleTrickleIceCandidate(req, &rsp)) {
+            return false;
+        }
+        return SerializeMessage(rsp, responsePayload);
+    }
+    case RpcMethod::kCloseTransport: {
+        sfu_rpc::CloseTransportReq req;
+        sfu_rpc::CloseTransportRsp rsp;
+        if (payload != nullptr && len > 0) {
+            req.ParseFromArray(payload, static_cast<int>(len));
+        }
+        if (!HandleCloseTransport(req, &rsp)) {
+            return false;
+        }
+        return SerializeMessage(rsp, responsePayload);
+    }
+    case RpcMethod::kAddSubscriber: {
+        sfu_rpc::AddSubscriberReq req;
+        sfu_rpc::AddSubscriberRsp rsp;
+        if (payload != nullptr && len > 0) {
+            req.ParseFromArray(payload, static_cast<int>(len));
+        }
+        if (!HandleAddSubscriber(req, &rsp)) {
+            return false;
+        }
+        return SerializeMessage(rsp, responsePayload);
+    }
     case RpcMethod::kRemovePublisher: {
         sfu_rpc::RemovePublisherReq req;
         sfu_rpc::RemovePublisherRsp rsp;
@@ -181,6 +320,17 @@ bool RpcService::Dispatch(RpcMethod method, const uint8_t* payload, std::size_t 
             req.ParseFromArray(payload, static_cast<int>(len));
         }
         if (!HandleRemovePublisher(req, &rsp)) {
+            return false;
+        }
+        return SerializeMessage(rsp, responsePayload);
+    }
+    case RpcMethod::kRemoveSubscriber: {
+        sfu_rpc::RemoveSubscriberReq req;
+        sfu_rpc::RemoveSubscriberRsp rsp;
+        if (payload != nullptr && len > 0) {
+            req.ParseFromArray(payload, static_cast<int>(len));
+        }
+        if (!HandleRemoveSubscriber(req, &rsp)) {
             return false;
         }
         return SerializeMessage(rsp, responsePayload);

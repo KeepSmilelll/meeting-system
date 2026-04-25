@@ -417,6 +417,11 @@ VideoRecvHandlingDecision VideoRecvPipeline::makeHandlingDecision(VideoRecvPacke
         decision.keyFrameReason = "packet loss";
         return decision;
     case VideoRecvPacketResult::DecodeFailed:
+        if (pipelineError.find("Invalid data found when processing input") != std::string::npos) {
+            decision.action = VideoRecvHandlingAction::RequestKeyFrame;
+            decision.keyFrameReason = "decode recovery";
+            return decision;
+        }
         decision.action = VideoRecvHandlingAction::RequestKeyFrameAndError;
         decision.keyFrameReason = "decode failure";
         decision.errorMessage = pipelineError.empty() ? "video decode failed" : pipelineError;

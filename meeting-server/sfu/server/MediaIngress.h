@@ -14,6 +14,8 @@
 #include "rtp/RtcpHandler.h"
 #include "rtp/RtpParser.h"
 #include "rtp/RtpRouter.h"
+#include "server/DtlsContext.h"
+#include "server/TransportRegistry.h"
 #include "server/UdpServer.h"
 
 namespace sfu {
@@ -39,6 +41,16 @@ public:
         uint32_t rttMs{0};
     };
 
+    struct TransportSetupResult {
+        bool success{false};
+        std::string serverIceUfrag;
+        std::string serverIcePwd;
+        std::string serverDtlsFingerprint;
+        std::vector<std::string> serverCandidates;
+        uint32_t assignedAudioSsrc{0};
+        uint32_t assignedVideoSsrc{0};
+    };
+
     explicit MediaIngress(std::shared_ptr<RoomManager> roomManager, uint16_t listenPort = 0, std::size_t nackCapacity = 500);
     ~MediaIngress();
 
@@ -49,7 +61,28 @@ public:
                        const std::string& userId,
                        uint32_t audioSsrc,
                        uint32_t videoSsrc);
+    bool SetupTransport(const std::string& meetingId,
+                        const std::string& userId,
+                        bool publishAudio,
+                        bool publishVideo,
+                        const std::string& clientIceUfrag,
+                        const std::string& clientIcePwd,
+                        const std::string& clientDtlsFingerprint,
+                        const std::vector<std::string>& clientCandidates,
+                        const std::string& advertisedAddress,
+                        TransportSetupResult* result);
+    bool TrickleIceCandidate(const std::string& meetingId,
+                             const std::string& userId,
+                             const std::string& candidate,
+                             const std::string& sdpMid,
+                             bool endOfCandidates);
+    bool CloseTransport(const std::string& meetingId, const std::string& userId);
+    bool BindSubscriber(const std::string& meetingId,
+                        const std::string& userId,
+                        uint32_t audioSsrc,
+                        uint32_t videoSsrc);
     bool RemovePublisher(const std::string& meetingId, const std::string& userId);
+    bool RemoveSubscriber(const std::string& meetingId, const std::string& userId);
 
     bool ResolvePublisher(uint32_t ssrc, RoomManager::PublisherLocation* out) const;
     std::size_t PacketCount() const noexcept;
@@ -88,11 +121,22 @@ private:
     };
 
     static bool ParseEndpoint(const std::string& endpointText, UdpServer::Endpoint* endpoint);
+    static std::string HostFromAdvertisedAddress(const std::string& advertisedAddress);
+    static std::string MakeHostCandidate(const std::string& host, uint16_t port);
+    static std::string MakeRandomIceToken(std::size_t bytes);
+    static uint32_t MakeRandomSsrc();
+    static bool IsStunPacket(const uint8_t* data, std::size_t len);
+    static std::string ParseStunUsername(const uint8_t* data, std::size_t len);
+    static std::vector<uint8_t> BuildStunBindingResponse(const uint8_t* request, std::size_t len, const UdpServer::Endpoint& from);
     static bool LooksLikeRtcp(const uint8_t* data, std::size_t len);
     static std::string PublisherTrafficKey(const std::string& meetingId, const std::string& userId);
     static std::string EndpointKey(const UdpServer::Endpoint& endpoint);
     static std::string FeedbackRouteKey(const UdpServer::Endpoint& endpoint, uint32_t mediaSsrc);
     static void RewriteRtpSsrc(uint32_t ssrc, uint8_t* packet, std::size_t len);
+    static uint32_t MakeRouteRewriteSsrc(const std::string& meetingId,
+                                         const std::string& subscriberUserId,
+                                         uint32_t sourceSsrc,
+                                         bool video);
     static uint32_t JitterToMs(const RoomManager::PublisherLocation& location, uint32_t sourceSsrc, uint32_t jitter);
     static uint32_t CompactNtpFromTimestamp(uint64_t ntpTimestamp);
     static uint32_t CompactNtpFromElapsed(std::chrono::steady_clock::duration elapsed);
@@ -107,6 +151,11 @@ private:
                                        const RtcpRembFeedback& remb,
                                        uint8_t* outBitrateExp,
                                        uint32_t* outBitrateMantissa);
+    bool HandleStunPacket(const uint8_t* data, std::size_t len, const UdpServer::Endpoint& from);
+    bool HandleDtlsPacket(const uint8_t* data, std::size_t len, const UdpServer::Endpoint& from);
+    bool TransportAllowsRtp(uint32_t ssrc, const UdpServer::Endpoint& from) const;
+    bool TransportRequiresSrtp(uint32_t ssrc) const;
+    bool EndpointRequiresSecureMedia(const UdpServer::Endpoint& from) const;
     uint32_t ResolveNackSourceSsrc(const UdpServer::Endpoint& from, uint32_t mediaSsrc) const;
     bool ResolvePublisherEndpoint(uint32_t sourceSsrc, UdpServer::Endpoint* out) const;
 
@@ -138,6 +187,8 @@ private:
     std::unordered_map<uint32_t, std::unordered_map<std::string, RembFeedbackSample>> rembFeedbackBySource_;
     mutable std::mutex estimatedRembMutex_;
     std::unordered_map<uint32_t, EstimatedRembState> estimatedRembBySource_;
+    TransportRegistry transportRegistry_;
+    DtlsContext dtlsContext_;
 };
 
 } // namespace sfu

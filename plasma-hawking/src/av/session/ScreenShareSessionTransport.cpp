@@ -15,7 +15,10 @@
 #include "VideoSendTelemetryPipeline.h"
 #include "VideoSessionStateMachine.h"
 
+#include "net/media/SocketAddressUtils.h"
+
 #include <QDebug>
+#include <QByteArray>
 #include <QMutexLocker>
 #include <QThread>
 #include <QtGlobal>
@@ -46,6 +49,16 @@ uint64_t steadyNowMs() {
         std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now().time_since_epoch())
             .count());
+}
+
+bool looksLikeStunPacket(const uint8_t* data, std::size_t len) {
+    if (data == nullptr || len < 20U) {
+        return false;
+    }
+    if ((data[0] & 0xC0U) != 0U) {
+        return false;
+    }
+    return data[4] == 0x21U && data[5] == 0x12U && data[6] == 0xA4U && data[7] == 0x42U;
 }
 
 constexpr std::size_t kMaxRecvPeerWorkers = 16U;
@@ -284,6 +297,11 @@ bool ScreenShareSession::applyRtcpDispatchPlanLocked(
 void ScreenShareSession::setErrorLocked(std::string message) {
     m_lastError = std::move(message);
     qWarning().noquote() << "[screen-session]" << QString::fromStdString(m_lastError);
+    if (m_statusCallback) {
+        m_statusCallback(QStringLiteral("Video session error: %1")
+                             .arg(QString::fromStdString(m_lastError))
+                             .toStdString());
+    }
 }
 
 void ScreenShareSession::captureLoop() {
@@ -497,8 +515,24 @@ void ScreenShareSession::sendLoop() {
         }
 
         for (const auto& packet : packets) {
-            const int sent = m_mediaSocket.sendTo(packet.bytes.data(), packet.bytes.size(), peer);
-            if (sent != static_cast<int>(packet.bytes.size())) {
+            {
+                QMutexLocker locker(&m_mutex);
+                if (m_dtlsStarted.load(std::memory_order_acquire) &&
+                    !m_srtpReady.load(std::memory_order_acquire)) {
+                    (void)sendCachedDtlsHandshakeLocked(peer);
+                    continue;
+                }
+            }
+
+            std::vector<uint8_t> outboundPacket = packet.bytes;
+            {
+                QMutexLocker locker(&m_mutex);
+                if (!protectRtpLocked(&outboundPacket)) {
+                    continue;
+                }
+            }
+            const int sent = m_mediaSocket.sendTo(outboundPacket.data(), outboundPacket.size(), peer);
+            if (sent != static_cast<int>(outboundPacket.size())) {
                 QMutexLocker locker(&m_mutex);
                 setErrorLocked("sendto failed");
                 break;
@@ -506,7 +540,7 @@ void ScreenShareSession::sendLoop() {
             m_sentPacketCount.fetch_add(1, std::memory_order_acq_rel);
             {
                 QMutexLocker locker(&m_mutex);
-                m_rtcpActionPipeline.cacheSentPacket(packet.sequenceNumber, packet.bytes);
+                m_rtcpActionPipeline.cacheSentPacket(packet.sequenceNumber, outboundPacket);
             }
             sendTelemetryPipeline.onPacketSent(sendTelemetryState, packet, statusCallback);
         }
@@ -782,12 +816,38 @@ void ScreenShareSession::recvLoop() {
                 continue;
             }
 
+            const QByteArray receivedDatagram(reinterpret_cast<const char*>(buffer.data()), received);
+            if (media::DtlsTransportClient::looksLikeDtlsRecord(receivedDatagram)) {
+                QMutexLocker locker(&m_mutex);
+                (void)handleDtlsPacketLocked(buffer.data(), static_cast<std::size_t>(received), from);
+                continue;
+            }
+            if (looksLikeStunPacket(buffer.data(), static_cast<std::size_t>(received))) {
+                m_iceConnected.store(true, std::memory_order_release);
+                if (statusCallback) {
+                    statusCallback("Video ice-connected binding-response received");
+                }
+                continue;
+            }
+
+            std::vector<uint8_t> mediaPacket(buffer.begin(), buffer.begin() + received);
+            if (m_dtlsStarted.load(std::memory_order_acquire)) {
+                QMutexLocker locker(&m_mutex);
+                const bool looksLikeRtcp = media::looksLikeRtcpPacket(mediaPacket.data(), mediaPacket.size());
+                const bool unprotected = looksLikeRtcp
+                    ? unprotectRtcpLocked(&mediaPacket)
+                    : unprotectRtpLocked(&mediaPacket);
+                if (!unprotected) {
+                    continue;
+                }
+            }
+
             const VideoRecvIngressGate ingressGate =
                 recvIngressPipeline.evaluateGate(m_mediaSocket, from);
 
             VideoRecvDatagram datagram = datagramPipeline.classifyDatagram(
-                buffer.data(),
-                static_cast<std::size_t>(received),
+                mediaPacket.data(),
+                mediaPacket.size(),
                 ingressGate.acceptSender,
                 ingressGate.acceptRtcpFromPeerHost,
                 m_receiver);
@@ -802,8 +862,8 @@ void ScreenShareSession::recvLoop() {
 
                 VideoRtcpFeedbackDispatchPlan dispatchPlan;
                 if (recvRtcpPipeline.parseDispatchPlan(
-                        buffer.data(),
-                        static_cast<std::size_t>(received),
+                        mediaPacket.data(),
+                        mediaPacket.size(),
                         localSsrc,
                         m_rtcpFeedbackPipeline,
                         m_rtcpFeedbackDispatchPipeline,

@@ -84,8 +84,7 @@ struct AddPublisherReqDefaultTypeInternal {
 PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT AddPublisherReqDefaultTypeInternal _AddPublisherReq_default_instance_;
 constexpr AddPublisherRsp::AddPublisherRsp(
   ::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized)
-  : success_(false)
-  , udp_port_(0u){}
+  : success_(false){}
 struct AddPublisherRspDefaultTypeInternal {
   constexpr AddPublisherRspDefaultTypeInternal()
     : _instance(::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized{}) {}
@@ -95,6 +94,124 @@ struct AddPublisherRspDefaultTypeInternal {
   };
 };
 PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT AddPublisherRspDefaultTypeInternal _AddPublisherRsp_default_instance_;
+constexpr SetupTransportReq::SetupTransportReq(
+  ::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized)
+  : client_candidates_()
+  , meeting_id_(&::PROTOBUF_NAMESPACE_ID::internal::fixed_address_empty_string)
+  , user_id_(&::PROTOBUF_NAMESPACE_ID::internal::fixed_address_empty_string)
+  , client_ice_ufrag_(&::PROTOBUF_NAMESPACE_ID::internal::fixed_address_empty_string)
+  , client_ice_pwd_(&::PROTOBUF_NAMESPACE_ID::internal::fixed_address_empty_string)
+  , client_dtls_fingerprint_(&::PROTOBUF_NAMESPACE_ID::internal::fixed_address_empty_string)
+  , publish_audio_(false)
+  , publish_video_(false){}
+struct SetupTransportReqDefaultTypeInternal {
+  constexpr SetupTransportReqDefaultTypeInternal()
+    : _instance(::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized{}) {}
+  ~SetupTransportReqDefaultTypeInternal() {}
+  union {
+    SetupTransportReq _instance;
+  };
+};
+PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT SetupTransportReqDefaultTypeInternal _SetupTransportReq_default_instance_;
+constexpr SetupTransportRsp::SetupTransportRsp(
+  ::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized)
+  : server_candidates_()
+  , server_ice_ufrag_(&::PROTOBUF_NAMESPACE_ID::internal::fixed_address_empty_string)
+  , server_ice_pwd_(&::PROTOBUF_NAMESPACE_ID::internal::fixed_address_empty_string)
+  , server_dtls_fingerprint_(&::PROTOBUF_NAMESPACE_ID::internal::fixed_address_empty_string)
+  , success_(false)
+  , assigned_audio_ssrc_(0u)
+  , assigned_video_ssrc_(0u){}
+struct SetupTransportRspDefaultTypeInternal {
+  constexpr SetupTransportRspDefaultTypeInternal()
+    : _instance(::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized{}) {}
+  ~SetupTransportRspDefaultTypeInternal() {}
+  union {
+    SetupTransportRsp _instance;
+  };
+};
+PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT SetupTransportRspDefaultTypeInternal _SetupTransportRsp_default_instance_;
+constexpr TrickleIceCandidateReq::TrickleIceCandidateReq(
+  ::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized)
+  : meeting_id_(&::PROTOBUF_NAMESPACE_ID::internal::fixed_address_empty_string)
+  , user_id_(&::PROTOBUF_NAMESPACE_ID::internal::fixed_address_empty_string)
+  , candidate_(&::PROTOBUF_NAMESPACE_ID::internal::fixed_address_empty_string)
+  , sdp_mid_(&::PROTOBUF_NAMESPACE_ID::internal::fixed_address_empty_string)
+  , sdp_mline_index_(0)
+  , end_of_candidates_(false){}
+struct TrickleIceCandidateReqDefaultTypeInternal {
+  constexpr TrickleIceCandidateReqDefaultTypeInternal()
+    : _instance(::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized{}) {}
+  ~TrickleIceCandidateReqDefaultTypeInternal() {}
+  union {
+    TrickleIceCandidateReq _instance;
+  };
+};
+PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT TrickleIceCandidateReqDefaultTypeInternal _TrickleIceCandidateReq_default_instance_;
+constexpr TrickleIceCandidateRsp::TrickleIceCandidateRsp(
+  ::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized)
+  : success_(false){}
+struct TrickleIceCandidateRspDefaultTypeInternal {
+  constexpr TrickleIceCandidateRspDefaultTypeInternal()
+    : _instance(::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized{}) {}
+  ~TrickleIceCandidateRspDefaultTypeInternal() {}
+  union {
+    TrickleIceCandidateRsp _instance;
+  };
+};
+PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT TrickleIceCandidateRspDefaultTypeInternal _TrickleIceCandidateRsp_default_instance_;
+constexpr CloseTransportReq::CloseTransportReq(
+  ::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized)
+  : meeting_id_(&::PROTOBUF_NAMESPACE_ID::internal::fixed_address_empty_string)
+  , user_id_(&::PROTOBUF_NAMESPACE_ID::internal::fixed_address_empty_string){}
+struct CloseTransportReqDefaultTypeInternal {
+  constexpr CloseTransportReqDefaultTypeInternal()
+    : _instance(::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized{}) {}
+  ~CloseTransportReqDefaultTypeInternal() {}
+  union {
+    CloseTransportReq _instance;
+  };
+};
+PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT CloseTransportReqDefaultTypeInternal _CloseTransportReq_default_instance_;
+constexpr CloseTransportRsp::CloseTransportRsp(
+  ::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized)
+  : success_(false){}
+struct CloseTransportRspDefaultTypeInternal {
+  constexpr CloseTransportRspDefaultTypeInternal()
+    : _instance(::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized{}) {}
+  ~CloseTransportRspDefaultTypeInternal() {}
+  union {
+    CloseTransportRsp _instance;
+  };
+};
+PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT CloseTransportRspDefaultTypeInternal _CloseTransportRsp_default_instance_;
+constexpr AddSubscriberReq::AddSubscriberReq(
+  ::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized)
+  : meeting_id_(&::PROTOBUF_NAMESPACE_ID::internal::fixed_address_empty_string)
+  , user_id_(&::PROTOBUF_NAMESPACE_ID::internal::fixed_address_empty_string)
+  , audio_ssrc_(0u)
+  , video_ssrc_(0u){}
+struct AddSubscriberReqDefaultTypeInternal {
+  constexpr AddSubscriberReqDefaultTypeInternal()
+    : _instance(::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized{}) {}
+  ~AddSubscriberReqDefaultTypeInternal() {}
+  union {
+    AddSubscriberReq _instance;
+  };
+};
+PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT AddSubscriberReqDefaultTypeInternal _AddSubscriberReq_default_instance_;
+constexpr AddSubscriberRsp::AddSubscriberRsp(
+  ::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized)
+  : success_(false){}
+struct AddSubscriberRspDefaultTypeInternal {
+  constexpr AddSubscriberRspDefaultTypeInternal()
+    : _instance(::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized{}) {}
+  ~AddSubscriberRspDefaultTypeInternal() {}
+  union {
+    AddSubscriberRsp _instance;
+  };
+};
+PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT AddSubscriberRspDefaultTypeInternal _AddSubscriberRsp_default_instance_;
 constexpr RemovePublisherReq::RemovePublisherReq(
   ::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized)
   : meeting_id_(&::PROTOBUF_NAMESPACE_ID::internal::fixed_address_empty_string)
@@ -120,6 +237,31 @@ struct RemovePublisherRspDefaultTypeInternal {
   };
 };
 PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT RemovePublisherRspDefaultTypeInternal _RemovePublisherRsp_default_instance_;
+constexpr RemoveSubscriberReq::RemoveSubscriberReq(
+  ::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized)
+  : meeting_id_(&::PROTOBUF_NAMESPACE_ID::internal::fixed_address_empty_string)
+  , user_id_(&::PROTOBUF_NAMESPACE_ID::internal::fixed_address_empty_string){}
+struct RemoveSubscriberReqDefaultTypeInternal {
+  constexpr RemoveSubscriberReqDefaultTypeInternal()
+    : _instance(::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized{}) {}
+  ~RemoveSubscriberReqDefaultTypeInternal() {}
+  union {
+    RemoveSubscriberReq _instance;
+  };
+};
+PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT RemoveSubscriberReqDefaultTypeInternal _RemoveSubscriberReq_default_instance_;
+constexpr RemoveSubscriberRsp::RemoveSubscriberRsp(
+  ::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized)
+  : success_(false){}
+struct RemoveSubscriberRspDefaultTypeInternal {
+  constexpr RemoveSubscriberRspDefaultTypeInternal()
+    : _instance(::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized{}) {}
+  ~RemoveSubscriberRspDefaultTypeInternal() {}
+  union {
+    RemoveSubscriberRsp _instance;
+  };
+};
+PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT RemoveSubscriberRspDefaultTypeInternal _RemoveSubscriberRsp_default_instance_;
 constexpr GetNodeStatusReq::GetNodeStatusReq(
   ::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized)
   : probe_(false){}
@@ -211,7 +353,7 @@ struct KeyframeRequestDefaultTypeInternal {
 };
 PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT KeyframeRequestDefaultTypeInternal _KeyframeRequest_default_instance_;
 }  // namespace sfu_rpc
-static ::PROTOBUF_NAMESPACE_ID::Metadata file_level_metadata_sfu_5frpc_2eproto[14];
+static ::PROTOBUF_NAMESPACE_ID::Metadata file_level_metadata_sfu_5frpc_2eproto[24];
 static constexpr ::PROTOBUF_NAMESPACE_ID::EnumDescriptor const** file_level_enum_descriptors_sfu_5frpc_2eproto = nullptr;
 static constexpr ::PROTOBUF_NAMESPACE_ID::ServiceDescriptor const** file_level_service_descriptors_sfu_5frpc_2eproto = nullptr;
 
@@ -263,7 +405,84 @@ const uint32_t TableStruct_sfu_5frpc_2eproto::offsets[] PROTOBUF_SECTION_VARIABL
   ~0u,  // no _weak_field_map_
   ~0u,  // no _inlined_string_donated_
   PROTOBUF_FIELD_OFFSET(::sfu_rpc::AddPublisherRsp, success_),
-  PROTOBUF_FIELD_OFFSET(::sfu_rpc::AddPublisherRsp, udp_port_),
+  ~0u,  // no _has_bits_
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::SetupTransportReq, _internal_metadata_),
+  ~0u,  // no _extensions_
+  ~0u,  // no _oneof_case_
+  ~0u,  // no _weak_field_map_
+  ~0u,  // no _inlined_string_donated_
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::SetupTransportReq, meeting_id_),
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::SetupTransportReq, user_id_),
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::SetupTransportReq, publish_audio_),
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::SetupTransportReq, publish_video_),
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::SetupTransportReq, client_ice_ufrag_),
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::SetupTransportReq, client_ice_pwd_),
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::SetupTransportReq, client_dtls_fingerprint_),
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::SetupTransportReq, client_candidates_),
+  ~0u,  // no _has_bits_
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::SetupTransportRsp, _internal_metadata_),
+  ~0u,  // no _extensions_
+  ~0u,  // no _oneof_case_
+  ~0u,  // no _weak_field_map_
+  ~0u,  // no _inlined_string_donated_
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::SetupTransportRsp, success_),
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::SetupTransportRsp, server_ice_ufrag_),
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::SetupTransportRsp, server_ice_pwd_),
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::SetupTransportRsp, server_dtls_fingerprint_),
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::SetupTransportRsp, server_candidates_),
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::SetupTransportRsp, assigned_audio_ssrc_),
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::SetupTransportRsp, assigned_video_ssrc_),
+  ~0u,  // no _has_bits_
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::TrickleIceCandidateReq, _internal_metadata_),
+  ~0u,  // no _extensions_
+  ~0u,  // no _oneof_case_
+  ~0u,  // no _weak_field_map_
+  ~0u,  // no _inlined_string_donated_
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::TrickleIceCandidateReq, meeting_id_),
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::TrickleIceCandidateReq, user_id_),
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::TrickleIceCandidateReq, candidate_),
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::TrickleIceCandidateReq, sdp_mid_),
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::TrickleIceCandidateReq, sdp_mline_index_),
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::TrickleIceCandidateReq, end_of_candidates_),
+  ~0u,  // no _has_bits_
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::TrickleIceCandidateRsp, _internal_metadata_),
+  ~0u,  // no _extensions_
+  ~0u,  // no _oneof_case_
+  ~0u,  // no _weak_field_map_
+  ~0u,  // no _inlined_string_donated_
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::TrickleIceCandidateRsp, success_),
+  ~0u,  // no _has_bits_
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::CloseTransportReq, _internal_metadata_),
+  ~0u,  // no _extensions_
+  ~0u,  // no _oneof_case_
+  ~0u,  // no _weak_field_map_
+  ~0u,  // no _inlined_string_donated_
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::CloseTransportReq, meeting_id_),
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::CloseTransportReq, user_id_),
+  ~0u,  // no _has_bits_
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::CloseTransportRsp, _internal_metadata_),
+  ~0u,  // no _extensions_
+  ~0u,  // no _oneof_case_
+  ~0u,  // no _weak_field_map_
+  ~0u,  // no _inlined_string_donated_
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::CloseTransportRsp, success_),
+  ~0u,  // no _has_bits_
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::AddSubscriberReq, _internal_metadata_),
+  ~0u,  // no _extensions_
+  ~0u,  // no _oneof_case_
+  ~0u,  // no _weak_field_map_
+  ~0u,  // no _inlined_string_donated_
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::AddSubscriberReq, meeting_id_),
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::AddSubscriberReq, user_id_),
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::AddSubscriberReq, audio_ssrc_),
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::AddSubscriberReq, video_ssrc_),
+  ~0u,  // no _has_bits_
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::AddSubscriberRsp, _internal_metadata_),
+  ~0u,  // no _extensions_
+  ~0u,  // no _oneof_case_
+  ~0u,  // no _weak_field_map_
+  ~0u,  // no _inlined_string_donated_
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::AddSubscriberRsp, success_),
   ~0u,  // no _has_bits_
   PROTOBUF_FIELD_OFFSET(::sfu_rpc::RemovePublisherReq, _internal_metadata_),
   ~0u,  // no _extensions_
@@ -279,6 +498,21 @@ const uint32_t TableStruct_sfu_5frpc_2eproto::offsets[] PROTOBUF_SECTION_VARIABL
   ~0u,  // no _weak_field_map_
   ~0u,  // no _inlined_string_donated_
   PROTOBUF_FIELD_OFFSET(::sfu_rpc::RemovePublisherRsp, success_),
+  ~0u,  // no _has_bits_
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::RemoveSubscriberReq, _internal_metadata_),
+  ~0u,  // no _extensions_
+  ~0u,  // no _oneof_case_
+  ~0u,  // no _weak_field_map_
+  ~0u,  // no _inlined_string_donated_
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::RemoveSubscriberReq, meeting_id_),
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::RemoveSubscriberReq, user_id_),
+  ~0u,  // no _has_bits_
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::RemoveSubscriberRsp, _internal_metadata_),
+  ~0u,  // no _extensions_
+  ~0u,  // no _oneof_case_
+  ~0u,  // no _weak_field_map_
+  ~0u,  // no _inlined_string_donated_
+  PROTOBUF_FIELD_OFFSET(::sfu_rpc::RemoveSubscriberRsp, success_),
   ~0u,  // no _has_bits_
   PROTOBUF_FIELD_OFFSET(::sfu_rpc::GetNodeStatusReq, _internal_metadata_),
   ~0u,  // no _extensions_
@@ -347,14 +581,24 @@ static const ::PROTOBUF_NAMESPACE_ID::internal::MigrationSchema schemas[] PROTOB
   { 23, -1, -1, sizeof(::sfu_rpc::DestroyRoomRsp)},
   { 30, -1, -1, sizeof(::sfu_rpc::AddPublisherReq)},
   { 40, -1, -1, sizeof(::sfu_rpc::AddPublisherRsp)},
-  { 48, -1, -1, sizeof(::sfu_rpc::RemovePublisherReq)},
-  { 56, -1, -1, sizeof(::sfu_rpc::RemovePublisherRsp)},
-  { 63, -1, -1, sizeof(::sfu_rpc::GetNodeStatusReq)},
-  { 70, -1, -1, sizeof(::sfu_rpc::GetNodeStatusRsp)},
-  { 82, -1, -1, sizeof(::sfu_rpc::ReportNodeStatusReq)},
-  { 96, -1, -1, sizeof(::sfu_rpc::ReportNodeStatusRsp)},
-  { 103, -1, -1, sizeof(::sfu_rpc::QualityReport)},
-  { 115, -1, -1, sizeof(::sfu_rpc::KeyframeRequest)},
+  { 47, -1, -1, sizeof(::sfu_rpc::SetupTransportReq)},
+  { 61, -1, -1, sizeof(::sfu_rpc::SetupTransportRsp)},
+  { 74, -1, -1, sizeof(::sfu_rpc::TrickleIceCandidateReq)},
+  { 86, -1, -1, sizeof(::sfu_rpc::TrickleIceCandidateRsp)},
+  { 93, -1, -1, sizeof(::sfu_rpc::CloseTransportReq)},
+  { 101, -1, -1, sizeof(::sfu_rpc::CloseTransportRsp)},
+  { 108, -1, -1, sizeof(::sfu_rpc::AddSubscriberReq)},
+  { 118, -1, -1, sizeof(::sfu_rpc::AddSubscriberRsp)},
+  { 125, -1, -1, sizeof(::sfu_rpc::RemovePublisherReq)},
+  { 133, -1, -1, sizeof(::sfu_rpc::RemovePublisherRsp)},
+  { 140, -1, -1, sizeof(::sfu_rpc::RemoveSubscriberReq)},
+  { 148, -1, -1, sizeof(::sfu_rpc::RemoveSubscriberRsp)},
+  { 155, -1, -1, sizeof(::sfu_rpc::GetNodeStatusReq)},
+  { 162, -1, -1, sizeof(::sfu_rpc::GetNodeStatusRsp)},
+  { 174, -1, -1, sizeof(::sfu_rpc::ReportNodeStatusReq)},
+  { 188, -1, -1, sizeof(::sfu_rpc::ReportNodeStatusRsp)},
+  { 195, -1, -1, sizeof(::sfu_rpc::QualityReport)},
+  { 207, -1, -1, sizeof(::sfu_rpc::KeyframeRequest)},
 };
 
 static ::PROTOBUF_NAMESPACE_ID::Message const * const file_default_instances[] = {
@@ -364,8 +608,18 @@ static ::PROTOBUF_NAMESPACE_ID::Message const * const file_default_instances[] =
   reinterpret_cast<const ::PROTOBUF_NAMESPACE_ID::Message*>(&::sfu_rpc::_DestroyRoomRsp_default_instance_),
   reinterpret_cast<const ::PROTOBUF_NAMESPACE_ID::Message*>(&::sfu_rpc::_AddPublisherReq_default_instance_),
   reinterpret_cast<const ::PROTOBUF_NAMESPACE_ID::Message*>(&::sfu_rpc::_AddPublisherRsp_default_instance_),
+  reinterpret_cast<const ::PROTOBUF_NAMESPACE_ID::Message*>(&::sfu_rpc::_SetupTransportReq_default_instance_),
+  reinterpret_cast<const ::PROTOBUF_NAMESPACE_ID::Message*>(&::sfu_rpc::_SetupTransportRsp_default_instance_),
+  reinterpret_cast<const ::PROTOBUF_NAMESPACE_ID::Message*>(&::sfu_rpc::_TrickleIceCandidateReq_default_instance_),
+  reinterpret_cast<const ::PROTOBUF_NAMESPACE_ID::Message*>(&::sfu_rpc::_TrickleIceCandidateRsp_default_instance_),
+  reinterpret_cast<const ::PROTOBUF_NAMESPACE_ID::Message*>(&::sfu_rpc::_CloseTransportReq_default_instance_),
+  reinterpret_cast<const ::PROTOBUF_NAMESPACE_ID::Message*>(&::sfu_rpc::_CloseTransportRsp_default_instance_),
+  reinterpret_cast<const ::PROTOBUF_NAMESPACE_ID::Message*>(&::sfu_rpc::_AddSubscriberReq_default_instance_),
+  reinterpret_cast<const ::PROTOBUF_NAMESPACE_ID::Message*>(&::sfu_rpc::_AddSubscriberRsp_default_instance_),
   reinterpret_cast<const ::PROTOBUF_NAMESPACE_ID::Message*>(&::sfu_rpc::_RemovePublisherReq_default_instance_),
   reinterpret_cast<const ::PROTOBUF_NAMESPACE_ID::Message*>(&::sfu_rpc::_RemovePublisherRsp_default_instance_),
+  reinterpret_cast<const ::PROTOBUF_NAMESPACE_ID::Message*>(&::sfu_rpc::_RemoveSubscriberReq_default_instance_),
+  reinterpret_cast<const ::PROTOBUF_NAMESPACE_ID::Message*>(&::sfu_rpc::_RemoveSubscriberRsp_default_instance_),
   reinterpret_cast<const ::PROTOBUF_NAMESPACE_ID::Message*>(&::sfu_rpc::_GetNodeStatusReq_default_instance_),
   reinterpret_cast<const ::PROTOBUF_NAMESPACE_ID::Message*>(&::sfu_rpc::_GetNodeStatusRsp_default_instance_),
   reinterpret_cast<const ::PROTOBUF_NAMESPACE_ID::Message*>(&::sfu_rpc::_ReportNodeStatusReq_default_instance_),
@@ -382,32 +636,56 @@ const char descriptor_table_protodef_sfu_5frpc_2eproto[] PROTOBUF_SECTION_VARIAB
   "\n\nmeeting_id\030\001 \001(\t\"!\n\016DestroyRoomRsp\022\017\n\007"
   "success\030\001 \001(\010\"^\n\017AddPublisherReq\022\022\n\nmeet"
   "ing_id\030\001 \001(\t\022\017\n\007user_id\030\002 \001(\t\022\022\n\naudio_s"
-  "src\030\003 \001(\r\022\022\n\nvideo_ssrc\030\004 \001(\r\"4\n\017AddPubl"
-  "isherRsp\022\017\n\007success\030\001 \001(\010\022\020\n\010udp_port\030\002 "
-  "\001(\r\"9\n\022RemovePublisherReq\022\022\n\nmeeting_id\030"
-  "\001 \001(\t\022\017\n\007user_id\030\002 \001(\t\"%\n\022RemovePublishe"
-  "rRsp\022\017\n\007success\030\001 \001(\010\"!\n\020GetNodeStatusRe"
-  "q\022\r\n\005probe\030\001 \001(\010\"\217\001\n\020GetNodeStatusRsp\022\017\n"
-  "\007success\030\001 \001(\010\022\023\n\013sfu_address\030\002 \001(\t\022\022\n\nm"
-  "edia_port\030\003 \001(\r\022\022\n\nroom_count\030\004 \001(\r\022\027\n\017p"
-  "ublisher_count\030\005 \001(\r\022\024\n\014packet_count\030\006 \001"
-  "(\004\"\275\001\n\023ReportNodeStatusReq\022\017\n\007node_id\030\001 "
-  "\001(\t\022\023\n\013rpc_address\030\002 \001(\t\022\023\n\013sfu_address\030"
-  "\003 \001(\t\022\024\n\014max_meetings\030\004 \001(\r\022\022\n\nmedia_por"
-  "t\030\005 \001(\r\022\022\n\nroom_count\030\006 \001(\r\022\027\n\017publisher"
-  "_count\030\007 \001(\r\022\024\n\014packet_count\030\010 \001(\004\"&\n\023Re"
-  "portNodeStatusRsp\022\017\n\007success\030\001 \001(\010\"\202\001\n\rQ"
-  "ualityReport\022\022\n\nmeeting_id\030\001 \001(\t\022\017\n\007user"
-  "_id\030\002 \001(\t\022\023\n\013packet_loss\030\003 \001(\002\022\016\n\006rtt_ms"
-  "\030\004 \001(\r\022\021\n\tjitter_ms\030\005 \001(\r\022\024\n\014bitrate_kbp"
-  "s\030\006 \001(\r\"6\n\017KeyframeRequest\022\022\n\nmeeting_id"
-  "\030\001 \001(\t\022\017\n\007user_id\030\002 \001(\tB)Z\'meeting-serve"
-  "r/signaling/protocol/pb;pbb\006proto3"
+  "src\030\003 \001(\r\022\022\n\nvideo_ssrc\030\004 \001(\r\"\"\n\017AddPubl"
+  "isherRsp\022\017\n\007success\030\001 \001(\010\"\324\001\n\021SetupTrans"
+  "portReq\022\022\n\nmeeting_id\030\001 \001(\t\022\017\n\007user_id\030\002"
+  " \001(\t\022\025\n\rpublish_audio\030\003 \001(\010\022\025\n\rpublish_v"
+  "ideo\030\004 \001(\010\022\030\n\020client_ice_ufrag\030\005 \001(\t\022\026\n\016"
+  "client_ice_pwd\030\006 \001(\t\022\037\n\027client_dtls_fing"
+  "erprint\030\007 \001(\t\022\031\n\021client_candidates\030\010 \003(\t"
+  "\"\314\001\n\021SetupTransportRsp\022\017\n\007success\030\001 \001(\010\022"
+  "\030\n\020server_ice_ufrag\030\002 \001(\t\022\026\n\016server_ice_"
+  "pwd\030\003 \001(\t\022\037\n\027server_dtls_fingerprint\030\004 \001"
+  "(\t\022\031\n\021server_candidates\030\005 \003(\t\022\033\n\023assigne"
+  "d_audio_ssrc\030\006 \001(\r\022\033\n\023assigned_video_ssr"
+  "c\030\007 \001(\r\"\225\001\n\026TrickleIceCandidateReq\022\022\n\nme"
+  "eting_id\030\001 \001(\t\022\017\n\007user_id\030\002 \001(\t\022\021\n\tcandi"
+  "date\030\003 \001(\t\022\017\n\007sdp_mid\030\004 \001(\t\022\027\n\017sdp_mline"
+  "_index\030\005 \001(\005\022\031\n\021end_of_candidates\030\006 \001(\010\""
+  ")\n\026TrickleIceCandidateRsp\022\017\n\007success\030\001 \001"
+  "(\010\"8\n\021CloseTransportReq\022\022\n\nmeeting_id\030\001 "
+  "\001(\t\022\017\n\007user_id\030\002 \001(\t\"$\n\021CloseTransportRs"
+  "p\022\017\n\007success\030\001 \001(\010\"_\n\020AddSubscriberReq\022\022"
+  "\n\nmeeting_id\030\001 \001(\t\022\017\n\007user_id\030\002 \001(\t\022\022\n\na"
+  "udio_ssrc\030\003 \001(\r\022\022\n\nvideo_ssrc\030\004 \001(\r\"#\n\020A"
+  "ddSubscriberRsp\022\017\n\007success\030\001 \001(\010\"9\n\022Remo"
+  "vePublisherReq\022\022\n\nmeeting_id\030\001 \001(\t\022\017\n\007us"
+  "er_id\030\002 \001(\t\"%\n\022RemovePublisherRsp\022\017\n\007suc"
+  "cess\030\001 \001(\010\":\n\023RemoveSubscriberReq\022\022\n\nmee"
+  "ting_id\030\001 \001(\t\022\017\n\007user_id\030\002 \001(\t\"&\n\023Remove"
+  "SubscriberRsp\022\017\n\007success\030\001 \001(\010\"!\n\020GetNod"
+  "eStatusReq\022\r\n\005probe\030\001 \001(\010\"\217\001\n\020GetNodeSta"
+  "tusRsp\022\017\n\007success\030\001 \001(\010\022\023\n\013sfu_address\030\002"
+  " \001(\t\022\022\n\nmedia_port\030\003 \001(\r\022\022\n\nroom_count\030\004"
+  " \001(\r\022\027\n\017publisher_count\030\005 \001(\r\022\024\n\014packet_"
+  "count\030\006 \001(\004\"\275\001\n\023ReportNodeStatusReq\022\017\n\007n"
+  "ode_id\030\001 \001(\t\022\023\n\013rpc_address\030\002 \001(\t\022\023\n\013sfu"
+  "_address\030\003 \001(\t\022\024\n\014max_meetings\030\004 \001(\r\022\022\n\n"
+  "media_port\030\005 \001(\r\022\022\n\nroom_count\030\006 \001(\r\022\027\n\017"
+  "publisher_count\030\007 \001(\r\022\024\n\014packet_count\030\010 "
+  "\001(\004\"&\n\023ReportNodeStatusRsp\022\017\n\007success\030\001 "
+  "\001(\010\"\202\001\n\rQualityReport\022\022\n\nmeeting_id\030\001 \001("
+  "\t\022\017\n\007user_id\030\002 \001(\t\022\023\n\013packet_loss\030\003 \001(\002\022"
+  "\016\n\006rtt_ms\030\004 \001(\r\022\021\n\tjitter_ms\030\005 \001(\r\022\024\n\014bi"
+  "trate_kbps\030\006 \001(\r\"6\n\017KeyframeRequest\022\022\n\nm"
+  "eeting_id\030\001 \001(\t\022\017\n\007user_id\030\002 \001(\tB)Z\'meet"
+  "ing-server/signaling/protocol/pb;pbb\006pro"
+  "to3"
   ;
 static ::PROTOBUF_NAMESPACE_ID::internal::once_flag descriptor_table_sfu_5frpc_2eproto_once;
 const ::PROTOBUF_NAMESPACE_ID::internal::DescriptorTable descriptor_table_sfu_5frpc_2eproto = {
-  false, false, 1114, descriptor_table_protodef_sfu_5frpc_2eproto, "sfu_rpc.proto", 
-  &descriptor_table_sfu_5frpc_2eproto_once, nullptr, 0, 14,
+  false, false, 2043, descriptor_table_protodef_sfu_5frpc_2eproto, "sfu_rpc.proto", 
+  &descriptor_table_sfu_5frpc_2eproto_once, nullptr, 0, 24,
   schemas, file_default_instances, TableStruct_sfu_5frpc_2eproto::offsets,
   file_level_metadata_sfu_5frpc_2eproto, file_level_enum_descriptors_sfu_5frpc_2eproto, file_level_service_descriptors_sfu_5frpc_2eproto,
 };
@@ -1588,17 +1866,12 @@ AddPublisherRsp::AddPublisherRsp(::PROTOBUF_NAMESPACE_ID::Arena* arena,
 AddPublisherRsp::AddPublisherRsp(const AddPublisherRsp& from)
   : ::PROTOBUF_NAMESPACE_ID::Message() {
   _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
-  ::memcpy(&success_, &from.success_,
-    static_cast<size_t>(reinterpret_cast<char*>(&udp_port_) -
-    reinterpret_cast<char*>(&success_)) + sizeof(udp_port_));
+  success_ = from.success_;
   // @@protoc_insertion_point(copy_constructor:sfu_rpc.AddPublisherRsp)
 }
 
 inline void AddPublisherRsp::SharedCtor() {
-::memset(reinterpret_cast<char*>(this) + static_cast<size_t>(
-    reinterpret_cast<char*>(&success_) - reinterpret_cast<char*>(this)),
-    0, static_cast<size_t>(reinterpret_cast<char*>(&udp_port_) -
-    reinterpret_cast<char*>(&success_)) + sizeof(udp_port_));
+success_ = false;
 }
 
 AddPublisherRsp::~AddPublisherRsp() {
@@ -1628,9 +1901,7 @@ void AddPublisherRsp::Clear() {
   // Prevent compiler warnings about cached_has_bits being unused
   (void) cached_has_bits;
 
-  ::memset(&success_, 0, static_cast<size_t>(
-      reinterpret_cast<char*>(&udp_port_) -
-      reinterpret_cast<char*>(&success_)) + sizeof(udp_port_));
+  success_ = false;
   _internal_metadata_.Clear<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
 }
 
@@ -1644,14 +1915,6 @@ const char* AddPublisherRsp::_InternalParse(const char* ptr, ::PROTOBUF_NAMESPAC
       case 1:
         if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 8)) {
           success_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint64(&ptr);
-          CHK_(ptr);
-        } else
-          goto handle_unusual;
-        continue;
-      // uint32 udp_port = 2;
-      case 2:
-        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 16)) {
-          udp_port_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint32(&ptr);
           CHK_(ptr);
         } else
           goto handle_unusual;
@@ -1691,12 +1954,6 @@ uint8_t* AddPublisherRsp::_InternalSerialize(
     target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::WriteBoolToArray(1, this->_internal_success(), target);
   }
 
-  // uint32 udp_port = 2;
-  if (this->_internal_udp_port() != 0) {
-    target = stream->EnsureSpace(target);
-    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::WriteUInt32ToArray(2, this->_internal_udp_port(), target);
-  }
-
   if (PROTOBUF_PREDICT_FALSE(_internal_metadata_.have_unknown_fields())) {
     target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormat::InternalSerializeUnknownFieldsToArray(
         _internal_metadata_.unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(::PROTOBUF_NAMESPACE_ID::UnknownFieldSet::default_instance), target, stream);
@@ -1716,11 +1973,6 @@ size_t AddPublisherRsp::ByteSizeLong() const {
   // bool success = 1;
   if (this->_internal_success() != 0) {
     total_size += 1 + 1;
-  }
-
-  // uint32 udp_port = 2;
-  if (this->_internal_udp_port() != 0) {
-    total_size += ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::UInt32SizePlusOne(this->_internal_udp_port());
   }
 
   return MaybeComputeUnknownFieldsSize(total_size, &_cached_size_);
@@ -1748,9 +2000,6 @@ void AddPublisherRsp::MergeFrom(const AddPublisherRsp& from) {
   if (from._internal_success() != 0) {
     _internal_set_success(from._internal_success());
   }
-  if (from._internal_udp_port() != 0) {
-    _internal_set_udp_port(from._internal_udp_port());
-  }
   _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
 }
 
@@ -1768,18 +2017,2439 @@ bool AddPublisherRsp::IsInitialized() const {
 void AddPublisherRsp::InternalSwap(AddPublisherRsp* other) {
   using std::swap;
   _internal_metadata_.InternalSwap(&other->_internal_metadata_);
-  ::PROTOBUF_NAMESPACE_ID::internal::memswap<
-      PROTOBUF_FIELD_OFFSET(AddPublisherRsp, udp_port_)
-      + sizeof(AddPublisherRsp::udp_port_)
-      - PROTOBUF_FIELD_OFFSET(AddPublisherRsp, success_)>(
-          reinterpret_cast<char*>(&success_),
-          reinterpret_cast<char*>(&other->success_));
+  swap(success_, other->success_);
 }
 
 ::PROTOBUF_NAMESPACE_ID::Metadata AddPublisherRsp::GetMetadata() const {
   return ::PROTOBUF_NAMESPACE_ID::internal::AssignDescriptors(
       &descriptor_table_sfu_5frpc_2eproto_getter, &descriptor_table_sfu_5frpc_2eproto_once,
       file_level_metadata_sfu_5frpc_2eproto[5]);
+}
+
+// ===================================================================
+
+class SetupTransportReq::_Internal {
+ public:
+};
+
+SetupTransportReq::SetupTransportReq(::PROTOBUF_NAMESPACE_ID::Arena* arena,
+                         bool is_message_owned)
+  : ::PROTOBUF_NAMESPACE_ID::Message(arena, is_message_owned),
+  client_candidates_(arena) {
+  SharedCtor();
+  if (!is_message_owned) {
+    RegisterArenaDtor(arena);
+  }
+  // @@protoc_insertion_point(arena_constructor:sfu_rpc.SetupTransportReq)
+}
+SetupTransportReq::SetupTransportReq(const SetupTransportReq& from)
+  : ::PROTOBUF_NAMESPACE_ID::Message(),
+      client_candidates_(from.client_candidates_) {
+  _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
+  meeting_id_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  #ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+    meeting_id_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+  #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  if (!from._internal_meeting_id().empty()) {
+    meeting_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, from._internal_meeting_id(), 
+      GetArenaForAllocation());
+  }
+  user_id_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  #ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+    user_id_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+  #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  if (!from._internal_user_id().empty()) {
+    user_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, from._internal_user_id(), 
+      GetArenaForAllocation());
+  }
+  client_ice_ufrag_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  #ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+    client_ice_ufrag_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+  #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  if (!from._internal_client_ice_ufrag().empty()) {
+    client_ice_ufrag_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, from._internal_client_ice_ufrag(), 
+      GetArenaForAllocation());
+  }
+  client_ice_pwd_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  #ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+    client_ice_pwd_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+  #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  if (!from._internal_client_ice_pwd().empty()) {
+    client_ice_pwd_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, from._internal_client_ice_pwd(), 
+      GetArenaForAllocation());
+  }
+  client_dtls_fingerprint_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  #ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+    client_dtls_fingerprint_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+  #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  if (!from._internal_client_dtls_fingerprint().empty()) {
+    client_dtls_fingerprint_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, from._internal_client_dtls_fingerprint(), 
+      GetArenaForAllocation());
+  }
+  ::memcpy(&publish_audio_, &from.publish_audio_,
+    static_cast<size_t>(reinterpret_cast<char*>(&publish_video_) -
+    reinterpret_cast<char*>(&publish_audio_)) + sizeof(publish_video_));
+  // @@protoc_insertion_point(copy_constructor:sfu_rpc.SetupTransportReq)
+}
+
+inline void SetupTransportReq::SharedCtor() {
+meeting_id_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+#ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  meeting_id_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+#endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+user_id_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+#ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  user_id_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+#endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+client_ice_ufrag_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+#ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  client_ice_ufrag_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+#endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+client_ice_pwd_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+#ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  client_ice_pwd_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+#endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+client_dtls_fingerprint_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+#ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  client_dtls_fingerprint_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+#endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+::memset(reinterpret_cast<char*>(this) + static_cast<size_t>(
+    reinterpret_cast<char*>(&publish_audio_) - reinterpret_cast<char*>(this)),
+    0, static_cast<size_t>(reinterpret_cast<char*>(&publish_video_) -
+    reinterpret_cast<char*>(&publish_audio_)) + sizeof(publish_video_));
+}
+
+SetupTransportReq::~SetupTransportReq() {
+  // @@protoc_insertion_point(destructor:sfu_rpc.SetupTransportReq)
+  if (GetArenaForAllocation() != nullptr) return;
+  SharedDtor();
+  _internal_metadata_.Delete<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
+}
+
+inline void SetupTransportReq::SharedDtor() {
+  GOOGLE_DCHECK(GetArenaForAllocation() == nullptr);
+  meeting_id_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  user_id_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  client_ice_ufrag_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  client_ice_pwd_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  client_dtls_fingerprint_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+}
+
+void SetupTransportReq::ArenaDtor(void* object) {
+  SetupTransportReq* _this = reinterpret_cast< SetupTransportReq* >(object);
+  (void)_this;
+}
+void SetupTransportReq::RegisterArenaDtor(::PROTOBUF_NAMESPACE_ID::Arena*) {
+}
+void SetupTransportReq::SetCachedSize(int size) const {
+  _cached_size_.Set(size);
+}
+
+void SetupTransportReq::Clear() {
+// @@protoc_insertion_point(message_clear_start:sfu_rpc.SetupTransportReq)
+  uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  client_candidates_.Clear();
+  meeting_id_.ClearToEmpty();
+  user_id_.ClearToEmpty();
+  client_ice_ufrag_.ClearToEmpty();
+  client_ice_pwd_.ClearToEmpty();
+  client_dtls_fingerprint_.ClearToEmpty();
+  ::memset(&publish_audio_, 0, static_cast<size_t>(
+      reinterpret_cast<char*>(&publish_video_) -
+      reinterpret_cast<char*>(&publish_audio_)) + sizeof(publish_video_));
+  _internal_metadata_.Clear<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
+}
+
+const char* SetupTransportReq::_InternalParse(const char* ptr, ::PROTOBUF_NAMESPACE_ID::internal::ParseContext* ctx) {
+#define CHK_(x) if (PROTOBUF_PREDICT_FALSE(!(x))) goto failure
+  while (!ctx->Done(&ptr)) {
+    uint32_t tag;
+    ptr = ::PROTOBUF_NAMESPACE_ID::internal::ReadTag(ptr, &tag);
+    switch (tag >> 3) {
+      // string meeting_id = 1;
+      case 1:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 10)) {
+          auto str = _internal_mutable_meeting_id();
+          ptr = ::PROTOBUF_NAMESPACE_ID::internal::InlineGreedyStringParser(str, ptr, ctx);
+          CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "sfu_rpc.SetupTransportReq.meeting_id"));
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      // string user_id = 2;
+      case 2:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 18)) {
+          auto str = _internal_mutable_user_id();
+          ptr = ::PROTOBUF_NAMESPACE_ID::internal::InlineGreedyStringParser(str, ptr, ctx);
+          CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "sfu_rpc.SetupTransportReq.user_id"));
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      // bool publish_audio = 3;
+      case 3:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 24)) {
+          publish_audio_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint64(&ptr);
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      // bool publish_video = 4;
+      case 4:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 32)) {
+          publish_video_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint64(&ptr);
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      // string client_ice_ufrag = 5;
+      case 5:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 42)) {
+          auto str = _internal_mutable_client_ice_ufrag();
+          ptr = ::PROTOBUF_NAMESPACE_ID::internal::InlineGreedyStringParser(str, ptr, ctx);
+          CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "sfu_rpc.SetupTransportReq.client_ice_ufrag"));
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      // string client_ice_pwd = 6;
+      case 6:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 50)) {
+          auto str = _internal_mutable_client_ice_pwd();
+          ptr = ::PROTOBUF_NAMESPACE_ID::internal::InlineGreedyStringParser(str, ptr, ctx);
+          CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "sfu_rpc.SetupTransportReq.client_ice_pwd"));
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      // string client_dtls_fingerprint = 7;
+      case 7:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 58)) {
+          auto str = _internal_mutable_client_dtls_fingerprint();
+          ptr = ::PROTOBUF_NAMESPACE_ID::internal::InlineGreedyStringParser(str, ptr, ctx);
+          CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "sfu_rpc.SetupTransportReq.client_dtls_fingerprint"));
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      // repeated string client_candidates = 8;
+      case 8:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 66)) {
+          ptr -= 1;
+          do {
+            ptr += 1;
+            auto str = _internal_add_client_candidates();
+            ptr = ::PROTOBUF_NAMESPACE_ID::internal::InlineGreedyStringParser(str, ptr, ctx);
+            CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "sfu_rpc.SetupTransportReq.client_candidates"));
+            CHK_(ptr);
+            if (!ctx->DataAvailable(ptr)) break;
+          } while (::PROTOBUF_NAMESPACE_ID::internal::ExpectTag<66>(ptr));
+        } else
+          goto handle_unusual;
+        continue;
+      default:
+        goto handle_unusual;
+    }  // switch
+  handle_unusual:
+    if ((tag == 0) || ((tag & 7) == 4)) {
+      CHK_(ptr);
+      ctx->SetLastTag(tag);
+      goto message_done;
+    }
+    ptr = UnknownFieldParse(
+        tag,
+        _internal_metadata_.mutable_unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(),
+        ptr, ctx);
+    CHK_(ptr != nullptr);
+  }  // while
+message_done:
+  return ptr;
+failure:
+  ptr = nullptr;
+  goto message_done;
+#undef CHK_
+}
+
+uint8_t* SetupTransportReq::_InternalSerialize(
+    uint8_t* target, ::PROTOBUF_NAMESPACE_ID::io::EpsCopyOutputStream* stream) const {
+  // @@protoc_insertion_point(serialize_to_array_start:sfu_rpc.SetupTransportReq)
+  uint32_t cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  // string meeting_id = 1;
+  if (!this->_internal_meeting_id().empty()) {
+    ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::VerifyUtf8String(
+      this->_internal_meeting_id().data(), static_cast<int>(this->_internal_meeting_id().length()),
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::SERIALIZE,
+      "sfu_rpc.SetupTransportReq.meeting_id");
+    target = stream->WriteStringMaybeAliased(
+        1, this->_internal_meeting_id(), target);
+  }
+
+  // string user_id = 2;
+  if (!this->_internal_user_id().empty()) {
+    ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::VerifyUtf8String(
+      this->_internal_user_id().data(), static_cast<int>(this->_internal_user_id().length()),
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::SERIALIZE,
+      "sfu_rpc.SetupTransportReq.user_id");
+    target = stream->WriteStringMaybeAliased(
+        2, this->_internal_user_id(), target);
+  }
+
+  // bool publish_audio = 3;
+  if (this->_internal_publish_audio() != 0) {
+    target = stream->EnsureSpace(target);
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::WriteBoolToArray(3, this->_internal_publish_audio(), target);
+  }
+
+  // bool publish_video = 4;
+  if (this->_internal_publish_video() != 0) {
+    target = stream->EnsureSpace(target);
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::WriteBoolToArray(4, this->_internal_publish_video(), target);
+  }
+
+  // string client_ice_ufrag = 5;
+  if (!this->_internal_client_ice_ufrag().empty()) {
+    ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::VerifyUtf8String(
+      this->_internal_client_ice_ufrag().data(), static_cast<int>(this->_internal_client_ice_ufrag().length()),
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::SERIALIZE,
+      "sfu_rpc.SetupTransportReq.client_ice_ufrag");
+    target = stream->WriteStringMaybeAliased(
+        5, this->_internal_client_ice_ufrag(), target);
+  }
+
+  // string client_ice_pwd = 6;
+  if (!this->_internal_client_ice_pwd().empty()) {
+    ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::VerifyUtf8String(
+      this->_internal_client_ice_pwd().data(), static_cast<int>(this->_internal_client_ice_pwd().length()),
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::SERIALIZE,
+      "sfu_rpc.SetupTransportReq.client_ice_pwd");
+    target = stream->WriteStringMaybeAliased(
+        6, this->_internal_client_ice_pwd(), target);
+  }
+
+  // string client_dtls_fingerprint = 7;
+  if (!this->_internal_client_dtls_fingerprint().empty()) {
+    ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::VerifyUtf8String(
+      this->_internal_client_dtls_fingerprint().data(), static_cast<int>(this->_internal_client_dtls_fingerprint().length()),
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::SERIALIZE,
+      "sfu_rpc.SetupTransportReq.client_dtls_fingerprint");
+    target = stream->WriteStringMaybeAliased(
+        7, this->_internal_client_dtls_fingerprint(), target);
+  }
+
+  // repeated string client_candidates = 8;
+  for (int i = 0, n = this->_internal_client_candidates_size(); i < n; i++) {
+    const auto& s = this->_internal_client_candidates(i);
+    ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::VerifyUtf8String(
+      s.data(), static_cast<int>(s.length()),
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::SERIALIZE,
+      "sfu_rpc.SetupTransportReq.client_candidates");
+    target = stream->WriteString(8, s, target);
+  }
+
+  if (PROTOBUF_PREDICT_FALSE(_internal_metadata_.have_unknown_fields())) {
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormat::InternalSerializeUnknownFieldsToArray(
+        _internal_metadata_.unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(::PROTOBUF_NAMESPACE_ID::UnknownFieldSet::default_instance), target, stream);
+  }
+  // @@protoc_insertion_point(serialize_to_array_end:sfu_rpc.SetupTransportReq)
+  return target;
+}
+
+size_t SetupTransportReq::ByteSizeLong() const {
+// @@protoc_insertion_point(message_byte_size_start:sfu_rpc.SetupTransportReq)
+  size_t total_size = 0;
+
+  uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  // repeated string client_candidates = 8;
+  total_size += 1 *
+      ::PROTOBUF_NAMESPACE_ID::internal::FromIntSize(client_candidates_.size());
+  for (int i = 0, n = client_candidates_.size(); i < n; i++) {
+    total_size += ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::StringSize(
+      client_candidates_.Get(i));
+  }
+
+  // string meeting_id = 1;
+  if (!this->_internal_meeting_id().empty()) {
+    total_size += 1 +
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::StringSize(
+        this->_internal_meeting_id());
+  }
+
+  // string user_id = 2;
+  if (!this->_internal_user_id().empty()) {
+    total_size += 1 +
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::StringSize(
+        this->_internal_user_id());
+  }
+
+  // string client_ice_ufrag = 5;
+  if (!this->_internal_client_ice_ufrag().empty()) {
+    total_size += 1 +
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::StringSize(
+        this->_internal_client_ice_ufrag());
+  }
+
+  // string client_ice_pwd = 6;
+  if (!this->_internal_client_ice_pwd().empty()) {
+    total_size += 1 +
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::StringSize(
+        this->_internal_client_ice_pwd());
+  }
+
+  // string client_dtls_fingerprint = 7;
+  if (!this->_internal_client_dtls_fingerprint().empty()) {
+    total_size += 1 +
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::StringSize(
+        this->_internal_client_dtls_fingerprint());
+  }
+
+  // bool publish_audio = 3;
+  if (this->_internal_publish_audio() != 0) {
+    total_size += 1 + 1;
+  }
+
+  // bool publish_video = 4;
+  if (this->_internal_publish_video() != 0) {
+    total_size += 1 + 1;
+  }
+
+  return MaybeComputeUnknownFieldsSize(total_size, &_cached_size_);
+}
+
+const ::PROTOBUF_NAMESPACE_ID::Message::ClassData SetupTransportReq::_class_data_ = {
+    ::PROTOBUF_NAMESPACE_ID::Message::CopyWithSizeCheck,
+    SetupTransportReq::MergeImpl
+};
+const ::PROTOBUF_NAMESPACE_ID::Message::ClassData*SetupTransportReq::GetClassData() const { return &_class_data_; }
+
+void SetupTransportReq::MergeImpl(::PROTOBUF_NAMESPACE_ID::Message* to,
+                      const ::PROTOBUF_NAMESPACE_ID::Message& from) {
+  static_cast<SetupTransportReq *>(to)->MergeFrom(
+      static_cast<const SetupTransportReq &>(from));
+}
+
+
+void SetupTransportReq::MergeFrom(const SetupTransportReq& from) {
+// @@protoc_insertion_point(class_specific_merge_from_start:sfu_rpc.SetupTransportReq)
+  GOOGLE_DCHECK_NE(&from, this);
+  uint32_t cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  client_candidates_.MergeFrom(from.client_candidates_);
+  if (!from._internal_meeting_id().empty()) {
+    _internal_set_meeting_id(from._internal_meeting_id());
+  }
+  if (!from._internal_user_id().empty()) {
+    _internal_set_user_id(from._internal_user_id());
+  }
+  if (!from._internal_client_ice_ufrag().empty()) {
+    _internal_set_client_ice_ufrag(from._internal_client_ice_ufrag());
+  }
+  if (!from._internal_client_ice_pwd().empty()) {
+    _internal_set_client_ice_pwd(from._internal_client_ice_pwd());
+  }
+  if (!from._internal_client_dtls_fingerprint().empty()) {
+    _internal_set_client_dtls_fingerprint(from._internal_client_dtls_fingerprint());
+  }
+  if (from._internal_publish_audio() != 0) {
+    _internal_set_publish_audio(from._internal_publish_audio());
+  }
+  if (from._internal_publish_video() != 0) {
+    _internal_set_publish_video(from._internal_publish_video());
+  }
+  _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
+}
+
+void SetupTransportReq::CopyFrom(const SetupTransportReq& from) {
+// @@protoc_insertion_point(class_specific_copy_from_start:sfu_rpc.SetupTransportReq)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+bool SetupTransportReq::IsInitialized() const {
+  return true;
+}
+
+void SetupTransportReq::InternalSwap(SetupTransportReq* other) {
+  using std::swap;
+  auto* lhs_arena = GetArenaForAllocation();
+  auto* rhs_arena = other->GetArenaForAllocation();
+  _internal_metadata_.InternalSwap(&other->_internal_metadata_);
+  client_candidates_.InternalSwap(&other->client_candidates_);
+  ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::InternalSwap(
+      &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
+      &meeting_id_, lhs_arena,
+      &other->meeting_id_, rhs_arena
+  );
+  ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::InternalSwap(
+      &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
+      &user_id_, lhs_arena,
+      &other->user_id_, rhs_arena
+  );
+  ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::InternalSwap(
+      &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
+      &client_ice_ufrag_, lhs_arena,
+      &other->client_ice_ufrag_, rhs_arena
+  );
+  ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::InternalSwap(
+      &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
+      &client_ice_pwd_, lhs_arena,
+      &other->client_ice_pwd_, rhs_arena
+  );
+  ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::InternalSwap(
+      &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
+      &client_dtls_fingerprint_, lhs_arena,
+      &other->client_dtls_fingerprint_, rhs_arena
+  );
+  ::PROTOBUF_NAMESPACE_ID::internal::memswap<
+      PROTOBUF_FIELD_OFFSET(SetupTransportReq, publish_video_)
+      + sizeof(SetupTransportReq::publish_video_)
+      - PROTOBUF_FIELD_OFFSET(SetupTransportReq, publish_audio_)>(
+          reinterpret_cast<char*>(&publish_audio_),
+          reinterpret_cast<char*>(&other->publish_audio_));
+}
+
+::PROTOBUF_NAMESPACE_ID::Metadata SetupTransportReq::GetMetadata() const {
+  return ::PROTOBUF_NAMESPACE_ID::internal::AssignDescriptors(
+      &descriptor_table_sfu_5frpc_2eproto_getter, &descriptor_table_sfu_5frpc_2eproto_once,
+      file_level_metadata_sfu_5frpc_2eproto[6]);
+}
+
+// ===================================================================
+
+class SetupTransportRsp::_Internal {
+ public:
+};
+
+SetupTransportRsp::SetupTransportRsp(::PROTOBUF_NAMESPACE_ID::Arena* arena,
+                         bool is_message_owned)
+  : ::PROTOBUF_NAMESPACE_ID::Message(arena, is_message_owned),
+  server_candidates_(arena) {
+  SharedCtor();
+  if (!is_message_owned) {
+    RegisterArenaDtor(arena);
+  }
+  // @@protoc_insertion_point(arena_constructor:sfu_rpc.SetupTransportRsp)
+}
+SetupTransportRsp::SetupTransportRsp(const SetupTransportRsp& from)
+  : ::PROTOBUF_NAMESPACE_ID::Message(),
+      server_candidates_(from.server_candidates_) {
+  _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
+  server_ice_ufrag_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  #ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+    server_ice_ufrag_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+  #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  if (!from._internal_server_ice_ufrag().empty()) {
+    server_ice_ufrag_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, from._internal_server_ice_ufrag(), 
+      GetArenaForAllocation());
+  }
+  server_ice_pwd_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  #ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+    server_ice_pwd_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+  #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  if (!from._internal_server_ice_pwd().empty()) {
+    server_ice_pwd_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, from._internal_server_ice_pwd(), 
+      GetArenaForAllocation());
+  }
+  server_dtls_fingerprint_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  #ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+    server_dtls_fingerprint_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+  #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  if (!from._internal_server_dtls_fingerprint().empty()) {
+    server_dtls_fingerprint_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, from._internal_server_dtls_fingerprint(), 
+      GetArenaForAllocation());
+  }
+  ::memcpy(&success_, &from.success_,
+    static_cast<size_t>(reinterpret_cast<char*>(&assigned_video_ssrc_) -
+    reinterpret_cast<char*>(&success_)) + sizeof(assigned_video_ssrc_));
+  // @@protoc_insertion_point(copy_constructor:sfu_rpc.SetupTransportRsp)
+}
+
+inline void SetupTransportRsp::SharedCtor() {
+server_ice_ufrag_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+#ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  server_ice_ufrag_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+#endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+server_ice_pwd_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+#ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  server_ice_pwd_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+#endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+server_dtls_fingerprint_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+#ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  server_dtls_fingerprint_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+#endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+::memset(reinterpret_cast<char*>(this) + static_cast<size_t>(
+    reinterpret_cast<char*>(&success_) - reinterpret_cast<char*>(this)),
+    0, static_cast<size_t>(reinterpret_cast<char*>(&assigned_video_ssrc_) -
+    reinterpret_cast<char*>(&success_)) + sizeof(assigned_video_ssrc_));
+}
+
+SetupTransportRsp::~SetupTransportRsp() {
+  // @@protoc_insertion_point(destructor:sfu_rpc.SetupTransportRsp)
+  if (GetArenaForAllocation() != nullptr) return;
+  SharedDtor();
+  _internal_metadata_.Delete<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
+}
+
+inline void SetupTransportRsp::SharedDtor() {
+  GOOGLE_DCHECK(GetArenaForAllocation() == nullptr);
+  server_ice_ufrag_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  server_ice_pwd_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  server_dtls_fingerprint_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+}
+
+void SetupTransportRsp::ArenaDtor(void* object) {
+  SetupTransportRsp* _this = reinterpret_cast< SetupTransportRsp* >(object);
+  (void)_this;
+}
+void SetupTransportRsp::RegisterArenaDtor(::PROTOBUF_NAMESPACE_ID::Arena*) {
+}
+void SetupTransportRsp::SetCachedSize(int size) const {
+  _cached_size_.Set(size);
+}
+
+void SetupTransportRsp::Clear() {
+// @@protoc_insertion_point(message_clear_start:sfu_rpc.SetupTransportRsp)
+  uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  server_candidates_.Clear();
+  server_ice_ufrag_.ClearToEmpty();
+  server_ice_pwd_.ClearToEmpty();
+  server_dtls_fingerprint_.ClearToEmpty();
+  ::memset(&success_, 0, static_cast<size_t>(
+      reinterpret_cast<char*>(&assigned_video_ssrc_) -
+      reinterpret_cast<char*>(&success_)) + sizeof(assigned_video_ssrc_));
+  _internal_metadata_.Clear<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
+}
+
+const char* SetupTransportRsp::_InternalParse(const char* ptr, ::PROTOBUF_NAMESPACE_ID::internal::ParseContext* ctx) {
+#define CHK_(x) if (PROTOBUF_PREDICT_FALSE(!(x))) goto failure
+  while (!ctx->Done(&ptr)) {
+    uint32_t tag;
+    ptr = ::PROTOBUF_NAMESPACE_ID::internal::ReadTag(ptr, &tag);
+    switch (tag >> 3) {
+      // bool success = 1;
+      case 1:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 8)) {
+          success_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint64(&ptr);
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      // string server_ice_ufrag = 2;
+      case 2:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 18)) {
+          auto str = _internal_mutable_server_ice_ufrag();
+          ptr = ::PROTOBUF_NAMESPACE_ID::internal::InlineGreedyStringParser(str, ptr, ctx);
+          CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "sfu_rpc.SetupTransportRsp.server_ice_ufrag"));
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      // string server_ice_pwd = 3;
+      case 3:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 26)) {
+          auto str = _internal_mutable_server_ice_pwd();
+          ptr = ::PROTOBUF_NAMESPACE_ID::internal::InlineGreedyStringParser(str, ptr, ctx);
+          CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "sfu_rpc.SetupTransportRsp.server_ice_pwd"));
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      // string server_dtls_fingerprint = 4;
+      case 4:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 34)) {
+          auto str = _internal_mutable_server_dtls_fingerprint();
+          ptr = ::PROTOBUF_NAMESPACE_ID::internal::InlineGreedyStringParser(str, ptr, ctx);
+          CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "sfu_rpc.SetupTransportRsp.server_dtls_fingerprint"));
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      // repeated string server_candidates = 5;
+      case 5:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 42)) {
+          ptr -= 1;
+          do {
+            ptr += 1;
+            auto str = _internal_add_server_candidates();
+            ptr = ::PROTOBUF_NAMESPACE_ID::internal::InlineGreedyStringParser(str, ptr, ctx);
+            CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "sfu_rpc.SetupTransportRsp.server_candidates"));
+            CHK_(ptr);
+            if (!ctx->DataAvailable(ptr)) break;
+          } while (::PROTOBUF_NAMESPACE_ID::internal::ExpectTag<42>(ptr));
+        } else
+          goto handle_unusual;
+        continue;
+      // uint32 assigned_audio_ssrc = 6;
+      case 6:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 48)) {
+          assigned_audio_ssrc_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint32(&ptr);
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      // uint32 assigned_video_ssrc = 7;
+      case 7:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 56)) {
+          assigned_video_ssrc_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint32(&ptr);
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      default:
+        goto handle_unusual;
+    }  // switch
+  handle_unusual:
+    if ((tag == 0) || ((tag & 7) == 4)) {
+      CHK_(ptr);
+      ctx->SetLastTag(tag);
+      goto message_done;
+    }
+    ptr = UnknownFieldParse(
+        tag,
+        _internal_metadata_.mutable_unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(),
+        ptr, ctx);
+    CHK_(ptr != nullptr);
+  }  // while
+message_done:
+  return ptr;
+failure:
+  ptr = nullptr;
+  goto message_done;
+#undef CHK_
+}
+
+uint8_t* SetupTransportRsp::_InternalSerialize(
+    uint8_t* target, ::PROTOBUF_NAMESPACE_ID::io::EpsCopyOutputStream* stream) const {
+  // @@protoc_insertion_point(serialize_to_array_start:sfu_rpc.SetupTransportRsp)
+  uint32_t cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  // bool success = 1;
+  if (this->_internal_success() != 0) {
+    target = stream->EnsureSpace(target);
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::WriteBoolToArray(1, this->_internal_success(), target);
+  }
+
+  // string server_ice_ufrag = 2;
+  if (!this->_internal_server_ice_ufrag().empty()) {
+    ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::VerifyUtf8String(
+      this->_internal_server_ice_ufrag().data(), static_cast<int>(this->_internal_server_ice_ufrag().length()),
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::SERIALIZE,
+      "sfu_rpc.SetupTransportRsp.server_ice_ufrag");
+    target = stream->WriteStringMaybeAliased(
+        2, this->_internal_server_ice_ufrag(), target);
+  }
+
+  // string server_ice_pwd = 3;
+  if (!this->_internal_server_ice_pwd().empty()) {
+    ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::VerifyUtf8String(
+      this->_internal_server_ice_pwd().data(), static_cast<int>(this->_internal_server_ice_pwd().length()),
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::SERIALIZE,
+      "sfu_rpc.SetupTransportRsp.server_ice_pwd");
+    target = stream->WriteStringMaybeAliased(
+        3, this->_internal_server_ice_pwd(), target);
+  }
+
+  // string server_dtls_fingerprint = 4;
+  if (!this->_internal_server_dtls_fingerprint().empty()) {
+    ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::VerifyUtf8String(
+      this->_internal_server_dtls_fingerprint().data(), static_cast<int>(this->_internal_server_dtls_fingerprint().length()),
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::SERIALIZE,
+      "sfu_rpc.SetupTransportRsp.server_dtls_fingerprint");
+    target = stream->WriteStringMaybeAliased(
+        4, this->_internal_server_dtls_fingerprint(), target);
+  }
+
+  // repeated string server_candidates = 5;
+  for (int i = 0, n = this->_internal_server_candidates_size(); i < n; i++) {
+    const auto& s = this->_internal_server_candidates(i);
+    ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::VerifyUtf8String(
+      s.data(), static_cast<int>(s.length()),
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::SERIALIZE,
+      "sfu_rpc.SetupTransportRsp.server_candidates");
+    target = stream->WriteString(5, s, target);
+  }
+
+  // uint32 assigned_audio_ssrc = 6;
+  if (this->_internal_assigned_audio_ssrc() != 0) {
+    target = stream->EnsureSpace(target);
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::WriteUInt32ToArray(6, this->_internal_assigned_audio_ssrc(), target);
+  }
+
+  // uint32 assigned_video_ssrc = 7;
+  if (this->_internal_assigned_video_ssrc() != 0) {
+    target = stream->EnsureSpace(target);
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::WriteUInt32ToArray(7, this->_internal_assigned_video_ssrc(), target);
+  }
+
+  if (PROTOBUF_PREDICT_FALSE(_internal_metadata_.have_unknown_fields())) {
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormat::InternalSerializeUnknownFieldsToArray(
+        _internal_metadata_.unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(::PROTOBUF_NAMESPACE_ID::UnknownFieldSet::default_instance), target, stream);
+  }
+  // @@protoc_insertion_point(serialize_to_array_end:sfu_rpc.SetupTransportRsp)
+  return target;
+}
+
+size_t SetupTransportRsp::ByteSizeLong() const {
+// @@protoc_insertion_point(message_byte_size_start:sfu_rpc.SetupTransportRsp)
+  size_t total_size = 0;
+
+  uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  // repeated string server_candidates = 5;
+  total_size += 1 *
+      ::PROTOBUF_NAMESPACE_ID::internal::FromIntSize(server_candidates_.size());
+  for (int i = 0, n = server_candidates_.size(); i < n; i++) {
+    total_size += ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::StringSize(
+      server_candidates_.Get(i));
+  }
+
+  // string server_ice_ufrag = 2;
+  if (!this->_internal_server_ice_ufrag().empty()) {
+    total_size += 1 +
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::StringSize(
+        this->_internal_server_ice_ufrag());
+  }
+
+  // string server_ice_pwd = 3;
+  if (!this->_internal_server_ice_pwd().empty()) {
+    total_size += 1 +
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::StringSize(
+        this->_internal_server_ice_pwd());
+  }
+
+  // string server_dtls_fingerprint = 4;
+  if (!this->_internal_server_dtls_fingerprint().empty()) {
+    total_size += 1 +
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::StringSize(
+        this->_internal_server_dtls_fingerprint());
+  }
+
+  // bool success = 1;
+  if (this->_internal_success() != 0) {
+    total_size += 1 + 1;
+  }
+
+  // uint32 assigned_audio_ssrc = 6;
+  if (this->_internal_assigned_audio_ssrc() != 0) {
+    total_size += ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::UInt32SizePlusOne(this->_internal_assigned_audio_ssrc());
+  }
+
+  // uint32 assigned_video_ssrc = 7;
+  if (this->_internal_assigned_video_ssrc() != 0) {
+    total_size += ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::UInt32SizePlusOne(this->_internal_assigned_video_ssrc());
+  }
+
+  return MaybeComputeUnknownFieldsSize(total_size, &_cached_size_);
+}
+
+const ::PROTOBUF_NAMESPACE_ID::Message::ClassData SetupTransportRsp::_class_data_ = {
+    ::PROTOBUF_NAMESPACE_ID::Message::CopyWithSizeCheck,
+    SetupTransportRsp::MergeImpl
+};
+const ::PROTOBUF_NAMESPACE_ID::Message::ClassData*SetupTransportRsp::GetClassData() const { return &_class_data_; }
+
+void SetupTransportRsp::MergeImpl(::PROTOBUF_NAMESPACE_ID::Message* to,
+                      const ::PROTOBUF_NAMESPACE_ID::Message& from) {
+  static_cast<SetupTransportRsp *>(to)->MergeFrom(
+      static_cast<const SetupTransportRsp &>(from));
+}
+
+
+void SetupTransportRsp::MergeFrom(const SetupTransportRsp& from) {
+// @@protoc_insertion_point(class_specific_merge_from_start:sfu_rpc.SetupTransportRsp)
+  GOOGLE_DCHECK_NE(&from, this);
+  uint32_t cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  server_candidates_.MergeFrom(from.server_candidates_);
+  if (!from._internal_server_ice_ufrag().empty()) {
+    _internal_set_server_ice_ufrag(from._internal_server_ice_ufrag());
+  }
+  if (!from._internal_server_ice_pwd().empty()) {
+    _internal_set_server_ice_pwd(from._internal_server_ice_pwd());
+  }
+  if (!from._internal_server_dtls_fingerprint().empty()) {
+    _internal_set_server_dtls_fingerprint(from._internal_server_dtls_fingerprint());
+  }
+  if (from._internal_success() != 0) {
+    _internal_set_success(from._internal_success());
+  }
+  if (from._internal_assigned_audio_ssrc() != 0) {
+    _internal_set_assigned_audio_ssrc(from._internal_assigned_audio_ssrc());
+  }
+  if (from._internal_assigned_video_ssrc() != 0) {
+    _internal_set_assigned_video_ssrc(from._internal_assigned_video_ssrc());
+  }
+  _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
+}
+
+void SetupTransportRsp::CopyFrom(const SetupTransportRsp& from) {
+// @@protoc_insertion_point(class_specific_copy_from_start:sfu_rpc.SetupTransportRsp)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+bool SetupTransportRsp::IsInitialized() const {
+  return true;
+}
+
+void SetupTransportRsp::InternalSwap(SetupTransportRsp* other) {
+  using std::swap;
+  auto* lhs_arena = GetArenaForAllocation();
+  auto* rhs_arena = other->GetArenaForAllocation();
+  _internal_metadata_.InternalSwap(&other->_internal_metadata_);
+  server_candidates_.InternalSwap(&other->server_candidates_);
+  ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::InternalSwap(
+      &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
+      &server_ice_ufrag_, lhs_arena,
+      &other->server_ice_ufrag_, rhs_arena
+  );
+  ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::InternalSwap(
+      &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
+      &server_ice_pwd_, lhs_arena,
+      &other->server_ice_pwd_, rhs_arena
+  );
+  ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::InternalSwap(
+      &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
+      &server_dtls_fingerprint_, lhs_arena,
+      &other->server_dtls_fingerprint_, rhs_arena
+  );
+  ::PROTOBUF_NAMESPACE_ID::internal::memswap<
+      PROTOBUF_FIELD_OFFSET(SetupTransportRsp, assigned_video_ssrc_)
+      + sizeof(SetupTransportRsp::assigned_video_ssrc_)
+      - PROTOBUF_FIELD_OFFSET(SetupTransportRsp, success_)>(
+          reinterpret_cast<char*>(&success_),
+          reinterpret_cast<char*>(&other->success_));
+}
+
+::PROTOBUF_NAMESPACE_ID::Metadata SetupTransportRsp::GetMetadata() const {
+  return ::PROTOBUF_NAMESPACE_ID::internal::AssignDescriptors(
+      &descriptor_table_sfu_5frpc_2eproto_getter, &descriptor_table_sfu_5frpc_2eproto_once,
+      file_level_metadata_sfu_5frpc_2eproto[7]);
+}
+
+// ===================================================================
+
+class TrickleIceCandidateReq::_Internal {
+ public:
+};
+
+TrickleIceCandidateReq::TrickleIceCandidateReq(::PROTOBUF_NAMESPACE_ID::Arena* arena,
+                         bool is_message_owned)
+  : ::PROTOBUF_NAMESPACE_ID::Message(arena, is_message_owned) {
+  SharedCtor();
+  if (!is_message_owned) {
+    RegisterArenaDtor(arena);
+  }
+  // @@protoc_insertion_point(arena_constructor:sfu_rpc.TrickleIceCandidateReq)
+}
+TrickleIceCandidateReq::TrickleIceCandidateReq(const TrickleIceCandidateReq& from)
+  : ::PROTOBUF_NAMESPACE_ID::Message() {
+  _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
+  meeting_id_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  #ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+    meeting_id_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+  #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  if (!from._internal_meeting_id().empty()) {
+    meeting_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, from._internal_meeting_id(), 
+      GetArenaForAllocation());
+  }
+  user_id_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  #ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+    user_id_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+  #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  if (!from._internal_user_id().empty()) {
+    user_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, from._internal_user_id(), 
+      GetArenaForAllocation());
+  }
+  candidate_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  #ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+    candidate_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+  #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  if (!from._internal_candidate().empty()) {
+    candidate_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, from._internal_candidate(), 
+      GetArenaForAllocation());
+  }
+  sdp_mid_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  #ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+    sdp_mid_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+  #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  if (!from._internal_sdp_mid().empty()) {
+    sdp_mid_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, from._internal_sdp_mid(), 
+      GetArenaForAllocation());
+  }
+  ::memcpy(&sdp_mline_index_, &from.sdp_mline_index_,
+    static_cast<size_t>(reinterpret_cast<char*>(&end_of_candidates_) -
+    reinterpret_cast<char*>(&sdp_mline_index_)) + sizeof(end_of_candidates_));
+  // @@protoc_insertion_point(copy_constructor:sfu_rpc.TrickleIceCandidateReq)
+}
+
+inline void TrickleIceCandidateReq::SharedCtor() {
+meeting_id_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+#ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  meeting_id_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+#endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+user_id_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+#ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  user_id_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+#endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+candidate_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+#ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  candidate_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+#endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+sdp_mid_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+#ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  sdp_mid_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+#endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+::memset(reinterpret_cast<char*>(this) + static_cast<size_t>(
+    reinterpret_cast<char*>(&sdp_mline_index_) - reinterpret_cast<char*>(this)),
+    0, static_cast<size_t>(reinterpret_cast<char*>(&end_of_candidates_) -
+    reinterpret_cast<char*>(&sdp_mline_index_)) + sizeof(end_of_candidates_));
+}
+
+TrickleIceCandidateReq::~TrickleIceCandidateReq() {
+  // @@protoc_insertion_point(destructor:sfu_rpc.TrickleIceCandidateReq)
+  if (GetArenaForAllocation() != nullptr) return;
+  SharedDtor();
+  _internal_metadata_.Delete<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
+}
+
+inline void TrickleIceCandidateReq::SharedDtor() {
+  GOOGLE_DCHECK(GetArenaForAllocation() == nullptr);
+  meeting_id_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  user_id_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  candidate_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  sdp_mid_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+}
+
+void TrickleIceCandidateReq::ArenaDtor(void* object) {
+  TrickleIceCandidateReq* _this = reinterpret_cast< TrickleIceCandidateReq* >(object);
+  (void)_this;
+}
+void TrickleIceCandidateReq::RegisterArenaDtor(::PROTOBUF_NAMESPACE_ID::Arena*) {
+}
+void TrickleIceCandidateReq::SetCachedSize(int size) const {
+  _cached_size_.Set(size);
+}
+
+void TrickleIceCandidateReq::Clear() {
+// @@protoc_insertion_point(message_clear_start:sfu_rpc.TrickleIceCandidateReq)
+  uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  meeting_id_.ClearToEmpty();
+  user_id_.ClearToEmpty();
+  candidate_.ClearToEmpty();
+  sdp_mid_.ClearToEmpty();
+  ::memset(&sdp_mline_index_, 0, static_cast<size_t>(
+      reinterpret_cast<char*>(&end_of_candidates_) -
+      reinterpret_cast<char*>(&sdp_mline_index_)) + sizeof(end_of_candidates_));
+  _internal_metadata_.Clear<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
+}
+
+const char* TrickleIceCandidateReq::_InternalParse(const char* ptr, ::PROTOBUF_NAMESPACE_ID::internal::ParseContext* ctx) {
+#define CHK_(x) if (PROTOBUF_PREDICT_FALSE(!(x))) goto failure
+  while (!ctx->Done(&ptr)) {
+    uint32_t tag;
+    ptr = ::PROTOBUF_NAMESPACE_ID::internal::ReadTag(ptr, &tag);
+    switch (tag >> 3) {
+      // string meeting_id = 1;
+      case 1:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 10)) {
+          auto str = _internal_mutable_meeting_id();
+          ptr = ::PROTOBUF_NAMESPACE_ID::internal::InlineGreedyStringParser(str, ptr, ctx);
+          CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "sfu_rpc.TrickleIceCandidateReq.meeting_id"));
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      // string user_id = 2;
+      case 2:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 18)) {
+          auto str = _internal_mutable_user_id();
+          ptr = ::PROTOBUF_NAMESPACE_ID::internal::InlineGreedyStringParser(str, ptr, ctx);
+          CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "sfu_rpc.TrickleIceCandidateReq.user_id"));
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      // string candidate = 3;
+      case 3:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 26)) {
+          auto str = _internal_mutable_candidate();
+          ptr = ::PROTOBUF_NAMESPACE_ID::internal::InlineGreedyStringParser(str, ptr, ctx);
+          CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "sfu_rpc.TrickleIceCandidateReq.candidate"));
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      // string sdp_mid = 4;
+      case 4:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 34)) {
+          auto str = _internal_mutable_sdp_mid();
+          ptr = ::PROTOBUF_NAMESPACE_ID::internal::InlineGreedyStringParser(str, ptr, ctx);
+          CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "sfu_rpc.TrickleIceCandidateReq.sdp_mid"));
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      // int32 sdp_mline_index = 5;
+      case 5:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 40)) {
+          sdp_mline_index_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint32(&ptr);
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      // bool end_of_candidates = 6;
+      case 6:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 48)) {
+          end_of_candidates_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint64(&ptr);
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      default:
+        goto handle_unusual;
+    }  // switch
+  handle_unusual:
+    if ((tag == 0) || ((tag & 7) == 4)) {
+      CHK_(ptr);
+      ctx->SetLastTag(tag);
+      goto message_done;
+    }
+    ptr = UnknownFieldParse(
+        tag,
+        _internal_metadata_.mutable_unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(),
+        ptr, ctx);
+    CHK_(ptr != nullptr);
+  }  // while
+message_done:
+  return ptr;
+failure:
+  ptr = nullptr;
+  goto message_done;
+#undef CHK_
+}
+
+uint8_t* TrickleIceCandidateReq::_InternalSerialize(
+    uint8_t* target, ::PROTOBUF_NAMESPACE_ID::io::EpsCopyOutputStream* stream) const {
+  // @@protoc_insertion_point(serialize_to_array_start:sfu_rpc.TrickleIceCandidateReq)
+  uint32_t cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  // string meeting_id = 1;
+  if (!this->_internal_meeting_id().empty()) {
+    ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::VerifyUtf8String(
+      this->_internal_meeting_id().data(), static_cast<int>(this->_internal_meeting_id().length()),
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::SERIALIZE,
+      "sfu_rpc.TrickleIceCandidateReq.meeting_id");
+    target = stream->WriteStringMaybeAliased(
+        1, this->_internal_meeting_id(), target);
+  }
+
+  // string user_id = 2;
+  if (!this->_internal_user_id().empty()) {
+    ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::VerifyUtf8String(
+      this->_internal_user_id().data(), static_cast<int>(this->_internal_user_id().length()),
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::SERIALIZE,
+      "sfu_rpc.TrickleIceCandidateReq.user_id");
+    target = stream->WriteStringMaybeAliased(
+        2, this->_internal_user_id(), target);
+  }
+
+  // string candidate = 3;
+  if (!this->_internal_candidate().empty()) {
+    ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::VerifyUtf8String(
+      this->_internal_candidate().data(), static_cast<int>(this->_internal_candidate().length()),
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::SERIALIZE,
+      "sfu_rpc.TrickleIceCandidateReq.candidate");
+    target = stream->WriteStringMaybeAliased(
+        3, this->_internal_candidate(), target);
+  }
+
+  // string sdp_mid = 4;
+  if (!this->_internal_sdp_mid().empty()) {
+    ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::VerifyUtf8String(
+      this->_internal_sdp_mid().data(), static_cast<int>(this->_internal_sdp_mid().length()),
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::SERIALIZE,
+      "sfu_rpc.TrickleIceCandidateReq.sdp_mid");
+    target = stream->WriteStringMaybeAliased(
+        4, this->_internal_sdp_mid(), target);
+  }
+
+  // int32 sdp_mline_index = 5;
+  if (this->_internal_sdp_mline_index() != 0) {
+    target = stream->EnsureSpace(target);
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::WriteInt32ToArray(5, this->_internal_sdp_mline_index(), target);
+  }
+
+  // bool end_of_candidates = 6;
+  if (this->_internal_end_of_candidates() != 0) {
+    target = stream->EnsureSpace(target);
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::WriteBoolToArray(6, this->_internal_end_of_candidates(), target);
+  }
+
+  if (PROTOBUF_PREDICT_FALSE(_internal_metadata_.have_unknown_fields())) {
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormat::InternalSerializeUnknownFieldsToArray(
+        _internal_metadata_.unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(::PROTOBUF_NAMESPACE_ID::UnknownFieldSet::default_instance), target, stream);
+  }
+  // @@protoc_insertion_point(serialize_to_array_end:sfu_rpc.TrickleIceCandidateReq)
+  return target;
+}
+
+size_t TrickleIceCandidateReq::ByteSizeLong() const {
+// @@protoc_insertion_point(message_byte_size_start:sfu_rpc.TrickleIceCandidateReq)
+  size_t total_size = 0;
+
+  uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  // string meeting_id = 1;
+  if (!this->_internal_meeting_id().empty()) {
+    total_size += 1 +
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::StringSize(
+        this->_internal_meeting_id());
+  }
+
+  // string user_id = 2;
+  if (!this->_internal_user_id().empty()) {
+    total_size += 1 +
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::StringSize(
+        this->_internal_user_id());
+  }
+
+  // string candidate = 3;
+  if (!this->_internal_candidate().empty()) {
+    total_size += 1 +
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::StringSize(
+        this->_internal_candidate());
+  }
+
+  // string sdp_mid = 4;
+  if (!this->_internal_sdp_mid().empty()) {
+    total_size += 1 +
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::StringSize(
+        this->_internal_sdp_mid());
+  }
+
+  // int32 sdp_mline_index = 5;
+  if (this->_internal_sdp_mline_index() != 0) {
+    total_size += ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::Int32SizePlusOne(this->_internal_sdp_mline_index());
+  }
+
+  // bool end_of_candidates = 6;
+  if (this->_internal_end_of_candidates() != 0) {
+    total_size += 1 + 1;
+  }
+
+  return MaybeComputeUnknownFieldsSize(total_size, &_cached_size_);
+}
+
+const ::PROTOBUF_NAMESPACE_ID::Message::ClassData TrickleIceCandidateReq::_class_data_ = {
+    ::PROTOBUF_NAMESPACE_ID::Message::CopyWithSizeCheck,
+    TrickleIceCandidateReq::MergeImpl
+};
+const ::PROTOBUF_NAMESPACE_ID::Message::ClassData*TrickleIceCandidateReq::GetClassData() const { return &_class_data_; }
+
+void TrickleIceCandidateReq::MergeImpl(::PROTOBUF_NAMESPACE_ID::Message* to,
+                      const ::PROTOBUF_NAMESPACE_ID::Message& from) {
+  static_cast<TrickleIceCandidateReq *>(to)->MergeFrom(
+      static_cast<const TrickleIceCandidateReq &>(from));
+}
+
+
+void TrickleIceCandidateReq::MergeFrom(const TrickleIceCandidateReq& from) {
+// @@protoc_insertion_point(class_specific_merge_from_start:sfu_rpc.TrickleIceCandidateReq)
+  GOOGLE_DCHECK_NE(&from, this);
+  uint32_t cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  if (!from._internal_meeting_id().empty()) {
+    _internal_set_meeting_id(from._internal_meeting_id());
+  }
+  if (!from._internal_user_id().empty()) {
+    _internal_set_user_id(from._internal_user_id());
+  }
+  if (!from._internal_candidate().empty()) {
+    _internal_set_candidate(from._internal_candidate());
+  }
+  if (!from._internal_sdp_mid().empty()) {
+    _internal_set_sdp_mid(from._internal_sdp_mid());
+  }
+  if (from._internal_sdp_mline_index() != 0) {
+    _internal_set_sdp_mline_index(from._internal_sdp_mline_index());
+  }
+  if (from._internal_end_of_candidates() != 0) {
+    _internal_set_end_of_candidates(from._internal_end_of_candidates());
+  }
+  _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
+}
+
+void TrickleIceCandidateReq::CopyFrom(const TrickleIceCandidateReq& from) {
+// @@protoc_insertion_point(class_specific_copy_from_start:sfu_rpc.TrickleIceCandidateReq)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+bool TrickleIceCandidateReq::IsInitialized() const {
+  return true;
+}
+
+void TrickleIceCandidateReq::InternalSwap(TrickleIceCandidateReq* other) {
+  using std::swap;
+  auto* lhs_arena = GetArenaForAllocation();
+  auto* rhs_arena = other->GetArenaForAllocation();
+  _internal_metadata_.InternalSwap(&other->_internal_metadata_);
+  ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::InternalSwap(
+      &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
+      &meeting_id_, lhs_arena,
+      &other->meeting_id_, rhs_arena
+  );
+  ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::InternalSwap(
+      &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
+      &user_id_, lhs_arena,
+      &other->user_id_, rhs_arena
+  );
+  ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::InternalSwap(
+      &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
+      &candidate_, lhs_arena,
+      &other->candidate_, rhs_arena
+  );
+  ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::InternalSwap(
+      &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
+      &sdp_mid_, lhs_arena,
+      &other->sdp_mid_, rhs_arena
+  );
+  ::PROTOBUF_NAMESPACE_ID::internal::memswap<
+      PROTOBUF_FIELD_OFFSET(TrickleIceCandidateReq, end_of_candidates_)
+      + sizeof(TrickleIceCandidateReq::end_of_candidates_)
+      - PROTOBUF_FIELD_OFFSET(TrickleIceCandidateReq, sdp_mline_index_)>(
+          reinterpret_cast<char*>(&sdp_mline_index_),
+          reinterpret_cast<char*>(&other->sdp_mline_index_));
+}
+
+::PROTOBUF_NAMESPACE_ID::Metadata TrickleIceCandidateReq::GetMetadata() const {
+  return ::PROTOBUF_NAMESPACE_ID::internal::AssignDescriptors(
+      &descriptor_table_sfu_5frpc_2eproto_getter, &descriptor_table_sfu_5frpc_2eproto_once,
+      file_level_metadata_sfu_5frpc_2eproto[8]);
+}
+
+// ===================================================================
+
+class TrickleIceCandidateRsp::_Internal {
+ public:
+};
+
+TrickleIceCandidateRsp::TrickleIceCandidateRsp(::PROTOBUF_NAMESPACE_ID::Arena* arena,
+                         bool is_message_owned)
+  : ::PROTOBUF_NAMESPACE_ID::Message(arena, is_message_owned) {
+  SharedCtor();
+  if (!is_message_owned) {
+    RegisterArenaDtor(arena);
+  }
+  // @@protoc_insertion_point(arena_constructor:sfu_rpc.TrickleIceCandidateRsp)
+}
+TrickleIceCandidateRsp::TrickleIceCandidateRsp(const TrickleIceCandidateRsp& from)
+  : ::PROTOBUF_NAMESPACE_ID::Message() {
+  _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
+  success_ = from.success_;
+  // @@protoc_insertion_point(copy_constructor:sfu_rpc.TrickleIceCandidateRsp)
+}
+
+inline void TrickleIceCandidateRsp::SharedCtor() {
+success_ = false;
+}
+
+TrickleIceCandidateRsp::~TrickleIceCandidateRsp() {
+  // @@protoc_insertion_point(destructor:sfu_rpc.TrickleIceCandidateRsp)
+  if (GetArenaForAllocation() != nullptr) return;
+  SharedDtor();
+  _internal_metadata_.Delete<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
+}
+
+inline void TrickleIceCandidateRsp::SharedDtor() {
+  GOOGLE_DCHECK(GetArenaForAllocation() == nullptr);
+}
+
+void TrickleIceCandidateRsp::ArenaDtor(void* object) {
+  TrickleIceCandidateRsp* _this = reinterpret_cast< TrickleIceCandidateRsp* >(object);
+  (void)_this;
+}
+void TrickleIceCandidateRsp::RegisterArenaDtor(::PROTOBUF_NAMESPACE_ID::Arena*) {
+}
+void TrickleIceCandidateRsp::SetCachedSize(int size) const {
+  _cached_size_.Set(size);
+}
+
+void TrickleIceCandidateRsp::Clear() {
+// @@protoc_insertion_point(message_clear_start:sfu_rpc.TrickleIceCandidateRsp)
+  uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  success_ = false;
+  _internal_metadata_.Clear<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
+}
+
+const char* TrickleIceCandidateRsp::_InternalParse(const char* ptr, ::PROTOBUF_NAMESPACE_ID::internal::ParseContext* ctx) {
+#define CHK_(x) if (PROTOBUF_PREDICT_FALSE(!(x))) goto failure
+  while (!ctx->Done(&ptr)) {
+    uint32_t tag;
+    ptr = ::PROTOBUF_NAMESPACE_ID::internal::ReadTag(ptr, &tag);
+    switch (tag >> 3) {
+      // bool success = 1;
+      case 1:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 8)) {
+          success_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint64(&ptr);
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      default:
+        goto handle_unusual;
+    }  // switch
+  handle_unusual:
+    if ((tag == 0) || ((tag & 7) == 4)) {
+      CHK_(ptr);
+      ctx->SetLastTag(tag);
+      goto message_done;
+    }
+    ptr = UnknownFieldParse(
+        tag,
+        _internal_metadata_.mutable_unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(),
+        ptr, ctx);
+    CHK_(ptr != nullptr);
+  }  // while
+message_done:
+  return ptr;
+failure:
+  ptr = nullptr;
+  goto message_done;
+#undef CHK_
+}
+
+uint8_t* TrickleIceCandidateRsp::_InternalSerialize(
+    uint8_t* target, ::PROTOBUF_NAMESPACE_ID::io::EpsCopyOutputStream* stream) const {
+  // @@protoc_insertion_point(serialize_to_array_start:sfu_rpc.TrickleIceCandidateRsp)
+  uint32_t cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  // bool success = 1;
+  if (this->_internal_success() != 0) {
+    target = stream->EnsureSpace(target);
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::WriteBoolToArray(1, this->_internal_success(), target);
+  }
+
+  if (PROTOBUF_PREDICT_FALSE(_internal_metadata_.have_unknown_fields())) {
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormat::InternalSerializeUnknownFieldsToArray(
+        _internal_metadata_.unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(::PROTOBUF_NAMESPACE_ID::UnknownFieldSet::default_instance), target, stream);
+  }
+  // @@protoc_insertion_point(serialize_to_array_end:sfu_rpc.TrickleIceCandidateRsp)
+  return target;
+}
+
+size_t TrickleIceCandidateRsp::ByteSizeLong() const {
+// @@protoc_insertion_point(message_byte_size_start:sfu_rpc.TrickleIceCandidateRsp)
+  size_t total_size = 0;
+
+  uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  // bool success = 1;
+  if (this->_internal_success() != 0) {
+    total_size += 1 + 1;
+  }
+
+  return MaybeComputeUnknownFieldsSize(total_size, &_cached_size_);
+}
+
+const ::PROTOBUF_NAMESPACE_ID::Message::ClassData TrickleIceCandidateRsp::_class_data_ = {
+    ::PROTOBUF_NAMESPACE_ID::Message::CopyWithSizeCheck,
+    TrickleIceCandidateRsp::MergeImpl
+};
+const ::PROTOBUF_NAMESPACE_ID::Message::ClassData*TrickleIceCandidateRsp::GetClassData() const { return &_class_data_; }
+
+void TrickleIceCandidateRsp::MergeImpl(::PROTOBUF_NAMESPACE_ID::Message* to,
+                      const ::PROTOBUF_NAMESPACE_ID::Message& from) {
+  static_cast<TrickleIceCandidateRsp *>(to)->MergeFrom(
+      static_cast<const TrickleIceCandidateRsp &>(from));
+}
+
+
+void TrickleIceCandidateRsp::MergeFrom(const TrickleIceCandidateRsp& from) {
+// @@protoc_insertion_point(class_specific_merge_from_start:sfu_rpc.TrickleIceCandidateRsp)
+  GOOGLE_DCHECK_NE(&from, this);
+  uint32_t cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  if (from._internal_success() != 0) {
+    _internal_set_success(from._internal_success());
+  }
+  _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
+}
+
+void TrickleIceCandidateRsp::CopyFrom(const TrickleIceCandidateRsp& from) {
+// @@protoc_insertion_point(class_specific_copy_from_start:sfu_rpc.TrickleIceCandidateRsp)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+bool TrickleIceCandidateRsp::IsInitialized() const {
+  return true;
+}
+
+void TrickleIceCandidateRsp::InternalSwap(TrickleIceCandidateRsp* other) {
+  using std::swap;
+  _internal_metadata_.InternalSwap(&other->_internal_metadata_);
+  swap(success_, other->success_);
+}
+
+::PROTOBUF_NAMESPACE_ID::Metadata TrickleIceCandidateRsp::GetMetadata() const {
+  return ::PROTOBUF_NAMESPACE_ID::internal::AssignDescriptors(
+      &descriptor_table_sfu_5frpc_2eproto_getter, &descriptor_table_sfu_5frpc_2eproto_once,
+      file_level_metadata_sfu_5frpc_2eproto[9]);
+}
+
+// ===================================================================
+
+class CloseTransportReq::_Internal {
+ public:
+};
+
+CloseTransportReq::CloseTransportReq(::PROTOBUF_NAMESPACE_ID::Arena* arena,
+                         bool is_message_owned)
+  : ::PROTOBUF_NAMESPACE_ID::Message(arena, is_message_owned) {
+  SharedCtor();
+  if (!is_message_owned) {
+    RegisterArenaDtor(arena);
+  }
+  // @@protoc_insertion_point(arena_constructor:sfu_rpc.CloseTransportReq)
+}
+CloseTransportReq::CloseTransportReq(const CloseTransportReq& from)
+  : ::PROTOBUF_NAMESPACE_ID::Message() {
+  _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
+  meeting_id_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  #ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+    meeting_id_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+  #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  if (!from._internal_meeting_id().empty()) {
+    meeting_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, from._internal_meeting_id(), 
+      GetArenaForAllocation());
+  }
+  user_id_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  #ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+    user_id_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+  #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  if (!from._internal_user_id().empty()) {
+    user_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, from._internal_user_id(), 
+      GetArenaForAllocation());
+  }
+  // @@protoc_insertion_point(copy_constructor:sfu_rpc.CloseTransportReq)
+}
+
+inline void CloseTransportReq::SharedCtor() {
+meeting_id_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+#ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  meeting_id_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+#endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+user_id_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+#ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  user_id_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+#endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+}
+
+CloseTransportReq::~CloseTransportReq() {
+  // @@protoc_insertion_point(destructor:sfu_rpc.CloseTransportReq)
+  if (GetArenaForAllocation() != nullptr) return;
+  SharedDtor();
+  _internal_metadata_.Delete<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
+}
+
+inline void CloseTransportReq::SharedDtor() {
+  GOOGLE_DCHECK(GetArenaForAllocation() == nullptr);
+  meeting_id_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  user_id_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+}
+
+void CloseTransportReq::ArenaDtor(void* object) {
+  CloseTransportReq* _this = reinterpret_cast< CloseTransportReq* >(object);
+  (void)_this;
+}
+void CloseTransportReq::RegisterArenaDtor(::PROTOBUF_NAMESPACE_ID::Arena*) {
+}
+void CloseTransportReq::SetCachedSize(int size) const {
+  _cached_size_.Set(size);
+}
+
+void CloseTransportReq::Clear() {
+// @@protoc_insertion_point(message_clear_start:sfu_rpc.CloseTransportReq)
+  uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  meeting_id_.ClearToEmpty();
+  user_id_.ClearToEmpty();
+  _internal_metadata_.Clear<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
+}
+
+const char* CloseTransportReq::_InternalParse(const char* ptr, ::PROTOBUF_NAMESPACE_ID::internal::ParseContext* ctx) {
+#define CHK_(x) if (PROTOBUF_PREDICT_FALSE(!(x))) goto failure
+  while (!ctx->Done(&ptr)) {
+    uint32_t tag;
+    ptr = ::PROTOBUF_NAMESPACE_ID::internal::ReadTag(ptr, &tag);
+    switch (tag >> 3) {
+      // string meeting_id = 1;
+      case 1:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 10)) {
+          auto str = _internal_mutable_meeting_id();
+          ptr = ::PROTOBUF_NAMESPACE_ID::internal::InlineGreedyStringParser(str, ptr, ctx);
+          CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "sfu_rpc.CloseTransportReq.meeting_id"));
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      // string user_id = 2;
+      case 2:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 18)) {
+          auto str = _internal_mutable_user_id();
+          ptr = ::PROTOBUF_NAMESPACE_ID::internal::InlineGreedyStringParser(str, ptr, ctx);
+          CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "sfu_rpc.CloseTransportReq.user_id"));
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      default:
+        goto handle_unusual;
+    }  // switch
+  handle_unusual:
+    if ((tag == 0) || ((tag & 7) == 4)) {
+      CHK_(ptr);
+      ctx->SetLastTag(tag);
+      goto message_done;
+    }
+    ptr = UnknownFieldParse(
+        tag,
+        _internal_metadata_.mutable_unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(),
+        ptr, ctx);
+    CHK_(ptr != nullptr);
+  }  // while
+message_done:
+  return ptr;
+failure:
+  ptr = nullptr;
+  goto message_done;
+#undef CHK_
+}
+
+uint8_t* CloseTransportReq::_InternalSerialize(
+    uint8_t* target, ::PROTOBUF_NAMESPACE_ID::io::EpsCopyOutputStream* stream) const {
+  // @@protoc_insertion_point(serialize_to_array_start:sfu_rpc.CloseTransportReq)
+  uint32_t cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  // string meeting_id = 1;
+  if (!this->_internal_meeting_id().empty()) {
+    ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::VerifyUtf8String(
+      this->_internal_meeting_id().data(), static_cast<int>(this->_internal_meeting_id().length()),
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::SERIALIZE,
+      "sfu_rpc.CloseTransportReq.meeting_id");
+    target = stream->WriteStringMaybeAliased(
+        1, this->_internal_meeting_id(), target);
+  }
+
+  // string user_id = 2;
+  if (!this->_internal_user_id().empty()) {
+    ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::VerifyUtf8String(
+      this->_internal_user_id().data(), static_cast<int>(this->_internal_user_id().length()),
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::SERIALIZE,
+      "sfu_rpc.CloseTransportReq.user_id");
+    target = stream->WriteStringMaybeAliased(
+        2, this->_internal_user_id(), target);
+  }
+
+  if (PROTOBUF_PREDICT_FALSE(_internal_metadata_.have_unknown_fields())) {
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormat::InternalSerializeUnknownFieldsToArray(
+        _internal_metadata_.unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(::PROTOBUF_NAMESPACE_ID::UnknownFieldSet::default_instance), target, stream);
+  }
+  // @@protoc_insertion_point(serialize_to_array_end:sfu_rpc.CloseTransportReq)
+  return target;
+}
+
+size_t CloseTransportReq::ByteSizeLong() const {
+// @@protoc_insertion_point(message_byte_size_start:sfu_rpc.CloseTransportReq)
+  size_t total_size = 0;
+
+  uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  // string meeting_id = 1;
+  if (!this->_internal_meeting_id().empty()) {
+    total_size += 1 +
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::StringSize(
+        this->_internal_meeting_id());
+  }
+
+  // string user_id = 2;
+  if (!this->_internal_user_id().empty()) {
+    total_size += 1 +
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::StringSize(
+        this->_internal_user_id());
+  }
+
+  return MaybeComputeUnknownFieldsSize(total_size, &_cached_size_);
+}
+
+const ::PROTOBUF_NAMESPACE_ID::Message::ClassData CloseTransportReq::_class_data_ = {
+    ::PROTOBUF_NAMESPACE_ID::Message::CopyWithSizeCheck,
+    CloseTransportReq::MergeImpl
+};
+const ::PROTOBUF_NAMESPACE_ID::Message::ClassData*CloseTransportReq::GetClassData() const { return &_class_data_; }
+
+void CloseTransportReq::MergeImpl(::PROTOBUF_NAMESPACE_ID::Message* to,
+                      const ::PROTOBUF_NAMESPACE_ID::Message& from) {
+  static_cast<CloseTransportReq *>(to)->MergeFrom(
+      static_cast<const CloseTransportReq &>(from));
+}
+
+
+void CloseTransportReq::MergeFrom(const CloseTransportReq& from) {
+// @@protoc_insertion_point(class_specific_merge_from_start:sfu_rpc.CloseTransportReq)
+  GOOGLE_DCHECK_NE(&from, this);
+  uint32_t cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  if (!from._internal_meeting_id().empty()) {
+    _internal_set_meeting_id(from._internal_meeting_id());
+  }
+  if (!from._internal_user_id().empty()) {
+    _internal_set_user_id(from._internal_user_id());
+  }
+  _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
+}
+
+void CloseTransportReq::CopyFrom(const CloseTransportReq& from) {
+// @@protoc_insertion_point(class_specific_copy_from_start:sfu_rpc.CloseTransportReq)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+bool CloseTransportReq::IsInitialized() const {
+  return true;
+}
+
+void CloseTransportReq::InternalSwap(CloseTransportReq* other) {
+  using std::swap;
+  auto* lhs_arena = GetArenaForAllocation();
+  auto* rhs_arena = other->GetArenaForAllocation();
+  _internal_metadata_.InternalSwap(&other->_internal_metadata_);
+  ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::InternalSwap(
+      &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
+      &meeting_id_, lhs_arena,
+      &other->meeting_id_, rhs_arena
+  );
+  ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::InternalSwap(
+      &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
+      &user_id_, lhs_arena,
+      &other->user_id_, rhs_arena
+  );
+}
+
+::PROTOBUF_NAMESPACE_ID::Metadata CloseTransportReq::GetMetadata() const {
+  return ::PROTOBUF_NAMESPACE_ID::internal::AssignDescriptors(
+      &descriptor_table_sfu_5frpc_2eproto_getter, &descriptor_table_sfu_5frpc_2eproto_once,
+      file_level_metadata_sfu_5frpc_2eproto[10]);
+}
+
+// ===================================================================
+
+class CloseTransportRsp::_Internal {
+ public:
+};
+
+CloseTransportRsp::CloseTransportRsp(::PROTOBUF_NAMESPACE_ID::Arena* arena,
+                         bool is_message_owned)
+  : ::PROTOBUF_NAMESPACE_ID::Message(arena, is_message_owned) {
+  SharedCtor();
+  if (!is_message_owned) {
+    RegisterArenaDtor(arena);
+  }
+  // @@protoc_insertion_point(arena_constructor:sfu_rpc.CloseTransportRsp)
+}
+CloseTransportRsp::CloseTransportRsp(const CloseTransportRsp& from)
+  : ::PROTOBUF_NAMESPACE_ID::Message() {
+  _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
+  success_ = from.success_;
+  // @@protoc_insertion_point(copy_constructor:sfu_rpc.CloseTransportRsp)
+}
+
+inline void CloseTransportRsp::SharedCtor() {
+success_ = false;
+}
+
+CloseTransportRsp::~CloseTransportRsp() {
+  // @@protoc_insertion_point(destructor:sfu_rpc.CloseTransportRsp)
+  if (GetArenaForAllocation() != nullptr) return;
+  SharedDtor();
+  _internal_metadata_.Delete<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
+}
+
+inline void CloseTransportRsp::SharedDtor() {
+  GOOGLE_DCHECK(GetArenaForAllocation() == nullptr);
+}
+
+void CloseTransportRsp::ArenaDtor(void* object) {
+  CloseTransportRsp* _this = reinterpret_cast< CloseTransportRsp* >(object);
+  (void)_this;
+}
+void CloseTransportRsp::RegisterArenaDtor(::PROTOBUF_NAMESPACE_ID::Arena*) {
+}
+void CloseTransportRsp::SetCachedSize(int size) const {
+  _cached_size_.Set(size);
+}
+
+void CloseTransportRsp::Clear() {
+// @@protoc_insertion_point(message_clear_start:sfu_rpc.CloseTransportRsp)
+  uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  success_ = false;
+  _internal_metadata_.Clear<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
+}
+
+const char* CloseTransportRsp::_InternalParse(const char* ptr, ::PROTOBUF_NAMESPACE_ID::internal::ParseContext* ctx) {
+#define CHK_(x) if (PROTOBUF_PREDICT_FALSE(!(x))) goto failure
+  while (!ctx->Done(&ptr)) {
+    uint32_t tag;
+    ptr = ::PROTOBUF_NAMESPACE_ID::internal::ReadTag(ptr, &tag);
+    switch (tag >> 3) {
+      // bool success = 1;
+      case 1:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 8)) {
+          success_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint64(&ptr);
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      default:
+        goto handle_unusual;
+    }  // switch
+  handle_unusual:
+    if ((tag == 0) || ((tag & 7) == 4)) {
+      CHK_(ptr);
+      ctx->SetLastTag(tag);
+      goto message_done;
+    }
+    ptr = UnknownFieldParse(
+        tag,
+        _internal_metadata_.mutable_unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(),
+        ptr, ctx);
+    CHK_(ptr != nullptr);
+  }  // while
+message_done:
+  return ptr;
+failure:
+  ptr = nullptr;
+  goto message_done;
+#undef CHK_
+}
+
+uint8_t* CloseTransportRsp::_InternalSerialize(
+    uint8_t* target, ::PROTOBUF_NAMESPACE_ID::io::EpsCopyOutputStream* stream) const {
+  // @@protoc_insertion_point(serialize_to_array_start:sfu_rpc.CloseTransportRsp)
+  uint32_t cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  // bool success = 1;
+  if (this->_internal_success() != 0) {
+    target = stream->EnsureSpace(target);
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::WriteBoolToArray(1, this->_internal_success(), target);
+  }
+
+  if (PROTOBUF_PREDICT_FALSE(_internal_metadata_.have_unknown_fields())) {
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormat::InternalSerializeUnknownFieldsToArray(
+        _internal_metadata_.unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(::PROTOBUF_NAMESPACE_ID::UnknownFieldSet::default_instance), target, stream);
+  }
+  // @@protoc_insertion_point(serialize_to_array_end:sfu_rpc.CloseTransportRsp)
+  return target;
+}
+
+size_t CloseTransportRsp::ByteSizeLong() const {
+// @@protoc_insertion_point(message_byte_size_start:sfu_rpc.CloseTransportRsp)
+  size_t total_size = 0;
+
+  uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  // bool success = 1;
+  if (this->_internal_success() != 0) {
+    total_size += 1 + 1;
+  }
+
+  return MaybeComputeUnknownFieldsSize(total_size, &_cached_size_);
+}
+
+const ::PROTOBUF_NAMESPACE_ID::Message::ClassData CloseTransportRsp::_class_data_ = {
+    ::PROTOBUF_NAMESPACE_ID::Message::CopyWithSizeCheck,
+    CloseTransportRsp::MergeImpl
+};
+const ::PROTOBUF_NAMESPACE_ID::Message::ClassData*CloseTransportRsp::GetClassData() const { return &_class_data_; }
+
+void CloseTransportRsp::MergeImpl(::PROTOBUF_NAMESPACE_ID::Message* to,
+                      const ::PROTOBUF_NAMESPACE_ID::Message& from) {
+  static_cast<CloseTransportRsp *>(to)->MergeFrom(
+      static_cast<const CloseTransportRsp &>(from));
+}
+
+
+void CloseTransportRsp::MergeFrom(const CloseTransportRsp& from) {
+// @@protoc_insertion_point(class_specific_merge_from_start:sfu_rpc.CloseTransportRsp)
+  GOOGLE_DCHECK_NE(&from, this);
+  uint32_t cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  if (from._internal_success() != 0) {
+    _internal_set_success(from._internal_success());
+  }
+  _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
+}
+
+void CloseTransportRsp::CopyFrom(const CloseTransportRsp& from) {
+// @@protoc_insertion_point(class_specific_copy_from_start:sfu_rpc.CloseTransportRsp)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+bool CloseTransportRsp::IsInitialized() const {
+  return true;
+}
+
+void CloseTransportRsp::InternalSwap(CloseTransportRsp* other) {
+  using std::swap;
+  _internal_metadata_.InternalSwap(&other->_internal_metadata_);
+  swap(success_, other->success_);
+}
+
+::PROTOBUF_NAMESPACE_ID::Metadata CloseTransportRsp::GetMetadata() const {
+  return ::PROTOBUF_NAMESPACE_ID::internal::AssignDescriptors(
+      &descriptor_table_sfu_5frpc_2eproto_getter, &descriptor_table_sfu_5frpc_2eproto_once,
+      file_level_metadata_sfu_5frpc_2eproto[11]);
+}
+
+// ===================================================================
+
+class AddSubscriberReq::_Internal {
+ public:
+};
+
+AddSubscriberReq::AddSubscriberReq(::PROTOBUF_NAMESPACE_ID::Arena* arena,
+                         bool is_message_owned)
+  : ::PROTOBUF_NAMESPACE_ID::Message(arena, is_message_owned) {
+  SharedCtor();
+  if (!is_message_owned) {
+    RegisterArenaDtor(arena);
+  }
+  // @@protoc_insertion_point(arena_constructor:sfu_rpc.AddSubscriberReq)
+}
+AddSubscriberReq::AddSubscriberReq(const AddSubscriberReq& from)
+  : ::PROTOBUF_NAMESPACE_ID::Message() {
+  _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
+  meeting_id_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  #ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+    meeting_id_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+  #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  if (!from._internal_meeting_id().empty()) {
+    meeting_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, from._internal_meeting_id(), 
+      GetArenaForAllocation());
+  }
+  user_id_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  #ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+    user_id_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+  #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  if (!from._internal_user_id().empty()) {
+    user_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, from._internal_user_id(), 
+      GetArenaForAllocation());
+  }
+  ::memcpy(&audio_ssrc_, &from.audio_ssrc_,
+    static_cast<size_t>(reinterpret_cast<char*>(&video_ssrc_) -
+    reinterpret_cast<char*>(&audio_ssrc_)) + sizeof(video_ssrc_));
+  // @@protoc_insertion_point(copy_constructor:sfu_rpc.AddSubscriberReq)
+}
+
+inline void AddSubscriberReq::SharedCtor() {
+meeting_id_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+#ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  meeting_id_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+#endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+user_id_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+#ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  user_id_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+#endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+::memset(reinterpret_cast<char*>(this) + static_cast<size_t>(
+    reinterpret_cast<char*>(&audio_ssrc_) - reinterpret_cast<char*>(this)),
+    0, static_cast<size_t>(reinterpret_cast<char*>(&video_ssrc_) -
+    reinterpret_cast<char*>(&audio_ssrc_)) + sizeof(video_ssrc_));
+}
+
+AddSubscriberReq::~AddSubscriberReq() {
+  // @@protoc_insertion_point(destructor:sfu_rpc.AddSubscriberReq)
+  if (GetArenaForAllocation() != nullptr) return;
+  SharedDtor();
+  _internal_metadata_.Delete<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
+}
+
+inline void AddSubscriberReq::SharedDtor() {
+  GOOGLE_DCHECK(GetArenaForAllocation() == nullptr);
+  meeting_id_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  user_id_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+}
+
+void AddSubscriberReq::ArenaDtor(void* object) {
+  AddSubscriberReq* _this = reinterpret_cast< AddSubscriberReq* >(object);
+  (void)_this;
+}
+void AddSubscriberReq::RegisterArenaDtor(::PROTOBUF_NAMESPACE_ID::Arena*) {
+}
+void AddSubscriberReq::SetCachedSize(int size) const {
+  _cached_size_.Set(size);
+}
+
+void AddSubscriberReq::Clear() {
+// @@protoc_insertion_point(message_clear_start:sfu_rpc.AddSubscriberReq)
+  uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  meeting_id_.ClearToEmpty();
+  user_id_.ClearToEmpty();
+  ::memset(&audio_ssrc_, 0, static_cast<size_t>(
+      reinterpret_cast<char*>(&video_ssrc_) -
+      reinterpret_cast<char*>(&audio_ssrc_)) + sizeof(video_ssrc_));
+  _internal_metadata_.Clear<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
+}
+
+const char* AddSubscriberReq::_InternalParse(const char* ptr, ::PROTOBUF_NAMESPACE_ID::internal::ParseContext* ctx) {
+#define CHK_(x) if (PROTOBUF_PREDICT_FALSE(!(x))) goto failure
+  while (!ctx->Done(&ptr)) {
+    uint32_t tag;
+    ptr = ::PROTOBUF_NAMESPACE_ID::internal::ReadTag(ptr, &tag);
+    switch (tag >> 3) {
+      // string meeting_id = 1;
+      case 1:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 10)) {
+          auto str = _internal_mutable_meeting_id();
+          ptr = ::PROTOBUF_NAMESPACE_ID::internal::InlineGreedyStringParser(str, ptr, ctx);
+          CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "sfu_rpc.AddSubscriberReq.meeting_id"));
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      // string user_id = 2;
+      case 2:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 18)) {
+          auto str = _internal_mutable_user_id();
+          ptr = ::PROTOBUF_NAMESPACE_ID::internal::InlineGreedyStringParser(str, ptr, ctx);
+          CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "sfu_rpc.AddSubscriberReq.user_id"));
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      // uint32 audio_ssrc = 3;
+      case 3:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 24)) {
+          audio_ssrc_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint32(&ptr);
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      // uint32 video_ssrc = 4;
+      case 4:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 32)) {
+          video_ssrc_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint32(&ptr);
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      default:
+        goto handle_unusual;
+    }  // switch
+  handle_unusual:
+    if ((tag == 0) || ((tag & 7) == 4)) {
+      CHK_(ptr);
+      ctx->SetLastTag(tag);
+      goto message_done;
+    }
+    ptr = UnknownFieldParse(
+        tag,
+        _internal_metadata_.mutable_unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(),
+        ptr, ctx);
+    CHK_(ptr != nullptr);
+  }  // while
+message_done:
+  return ptr;
+failure:
+  ptr = nullptr;
+  goto message_done;
+#undef CHK_
+}
+
+uint8_t* AddSubscriberReq::_InternalSerialize(
+    uint8_t* target, ::PROTOBUF_NAMESPACE_ID::io::EpsCopyOutputStream* stream) const {
+  // @@protoc_insertion_point(serialize_to_array_start:sfu_rpc.AddSubscriberReq)
+  uint32_t cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  // string meeting_id = 1;
+  if (!this->_internal_meeting_id().empty()) {
+    ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::VerifyUtf8String(
+      this->_internal_meeting_id().data(), static_cast<int>(this->_internal_meeting_id().length()),
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::SERIALIZE,
+      "sfu_rpc.AddSubscriberReq.meeting_id");
+    target = stream->WriteStringMaybeAliased(
+        1, this->_internal_meeting_id(), target);
+  }
+
+  // string user_id = 2;
+  if (!this->_internal_user_id().empty()) {
+    ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::VerifyUtf8String(
+      this->_internal_user_id().data(), static_cast<int>(this->_internal_user_id().length()),
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::SERIALIZE,
+      "sfu_rpc.AddSubscriberReq.user_id");
+    target = stream->WriteStringMaybeAliased(
+        2, this->_internal_user_id(), target);
+  }
+
+  // uint32 audio_ssrc = 3;
+  if (this->_internal_audio_ssrc() != 0) {
+    target = stream->EnsureSpace(target);
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::WriteUInt32ToArray(3, this->_internal_audio_ssrc(), target);
+  }
+
+  // uint32 video_ssrc = 4;
+  if (this->_internal_video_ssrc() != 0) {
+    target = stream->EnsureSpace(target);
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::WriteUInt32ToArray(4, this->_internal_video_ssrc(), target);
+  }
+
+  if (PROTOBUF_PREDICT_FALSE(_internal_metadata_.have_unknown_fields())) {
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormat::InternalSerializeUnknownFieldsToArray(
+        _internal_metadata_.unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(::PROTOBUF_NAMESPACE_ID::UnknownFieldSet::default_instance), target, stream);
+  }
+  // @@protoc_insertion_point(serialize_to_array_end:sfu_rpc.AddSubscriberReq)
+  return target;
+}
+
+size_t AddSubscriberReq::ByteSizeLong() const {
+// @@protoc_insertion_point(message_byte_size_start:sfu_rpc.AddSubscriberReq)
+  size_t total_size = 0;
+
+  uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  // string meeting_id = 1;
+  if (!this->_internal_meeting_id().empty()) {
+    total_size += 1 +
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::StringSize(
+        this->_internal_meeting_id());
+  }
+
+  // string user_id = 2;
+  if (!this->_internal_user_id().empty()) {
+    total_size += 1 +
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::StringSize(
+        this->_internal_user_id());
+  }
+
+  // uint32 audio_ssrc = 3;
+  if (this->_internal_audio_ssrc() != 0) {
+    total_size += ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::UInt32SizePlusOne(this->_internal_audio_ssrc());
+  }
+
+  // uint32 video_ssrc = 4;
+  if (this->_internal_video_ssrc() != 0) {
+    total_size += ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::UInt32SizePlusOne(this->_internal_video_ssrc());
+  }
+
+  return MaybeComputeUnknownFieldsSize(total_size, &_cached_size_);
+}
+
+const ::PROTOBUF_NAMESPACE_ID::Message::ClassData AddSubscriberReq::_class_data_ = {
+    ::PROTOBUF_NAMESPACE_ID::Message::CopyWithSizeCheck,
+    AddSubscriberReq::MergeImpl
+};
+const ::PROTOBUF_NAMESPACE_ID::Message::ClassData*AddSubscriberReq::GetClassData() const { return &_class_data_; }
+
+void AddSubscriberReq::MergeImpl(::PROTOBUF_NAMESPACE_ID::Message* to,
+                      const ::PROTOBUF_NAMESPACE_ID::Message& from) {
+  static_cast<AddSubscriberReq *>(to)->MergeFrom(
+      static_cast<const AddSubscriberReq &>(from));
+}
+
+
+void AddSubscriberReq::MergeFrom(const AddSubscriberReq& from) {
+// @@protoc_insertion_point(class_specific_merge_from_start:sfu_rpc.AddSubscriberReq)
+  GOOGLE_DCHECK_NE(&from, this);
+  uint32_t cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  if (!from._internal_meeting_id().empty()) {
+    _internal_set_meeting_id(from._internal_meeting_id());
+  }
+  if (!from._internal_user_id().empty()) {
+    _internal_set_user_id(from._internal_user_id());
+  }
+  if (from._internal_audio_ssrc() != 0) {
+    _internal_set_audio_ssrc(from._internal_audio_ssrc());
+  }
+  if (from._internal_video_ssrc() != 0) {
+    _internal_set_video_ssrc(from._internal_video_ssrc());
+  }
+  _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
+}
+
+void AddSubscriberReq::CopyFrom(const AddSubscriberReq& from) {
+// @@protoc_insertion_point(class_specific_copy_from_start:sfu_rpc.AddSubscriberReq)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+bool AddSubscriberReq::IsInitialized() const {
+  return true;
+}
+
+void AddSubscriberReq::InternalSwap(AddSubscriberReq* other) {
+  using std::swap;
+  auto* lhs_arena = GetArenaForAllocation();
+  auto* rhs_arena = other->GetArenaForAllocation();
+  _internal_metadata_.InternalSwap(&other->_internal_metadata_);
+  ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::InternalSwap(
+      &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
+      &meeting_id_, lhs_arena,
+      &other->meeting_id_, rhs_arena
+  );
+  ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::InternalSwap(
+      &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
+      &user_id_, lhs_arena,
+      &other->user_id_, rhs_arena
+  );
+  ::PROTOBUF_NAMESPACE_ID::internal::memswap<
+      PROTOBUF_FIELD_OFFSET(AddSubscriberReq, video_ssrc_)
+      + sizeof(AddSubscriberReq::video_ssrc_)
+      - PROTOBUF_FIELD_OFFSET(AddSubscriberReq, audio_ssrc_)>(
+          reinterpret_cast<char*>(&audio_ssrc_),
+          reinterpret_cast<char*>(&other->audio_ssrc_));
+}
+
+::PROTOBUF_NAMESPACE_ID::Metadata AddSubscriberReq::GetMetadata() const {
+  return ::PROTOBUF_NAMESPACE_ID::internal::AssignDescriptors(
+      &descriptor_table_sfu_5frpc_2eproto_getter, &descriptor_table_sfu_5frpc_2eproto_once,
+      file_level_metadata_sfu_5frpc_2eproto[12]);
+}
+
+// ===================================================================
+
+class AddSubscriberRsp::_Internal {
+ public:
+};
+
+AddSubscriberRsp::AddSubscriberRsp(::PROTOBUF_NAMESPACE_ID::Arena* arena,
+                         bool is_message_owned)
+  : ::PROTOBUF_NAMESPACE_ID::Message(arena, is_message_owned) {
+  SharedCtor();
+  if (!is_message_owned) {
+    RegisterArenaDtor(arena);
+  }
+  // @@protoc_insertion_point(arena_constructor:sfu_rpc.AddSubscriberRsp)
+}
+AddSubscriberRsp::AddSubscriberRsp(const AddSubscriberRsp& from)
+  : ::PROTOBUF_NAMESPACE_ID::Message() {
+  _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
+  success_ = from.success_;
+  // @@protoc_insertion_point(copy_constructor:sfu_rpc.AddSubscriberRsp)
+}
+
+inline void AddSubscriberRsp::SharedCtor() {
+success_ = false;
+}
+
+AddSubscriberRsp::~AddSubscriberRsp() {
+  // @@protoc_insertion_point(destructor:sfu_rpc.AddSubscriberRsp)
+  if (GetArenaForAllocation() != nullptr) return;
+  SharedDtor();
+  _internal_metadata_.Delete<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
+}
+
+inline void AddSubscriberRsp::SharedDtor() {
+  GOOGLE_DCHECK(GetArenaForAllocation() == nullptr);
+}
+
+void AddSubscriberRsp::ArenaDtor(void* object) {
+  AddSubscriberRsp* _this = reinterpret_cast< AddSubscriberRsp* >(object);
+  (void)_this;
+}
+void AddSubscriberRsp::RegisterArenaDtor(::PROTOBUF_NAMESPACE_ID::Arena*) {
+}
+void AddSubscriberRsp::SetCachedSize(int size) const {
+  _cached_size_.Set(size);
+}
+
+void AddSubscriberRsp::Clear() {
+// @@protoc_insertion_point(message_clear_start:sfu_rpc.AddSubscriberRsp)
+  uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  success_ = false;
+  _internal_metadata_.Clear<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
+}
+
+const char* AddSubscriberRsp::_InternalParse(const char* ptr, ::PROTOBUF_NAMESPACE_ID::internal::ParseContext* ctx) {
+#define CHK_(x) if (PROTOBUF_PREDICT_FALSE(!(x))) goto failure
+  while (!ctx->Done(&ptr)) {
+    uint32_t tag;
+    ptr = ::PROTOBUF_NAMESPACE_ID::internal::ReadTag(ptr, &tag);
+    switch (tag >> 3) {
+      // bool success = 1;
+      case 1:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 8)) {
+          success_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint64(&ptr);
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      default:
+        goto handle_unusual;
+    }  // switch
+  handle_unusual:
+    if ((tag == 0) || ((tag & 7) == 4)) {
+      CHK_(ptr);
+      ctx->SetLastTag(tag);
+      goto message_done;
+    }
+    ptr = UnknownFieldParse(
+        tag,
+        _internal_metadata_.mutable_unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(),
+        ptr, ctx);
+    CHK_(ptr != nullptr);
+  }  // while
+message_done:
+  return ptr;
+failure:
+  ptr = nullptr;
+  goto message_done;
+#undef CHK_
+}
+
+uint8_t* AddSubscriberRsp::_InternalSerialize(
+    uint8_t* target, ::PROTOBUF_NAMESPACE_ID::io::EpsCopyOutputStream* stream) const {
+  // @@protoc_insertion_point(serialize_to_array_start:sfu_rpc.AddSubscriberRsp)
+  uint32_t cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  // bool success = 1;
+  if (this->_internal_success() != 0) {
+    target = stream->EnsureSpace(target);
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::WriteBoolToArray(1, this->_internal_success(), target);
+  }
+
+  if (PROTOBUF_PREDICT_FALSE(_internal_metadata_.have_unknown_fields())) {
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormat::InternalSerializeUnknownFieldsToArray(
+        _internal_metadata_.unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(::PROTOBUF_NAMESPACE_ID::UnknownFieldSet::default_instance), target, stream);
+  }
+  // @@protoc_insertion_point(serialize_to_array_end:sfu_rpc.AddSubscriberRsp)
+  return target;
+}
+
+size_t AddSubscriberRsp::ByteSizeLong() const {
+// @@protoc_insertion_point(message_byte_size_start:sfu_rpc.AddSubscriberRsp)
+  size_t total_size = 0;
+
+  uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  // bool success = 1;
+  if (this->_internal_success() != 0) {
+    total_size += 1 + 1;
+  }
+
+  return MaybeComputeUnknownFieldsSize(total_size, &_cached_size_);
+}
+
+const ::PROTOBUF_NAMESPACE_ID::Message::ClassData AddSubscriberRsp::_class_data_ = {
+    ::PROTOBUF_NAMESPACE_ID::Message::CopyWithSizeCheck,
+    AddSubscriberRsp::MergeImpl
+};
+const ::PROTOBUF_NAMESPACE_ID::Message::ClassData*AddSubscriberRsp::GetClassData() const { return &_class_data_; }
+
+void AddSubscriberRsp::MergeImpl(::PROTOBUF_NAMESPACE_ID::Message* to,
+                      const ::PROTOBUF_NAMESPACE_ID::Message& from) {
+  static_cast<AddSubscriberRsp *>(to)->MergeFrom(
+      static_cast<const AddSubscriberRsp &>(from));
+}
+
+
+void AddSubscriberRsp::MergeFrom(const AddSubscriberRsp& from) {
+// @@protoc_insertion_point(class_specific_merge_from_start:sfu_rpc.AddSubscriberRsp)
+  GOOGLE_DCHECK_NE(&from, this);
+  uint32_t cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  if (from._internal_success() != 0) {
+    _internal_set_success(from._internal_success());
+  }
+  _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
+}
+
+void AddSubscriberRsp::CopyFrom(const AddSubscriberRsp& from) {
+// @@protoc_insertion_point(class_specific_copy_from_start:sfu_rpc.AddSubscriberRsp)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+bool AddSubscriberRsp::IsInitialized() const {
+  return true;
+}
+
+void AddSubscriberRsp::InternalSwap(AddSubscriberRsp* other) {
+  using std::swap;
+  _internal_metadata_.InternalSwap(&other->_internal_metadata_);
+  swap(success_, other->success_);
+}
+
+::PROTOBUF_NAMESPACE_ID::Metadata AddSubscriberRsp::GetMetadata() const {
+  return ::PROTOBUF_NAMESPACE_ID::internal::AssignDescriptors(
+      &descriptor_table_sfu_5frpc_2eproto_getter, &descriptor_table_sfu_5frpc_2eproto_once,
+      file_level_metadata_sfu_5frpc_2eproto[13]);
 }
 
 // ===================================================================
@@ -2031,7 +4701,7 @@ void RemovePublisherReq::InternalSwap(RemovePublisherReq* other) {
 ::PROTOBUF_NAMESPACE_ID::Metadata RemovePublisherReq::GetMetadata() const {
   return ::PROTOBUF_NAMESPACE_ID::internal::AssignDescriptors(
       &descriptor_table_sfu_5frpc_2eproto_getter, &descriptor_table_sfu_5frpc_2eproto_once,
-      file_level_metadata_sfu_5frpc_2eproto[6]);
+      file_level_metadata_sfu_5frpc_2eproto[14]);
 }
 
 // ===================================================================
@@ -2209,7 +4879,437 @@ void RemovePublisherRsp::InternalSwap(RemovePublisherRsp* other) {
 ::PROTOBUF_NAMESPACE_ID::Metadata RemovePublisherRsp::GetMetadata() const {
   return ::PROTOBUF_NAMESPACE_ID::internal::AssignDescriptors(
       &descriptor_table_sfu_5frpc_2eproto_getter, &descriptor_table_sfu_5frpc_2eproto_once,
-      file_level_metadata_sfu_5frpc_2eproto[7]);
+      file_level_metadata_sfu_5frpc_2eproto[15]);
+}
+
+// ===================================================================
+
+class RemoveSubscriberReq::_Internal {
+ public:
+};
+
+RemoveSubscriberReq::RemoveSubscriberReq(::PROTOBUF_NAMESPACE_ID::Arena* arena,
+                         bool is_message_owned)
+  : ::PROTOBUF_NAMESPACE_ID::Message(arena, is_message_owned) {
+  SharedCtor();
+  if (!is_message_owned) {
+    RegisterArenaDtor(arena);
+  }
+  // @@protoc_insertion_point(arena_constructor:sfu_rpc.RemoveSubscriberReq)
+}
+RemoveSubscriberReq::RemoveSubscriberReq(const RemoveSubscriberReq& from)
+  : ::PROTOBUF_NAMESPACE_ID::Message() {
+  _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
+  meeting_id_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  #ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+    meeting_id_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+  #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  if (!from._internal_meeting_id().empty()) {
+    meeting_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, from._internal_meeting_id(), 
+      GetArenaForAllocation());
+  }
+  user_id_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  #ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+    user_id_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+  #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  if (!from._internal_user_id().empty()) {
+    user_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, from._internal_user_id(), 
+      GetArenaForAllocation());
+  }
+  // @@protoc_insertion_point(copy_constructor:sfu_rpc.RemoveSubscriberReq)
+}
+
+inline void RemoveSubscriberReq::SharedCtor() {
+meeting_id_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+#ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  meeting_id_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+#endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+user_id_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+#ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  user_id_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+#endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+}
+
+RemoveSubscriberReq::~RemoveSubscriberReq() {
+  // @@protoc_insertion_point(destructor:sfu_rpc.RemoveSubscriberReq)
+  if (GetArenaForAllocation() != nullptr) return;
+  SharedDtor();
+  _internal_metadata_.Delete<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
+}
+
+inline void RemoveSubscriberReq::SharedDtor() {
+  GOOGLE_DCHECK(GetArenaForAllocation() == nullptr);
+  meeting_id_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  user_id_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+}
+
+void RemoveSubscriberReq::ArenaDtor(void* object) {
+  RemoveSubscriberReq* _this = reinterpret_cast< RemoveSubscriberReq* >(object);
+  (void)_this;
+}
+void RemoveSubscriberReq::RegisterArenaDtor(::PROTOBUF_NAMESPACE_ID::Arena*) {
+}
+void RemoveSubscriberReq::SetCachedSize(int size) const {
+  _cached_size_.Set(size);
+}
+
+void RemoveSubscriberReq::Clear() {
+// @@protoc_insertion_point(message_clear_start:sfu_rpc.RemoveSubscriberReq)
+  uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  meeting_id_.ClearToEmpty();
+  user_id_.ClearToEmpty();
+  _internal_metadata_.Clear<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
+}
+
+const char* RemoveSubscriberReq::_InternalParse(const char* ptr, ::PROTOBUF_NAMESPACE_ID::internal::ParseContext* ctx) {
+#define CHK_(x) if (PROTOBUF_PREDICT_FALSE(!(x))) goto failure
+  while (!ctx->Done(&ptr)) {
+    uint32_t tag;
+    ptr = ::PROTOBUF_NAMESPACE_ID::internal::ReadTag(ptr, &tag);
+    switch (tag >> 3) {
+      // string meeting_id = 1;
+      case 1:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 10)) {
+          auto str = _internal_mutable_meeting_id();
+          ptr = ::PROTOBUF_NAMESPACE_ID::internal::InlineGreedyStringParser(str, ptr, ctx);
+          CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "sfu_rpc.RemoveSubscriberReq.meeting_id"));
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      // string user_id = 2;
+      case 2:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 18)) {
+          auto str = _internal_mutable_user_id();
+          ptr = ::PROTOBUF_NAMESPACE_ID::internal::InlineGreedyStringParser(str, ptr, ctx);
+          CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "sfu_rpc.RemoveSubscriberReq.user_id"));
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      default:
+        goto handle_unusual;
+    }  // switch
+  handle_unusual:
+    if ((tag == 0) || ((tag & 7) == 4)) {
+      CHK_(ptr);
+      ctx->SetLastTag(tag);
+      goto message_done;
+    }
+    ptr = UnknownFieldParse(
+        tag,
+        _internal_metadata_.mutable_unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(),
+        ptr, ctx);
+    CHK_(ptr != nullptr);
+  }  // while
+message_done:
+  return ptr;
+failure:
+  ptr = nullptr;
+  goto message_done;
+#undef CHK_
+}
+
+uint8_t* RemoveSubscriberReq::_InternalSerialize(
+    uint8_t* target, ::PROTOBUF_NAMESPACE_ID::io::EpsCopyOutputStream* stream) const {
+  // @@protoc_insertion_point(serialize_to_array_start:sfu_rpc.RemoveSubscriberReq)
+  uint32_t cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  // string meeting_id = 1;
+  if (!this->_internal_meeting_id().empty()) {
+    ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::VerifyUtf8String(
+      this->_internal_meeting_id().data(), static_cast<int>(this->_internal_meeting_id().length()),
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::SERIALIZE,
+      "sfu_rpc.RemoveSubscriberReq.meeting_id");
+    target = stream->WriteStringMaybeAliased(
+        1, this->_internal_meeting_id(), target);
+  }
+
+  // string user_id = 2;
+  if (!this->_internal_user_id().empty()) {
+    ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::VerifyUtf8String(
+      this->_internal_user_id().data(), static_cast<int>(this->_internal_user_id().length()),
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::SERIALIZE,
+      "sfu_rpc.RemoveSubscriberReq.user_id");
+    target = stream->WriteStringMaybeAliased(
+        2, this->_internal_user_id(), target);
+  }
+
+  if (PROTOBUF_PREDICT_FALSE(_internal_metadata_.have_unknown_fields())) {
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormat::InternalSerializeUnknownFieldsToArray(
+        _internal_metadata_.unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(::PROTOBUF_NAMESPACE_ID::UnknownFieldSet::default_instance), target, stream);
+  }
+  // @@protoc_insertion_point(serialize_to_array_end:sfu_rpc.RemoveSubscriberReq)
+  return target;
+}
+
+size_t RemoveSubscriberReq::ByteSizeLong() const {
+// @@protoc_insertion_point(message_byte_size_start:sfu_rpc.RemoveSubscriberReq)
+  size_t total_size = 0;
+
+  uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  // string meeting_id = 1;
+  if (!this->_internal_meeting_id().empty()) {
+    total_size += 1 +
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::StringSize(
+        this->_internal_meeting_id());
+  }
+
+  // string user_id = 2;
+  if (!this->_internal_user_id().empty()) {
+    total_size += 1 +
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::StringSize(
+        this->_internal_user_id());
+  }
+
+  return MaybeComputeUnknownFieldsSize(total_size, &_cached_size_);
+}
+
+const ::PROTOBUF_NAMESPACE_ID::Message::ClassData RemoveSubscriberReq::_class_data_ = {
+    ::PROTOBUF_NAMESPACE_ID::Message::CopyWithSizeCheck,
+    RemoveSubscriberReq::MergeImpl
+};
+const ::PROTOBUF_NAMESPACE_ID::Message::ClassData*RemoveSubscriberReq::GetClassData() const { return &_class_data_; }
+
+void RemoveSubscriberReq::MergeImpl(::PROTOBUF_NAMESPACE_ID::Message* to,
+                      const ::PROTOBUF_NAMESPACE_ID::Message& from) {
+  static_cast<RemoveSubscriberReq *>(to)->MergeFrom(
+      static_cast<const RemoveSubscriberReq &>(from));
+}
+
+
+void RemoveSubscriberReq::MergeFrom(const RemoveSubscriberReq& from) {
+// @@protoc_insertion_point(class_specific_merge_from_start:sfu_rpc.RemoveSubscriberReq)
+  GOOGLE_DCHECK_NE(&from, this);
+  uint32_t cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  if (!from._internal_meeting_id().empty()) {
+    _internal_set_meeting_id(from._internal_meeting_id());
+  }
+  if (!from._internal_user_id().empty()) {
+    _internal_set_user_id(from._internal_user_id());
+  }
+  _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
+}
+
+void RemoveSubscriberReq::CopyFrom(const RemoveSubscriberReq& from) {
+// @@protoc_insertion_point(class_specific_copy_from_start:sfu_rpc.RemoveSubscriberReq)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+bool RemoveSubscriberReq::IsInitialized() const {
+  return true;
+}
+
+void RemoveSubscriberReq::InternalSwap(RemoveSubscriberReq* other) {
+  using std::swap;
+  auto* lhs_arena = GetArenaForAllocation();
+  auto* rhs_arena = other->GetArenaForAllocation();
+  _internal_metadata_.InternalSwap(&other->_internal_metadata_);
+  ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::InternalSwap(
+      &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
+      &meeting_id_, lhs_arena,
+      &other->meeting_id_, rhs_arena
+  );
+  ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::InternalSwap(
+      &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
+      &user_id_, lhs_arena,
+      &other->user_id_, rhs_arena
+  );
+}
+
+::PROTOBUF_NAMESPACE_ID::Metadata RemoveSubscriberReq::GetMetadata() const {
+  return ::PROTOBUF_NAMESPACE_ID::internal::AssignDescriptors(
+      &descriptor_table_sfu_5frpc_2eproto_getter, &descriptor_table_sfu_5frpc_2eproto_once,
+      file_level_metadata_sfu_5frpc_2eproto[16]);
+}
+
+// ===================================================================
+
+class RemoveSubscriberRsp::_Internal {
+ public:
+};
+
+RemoveSubscriberRsp::RemoveSubscriberRsp(::PROTOBUF_NAMESPACE_ID::Arena* arena,
+                         bool is_message_owned)
+  : ::PROTOBUF_NAMESPACE_ID::Message(arena, is_message_owned) {
+  SharedCtor();
+  if (!is_message_owned) {
+    RegisterArenaDtor(arena);
+  }
+  // @@protoc_insertion_point(arena_constructor:sfu_rpc.RemoveSubscriberRsp)
+}
+RemoveSubscriberRsp::RemoveSubscriberRsp(const RemoveSubscriberRsp& from)
+  : ::PROTOBUF_NAMESPACE_ID::Message() {
+  _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
+  success_ = from.success_;
+  // @@protoc_insertion_point(copy_constructor:sfu_rpc.RemoveSubscriberRsp)
+}
+
+inline void RemoveSubscriberRsp::SharedCtor() {
+success_ = false;
+}
+
+RemoveSubscriberRsp::~RemoveSubscriberRsp() {
+  // @@protoc_insertion_point(destructor:sfu_rpc.RemoveSubscriberRsp)
+  if (GetArenaForAllocation() != nullptr) return;
+  SharedDtor();
+  _internal_metadata_.Delete<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
+}
+
+inline void RemoveSubscriberRsp::SharedDtor() {
+  GOOGLE_DCHECK(GetArenaForAllocation() == nullptr);
+}
+
+void RemoveSubscriberRsp::ArenaDtor(void* object) {
+  RemoveSubscriberRsp* _this = reinterpret_cast< RemoveSubscriberRsp* >(object);
+  (void)_this;
+}
+void RemoveSubscriberRsp::RegisterArenaDtor(::PROTOBUF_NAMESPACE_ID::Arena*) {
+}
+void RemoveSubscriberRsp::SetCachedSize(int size) const {
+  _cached_size_.Set(size);
+}
+
+void RemoveSubscriberRsp::Clear() {
+// @@protoc_insertion_point(message_clear_start:sfu_rpc.RemoveSubscriberRsp)
+  uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  success_ = false;
+  _internal_metadata_.Clear<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
+}
+
+const char* RemoveSubscriberRsp::_InternalParse(const char* ptr, ::PROTOBUF_NAMESPACE_ID::internal::ParseContext* ctx) {
+#define CHK_(x) if (PROTOBUF_PREDICT_FALSE(!(x))) goto failure
+  while (!ctx->Done(&ptr)) {
+    uint32_t tag;
+    ptr = ::PROTOBUF_NAMESPACE_ID::internal::ReadTag(ptr, &tag);
+    switch (tag >> 3) {
+      // bool success = 1;
+      case 1:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 8)) {
+          success_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint64(&ptr);
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      default:
+        goto handle_unusual;
+    }  // switch
+  handle_unusual:
+    if ((tag == 0) || ((tag & 7) == 4)) {
+      CHK_(ptr);
+      ctx->SetLastTag(tag);
+      goto message_done;
+    }
+    ptr = UnknownFieldParse(
+        tag,
+        _internal_metadata_.mutable_unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(),
+        ptr, ctx);
+    CHK_(ptr != nullptr);
+  }  // while
+message_done:
+  return ptr;
+failure:
+  ptr = nullptr;
+  goto message_done;
+#undef CHK_
+}
+
+uint8_t* RemoveSubscriberRsp::_InternalSerialize(
+    uint8_t* target, ::PROTOBUF_NAMESPACE_ID::io::EpsCopyOutputStream* stream) const {
+  // @@protoc_insertion_point(serialize_to_array_start:sfu_rpc.RemoveSubscriberRsp)
+  uint32_t cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  // bool success = 1;
+  if (this->_internal_success() != 0) {
+    target = stream->EnsureSpace(target);
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::WriteBoolToArray(1, this->_internal_success(), target);
+  }
+
+  if (PROTOBUF_PREDICT_FALSE(_internal_metadata_.have_unknown_fields())) {
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormat::InternalSerializeUnknownFieldsToArray(
+        _internal_metadata_.unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(::PROTOBUF_NAMESPACE_ID::UnknownFieldSet::default_instance), target, stream);
+  }
+  // @@protoc_insertion_point(serialize_to_array_end:sfu_rpc.RemoveSubscriberRsp)
+  return target;
+}
+
+size_t RemoveSubscriberRsp::ByteSizeLong() const {
+// @@protoc_insertion_point(message_byte_size_start:sfu_rpc.RemoveSubscriberRsp)
+  size_t total_size = 0;
+
+  uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  // bool success = 1;
+  if (this->_internal_success() != 0) {
+    total_size += 1 + 1;
+  }
+
+  return MaybeComputeUnknownFieldsSize(total_size, &_cached_size_);
+}
+
+const ::PROTOBUF_NAMESPACE_ID::Message::ClassData RemoveSubscriberRsp::_class_data_ = {
+    ::PROTOBUF_NAMESPACE_ID::Message::CopyWithSizeCheck,
+    RemoveSubscriberRsp::MergeImpl
+};
+const ::PROTOBUF_NAMESPACE_ID::Message::ClassData*RemoveSubscriberRsp::GetClassData() const { return &_class_data_; }
+
+void RemoveSubscriberRsp::MergeImpl(::PROTOBUF_NAMESPACE_ID::Message* to,
+                      const ::PROTOBUF_NAMESPACE_ID::Message& from) {
+  static_cast<RemoveSubscriberRsp *>(to)->MergeFrom(
+      static_cast<const RemoveSubscriberRsp &>(from));
+}
+
+
+void RemoveSubscriberRsp::MergeFrom(const RemoveSubscriberRsp& from) {
+// @@protoc_insertion_point(class_specific_merge_from_start:sfu_rpc.RemoveSubscriberRsp)
+  GOOGLE_DCHECK_NE(&from, this);
+  uint32_t cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  if (from._internal_success() != 0) {
+    _internal_set_success(from._internal_success());
+  }
+  _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
+}
+
+void RemoveSubscriberRsp::CopyFrom(const RemoveSubscriberRsp& from) {
+// @@protoc_insertion_point(class_specific_copy_from_start:sfu_rpc.RemoveSubscriberRsp)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+bool RemoveSubscriberRsp::IsInitialized() const {
+  return true;
+}
+
+void RemoveSubscriberRsp::InternalSwap(RemoveSubscriberRsp* other) {
+  using std::swap;
+  _internal_metadata_.InternalSwap(&other->_internal_metadata_);
+  swap(success_, other->success_);
+}
+
+::PROTOBUF_NAMESPACE_ID::Metadata RemoveSubscriberRsp::GetMetadata() const {
+  return ::PROTOBUF_NAMESPACE_ID::internal::AssignDescriptors(
+      &descriptor_table_sfu_5frpc_2eproto_getter, &descriptor_table_sfu_5frpc_2eproto_once,
+      file_level_metadata_sfu_5frpc_2eproto[17]);
 }
 
 // ===================================================================
@@ -2387,7 +5487,7 @@ void GetNodeStatusReq::InternalSwap(GetNodeStatusReq* other) {
 ::PROTOBUF_NAMESPACE_ID::Metadata GetNodeStatusReq::GetMetadata() const {
   return ::PROTOBUF_NAMESPACE_ID::internal::AssignDescriptors(
       &descriptor_table_sfu_5frpc_2eproto_getter, &descriptor_table_sfu_5frpc_2eproto_once,
-      file_level_metadata_sfu_5frpc_2eproto[8]);
+      file_level_metadata_sfu_5frpc_2eproto[18]);
 }
 
 // ===================================================================
@@ -2716,7 +5816,7 @@ void GetNodeStatusRsp::InternalSwap(GetNodeStatusRsp* other) {
 ::PROTOBUF_NAMESPACE_ID::Metadata GetNodeStatusRsp::GetMetadata() const {
   return ::PROTOBUF_NAMESPACE_ID::internal::AssignDescriptors(
       &descriptor_table_sfu_5frpc_2eproto_getter, &descriptor_table_sfu_5frpc_2eproto_once,
-      file_level_metadata_sfu_5frpc_2eproto[9]);
+      file_level_metadata_sfu_5frpc_2eproto[19]);
 }
 
 // ===================================================================
@@ -3143,7 +6243,7 @@ void ReportNodeStatusReq::InternalSwap(ReportNodeStatusReq* other) {
 ::PROTOBUF_NAMESPACE_ID::Metadata ReportNodeStatusReq::GetMetadata() const {
   return ::PROTOBUF_NAMESPACE_ID::internal::AssignDescriptors(
       &descriptor_table_sfu_5frpc_2eproto_getter, &descriptor_table_sfu_5frpc_2eproto_once,
-      file_level_metadata_sfu_5frpc_2eproto[10]);
+      file_level_metadata_sfu_5frpc_2eproto[20]);
 }
 
 // ===================================================================
@@ -3321,7 +6421,7 @@ void ReportNodeStatusRsp::InternalSwap(ReportNodeStatusRsp* other) {
 ::PROTOBUF_NAMESPACE_ID::Metadata ReportNodeStatusRsp::GetMetadata() const {
   return ::PROTOBUF_NAMESPACE_ID::internal::AssignDescriptors(
       &descriptor_table_sfu_5frpc_2eproto_getter, &descriptor_table_sfu_5frpc_2eproto_once,
-      file_level_metadata_sfu_5frpc_2eproto[11]);
+      file_level_metadata_sfu_5frpc_2eproto[21]);
 }
 
 // ===================================================================
@@ -3689,7 +6789,7 @@ void QualityReport::InternalSwap(QualityReport* other) {
 ::PROTOBUF_NAMESPACE_ID::Metadata QualityReport::GetMetadata() const {
   return ::PROTOBUF_NAMESPACE_ID::internal::AssignDescriptors(
       &descriptor_table_sfu_5frpc_2eproto_getter, &descriptor_table_sfu_5frpc_2eproto_once,
-      file_level_metadata_sfu_5frpc_2eproto[12]);
+      file_level_metadata_sfu_5frpc_2eproto[22]);
 }
 
 // ===================================================================
@@ -3941,7 +7041,7 @@ void KeyframeRequest::InternalSwap(KeyframeRequest* other) {
 ::PROTOBUF_NAMESPACE_ID::Metadata KeyframeRequest::GetMetadata() const {
   return ::PROTOBUF_NAMESPACE_ID::internal::AssignDescriptors(
       &descriptor_table_sfu_5frpc_2eproto_getter, &descriptor_table_sfu_5frpc_2eproto_once,
-      file_level_metadata_sfu_5frpc_2eproto[13]);
+      file_level_metadata_sfu_5frpc_2eproto[23]);
 }
 
 // @@protoc_insertion_point(namespace_scope)
@@ -3965,11 +7065,41 @@ template<> PROTOBUF_NOINLINE ::sfu_rpc::AddPublisherReq* Arena::CreateMaybeMessa
 template<> PROTOBUF_NOINLINE ::sfu_rpc::AddPublisherRsp* Arena::CreateMaybeMessage< ::sfu_rpc::AddPublisherRsp >(Arena* arena) {
   return Arena::CreateMessageInternal< ::sfu_rpc::AddPublisherRsp >(arena);
 }
+template<> PROTOBUF_NOINLINE ::sfu_rpc::SetupTransportReq* Arena::CreateMaybeMessage< ::sfu_rpc::SetupTransportReq >(Arena* arena) {
+  return Arena::CreateMessageInternal< ::sfu_rpc::SetupTransportReq >(arena);
+}
+template<> PROTOBUF_NOINLINE ::sfu_rpc::SetupTransportRsp* Arena::CreateMaybeMessage< ::sfu_rpc::SetupTransportRsp >(Arena* arena) {
+  return Arena::CreateMessageInternal< ::sfu_rpc::SetupTransportRsp >(arena);
+}
+template<> PROTOBUF_NOINLINE ::sfu_rpc::TrickleIceCandidateReq* Arena::CreateMaybeMessage< ::sfu_rpc::TrickleIceCandidateReq >(Arena* arena) {
+  return Arena::CreateMessageInternal< ::sfu_rpc::TrickleIceCandidateReq >(arena);
+}
+template<> PROTOBUF_NOINLINE ::sfu_rpc::TrickleIceCandidateRsp* Arena::CreateMaybeMessage< ::sfu_rpc::TrickleIceCandidateRsp >(Arena* arena) {
+  return Arena::CreateMessageInternal< ::sfu_rpc::TrickleIceCandidateRsp >(arena);
+}
+template<> PROTOBUF_NOINLINE ::sfu_rpc::CloseTransportReq* Arena::CreateMaybeMessage< ::sfu_rpc::CloseTransportReq >(Arena* arena) {
+  return Arena::CreateMessageInternal< ::sfu_rpc::CloseTransportReq >(arena);
+}
+template<> PROTOBUF_NOINLINE ::sfu_rpc::CloseTransportRsp* Arena::CreateMaybeMessage< ::sfu_rpc::CloseTransportRsp >(Arena* arena) {
+  return Arena::CreateMessageInternal< ::sfu_rpc::CloseTransportRsp >(arena);
+}
+template<> PROTOBUF_NOINLINE ::sfu_rpc::AddSubscriberReq* Arena::CreateMaybeMessage< ::sfu_rpc::AddSubscriberReq >(Arena* arena) {
+  return Arena::CreateMessageInternal< ::sfu_rpc::AddSubscriberReq >(arena);
+}
+template<> PROTOBUF_NOINLINE ::sfu_rpc::AddSubscriberRsp* Arena::CreateMaybeMessage< ::sfu_rpc::AddSubscriberRsp >(Arena* arena) {
+  return Arena::CreateMessageInternal< ::sfu_rpc::AddSubscriberRsp >(arena);
+}
 template<> PROTOBUF_NOINLINE ::sfu_rpc::RemovePublisherReq* Arena::CreateMaybeMessage< ::sfu_rpc::RemovePublisherReq >(Arena* arena) {
   return Arena::CreateMessageInternal< ::sfu_rpc::RemovePublisherReq >(arena);
 }
 template<> PROTOBUF_NOINLINE ::sfu_rpc::RemovePublisherRsp* Arena::CreateMaybeMessage< ::sfu_rpc::RemovePublisherRsp >(Arena* arena) {
   return Arena::CreateMessageInternal< ::sfu_rpc::RemovePublisherRsp >(arena);
+}
+template<> PROTOBUF_NOINLINE ::sfu_rpc::RemoveSubscriberReq* Arena::CreateMaybeMessage< ::sfu_rpc::RemoveSubscriberReq >(Arena* arena) {
+  return Arena::CreateMessageInternal< ::sfu_rpc::RemoveSubscriberReq >(arena);
+}
+template<> PROTOBUF_NOINLINE ::sfu_rpc::RemoveSubscriberRsp* Arena::CreateMaybeMessage< ::sfu_rpc::RemoveSubscriberRsp >(Arena* arena) {
+  return Arena::CreateMessageInternal< ::sfu_rpc::RemoveSubscriberRsp >(arena);
 }
 template<> PROTOBUF_NOINLINE ::sfu_rpc::GetNodeStatusReq* Arena::CreateMaybeMessage< ::sfu_rpc::GetNodeStatusReq >(Arena* arena) {
   return Arena::CreateMessageInternal< ::sfu_rpc::GetNodeStatusReq >(arena);

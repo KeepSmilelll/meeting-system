@@ -1,0 +1,19 @@
+# ninja log v6
+26	76	7985911875293480	CMakeFiles/srtp2.dir/crypto/hash/auth_test_cases.c.obj	a3306da0afb401ea
+15	77	7985911875183126	CMakeFiles/srtp2.dir/crypto/cipher/cipher_test_cases.c.obj	fe0e53cc2b49051b
+29	266	7985911875323588	CMakeFiles/srtp2.dir/crypto/hash/null_auth.c.obj	d26612740f2ab942
+35	270	7985911875378796	CMakeFiles/srtp2.dir/crypto/kernel/alloc.c.obj	aa130846a63b435b
+17	271	7985911875203196	CMakeFiles/srtp2.dir/crypto/cipher/null_cipher.c.obj	920185e9dc3cdc5d
+24	275	7985911875273408	CMakeFiles/srtp2.dir/crypto/hash/auth.c.obj	b500a187f1b85c07
+40	279	7985911875428951	CMakeFiles/srtp2.dir/crypto/kernel/err.c.obj	ef5c7b054016e045
+50	285	7985911875529288	CMakeFiles/srtp2.dir/crypto/replay/rdbx.c.obj	f6753af262f3ad4c
+37	292	7985911875398834	CMakeFiles/srtp2.dir/crypto/kernel/crypto_kernel.c.obj	bdeaba556650dc2a
+48	292	7985911875509224	CMakeFiles/srtp2.dir/crypto/replay/rdb.c.obj	bf5688f33505b1b4
+22	294	7985911875253340	CMakeFiles/srtp2.dir/crypto/cipher/aes_gcm_ossl.c.obj	c47bc1fccec5387b
+32	295	7985911875353690	CMakeFiles/srtp2.dir/crypto/hash/hmac_ossl.c.obj	b0210e8d54eb6b2e
+19	295	7985911875223269	CMakeFiles/srtp2.dir/crypto/cipher/aes_icm_ossl.c.obj	4d6f69a6e55f501c
+45	299	7985911875479111	CMakeFiles/srtp2.dir/crypto/math/datatypes.c.obj	bfee4d1da832b754
+43	312	7985911875459046	CMakeFiles/srtp2.dir/crypto/kernel/key.c.obj	34fc86d1fa0d94de
+13	333	7985911875163057	CMakeFiles/srtp2.dir/crypto/cipher/cipher.c.obj	4ade085283b9f38
+10	363	7985911875132951	CMakeFiles/srtp2.dir/srtp/srtp.c.obj	e30a98feb20f1eb6
+363	387	7985911878664999	srtp2.lib	4551ef1f02d69319

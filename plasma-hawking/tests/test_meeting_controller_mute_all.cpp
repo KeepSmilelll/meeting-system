@@ -3,6 +3,7 @@
 #include <string>
 
 #include <QByteArray>
+#include <QAbstractItemModel>
 #include <QCoreApplication>
 #include <QDebug>
 #include <QElapsedTimer>
@@ -13,7 +14,6 @@
 #include <QStringList>
 
 #include "app/MeetingController.h"
-#include "app/MediaSessionManager.h"
 #include "av/render/VideoFrameStore.h"
 #include "net/signaling/SignalingClient.h"
 #include "signaling.pb.h"
@@ -22,7 +22,6 @@ namespace {
 
 constexpr quint16 kMeetMuteAll = 0x0209;
 constexpr quint16 kMeetStateSync = 0x020B;
-constexpr quint16 kMediaOffer = 0x0301;
 constexpr quint16 kMediaRouteStatusNotify = 0x0306;
 
 bool emitProtoMessage(signaling::SignalingClient* signalingClient, quint16 signalType, const google::protobuf::MessageLite& message) {
@@ -51,6 +50,75 @@ bool containsAnyMessage(const QStringList& messages, std::initializer_list<QStri
     return false;
 }
 
+int roleForName(const QAbstractItemModel* model, const QByteArray& roleName) {
+    assert(model != nullptr);
+    const auto roles = model->roleNames();
+    for (auto it = roles.constBegin(); it != roles.constEnd(); ++it) {
+        if (it.value() == roleName) {
+            return it.key();
+        }
+    }
+    return -1;
+}
+
+QVariant participantData(const QAbstractItemModel* model, const QString& userId, const QByteArray& roleName) {
+    assert(model != nullptr);
+    const int userIdRole = roleForName(model, QByteArrayLiteral("userId"));
+    const int targetRole = roleForName(model, roleName);
+    assert(userIdRole >= 0);
+    assert(targetRole >= 0);
+
+    for (int row = 0; row < model->rowCount(); ++row) {
+        const QModelIndex index = model->index(row, 0);
+        if (model->data(index, userIdRole).toString() == userId) {
+            return model->data(index, targetRole);
+        }
+    }
+    return {};
+}
+
+quint32 routeRewriteSsrc(const QString& meetingId,
+                        const QString& subscriberUserId,
+                        quint32 sourceSsrc,
+                        bool video) {
+    if (sourceSsrc == 0U) {
+        return 0U;
+    }
+
+    const QByteArray key = QStringLiteral("%1|%2|%3|%4")
+                               .arg(meetingId, subscriberUserId, video ? QStringLiteral("video") : QStringLiteral("audio"))
+                               .arg(sourceSsrc)
+                               .toUtf8();
+    quint32 hash = 2166136261U;
+    for (const char ch : key) {
+        hash ^= static_cast<quint32>(static_cast<unsigned char>(ch));
+        hash *= 16777619U;
+    }
+    hash &= 0x7FFFFFFFU;
+    if (hash == 0U || hash == sourceSsrc) {
+        hash ^= 0x5A5A5A5AU;
+    }
+    return hash == 0U ? 0x13572468U : hash;
+}
+
+quint32 expectedMappedVideoSsrc(const QString& meetingId,
+                                const QString& subscriberUserId,
+                                quint32 assignedVideoSsrc,
+                                quint32 sourceVideoSsrc,
+                                bool multiPublisher) {
+    if (!multiPublisher) {
+        return assignedVideoSsrc != 0U ? assignedVideoSsrc : sourceVideoSsrc;
+    }
+
+    quint32 mapped = routeRewriteSsrc(meetingId, subscriberUserId, sourceVideoSsrc, true);
+    if (mapped == assignedVideoSsrc || mapped == sourceVideoSsrc) {
+        mapped ^= 0x01010101U;
+    }
+    if (mapped == 0U) {
+        mapped = sourceVideoSsrc ^ 0x01010101U;
+    }
+    return mapped;
+}
 
 av::codec::DecodedVideoFrame makeTestFrame() {
     av::codec::DecodedVideoFrame frame;
@@ -122,6 +190,17 @@ int main(int argc, char* argv[]) {
     assert(controller.activeAudioPeerUserId().isEmpty());
     assert(!controller.hasActiveShare());
 
+    assert(QMetaObject::invokeMethod(signalingClient,
+                                     "mediaTransportAnswerReceived",
+                                     Qt::DirectConnection,
+                                     Q_ARG(QString, QStringLiteral("m-mute")),
+                                     Q_ARG(QString, QStringLiteral("serverUfrag")),
+                                     Q_ARG(QString, QStringLiteral("serverPwd")),
+                                     Q_ARG(QString, QStringLiteral("AA:BB")),
+                                     Q_ARG(QStringList, QStringList{QStringLiteral("candidate:1 1 udp 2130706431 127.0.0.1 5004 typ host")}),
+                                     Q_ARG(quint32, 7777U),
+                                     Q_ARG(quint32, 8888U)));
+
     infoMessages.clear();
     meeting::AuthKickNotify routeSwitching;
     routeSwitching.set_reason(R"({"stage":"switching","message":"Switching SFU media route"})");
@@ -164,6 +243,17 @@ int main(int argc, char* argv[]) {
     remoteSharerA->set_is_audio_on(true);
     remoteSharerA->set_is_video_on(true);
     remoteSharerA->set_is_sharing(true);
+    remoteSharerA->set_audio_ssrc(1111);
+    remoteSharerA->set_video_ssrc(2222);
+
+    assert(emitProtoMessage(signalingClient, kMeetStateSync, stateSync));
+    assert(participantData(controller.participantModel(), QStringLiteral("u1002"), QByteArrayLiteral("audioSsrc")).toUInt() == 1111U);
+    assert(participantData(controller.participantModel(), QStringLiteral("u1002"), QByteArrayLiteral("videoSsrc")).toUInt() == 2222U);
+    assert(controller.remoteVideoSsrcForUser(QStringLiteral("u1002")) == 8888U);
+    assert(controller.activeAudioPeerUserId() == QStringLiteral("u1002"));
+    assert(controller.hasActiveShare());
+    assert(controller.activeShareUserId() == QStringLiteral("u1002"));
+    assert(controller.activeShareDisplayName() == QStringLiteral("sharer-a"));
 
     auto* remoteSharerB = stateSync.add_participants();
     remoteSharerB->set_user_id("u1003");
@@ -172,8 +262,19 @@ int main(int argc, char* argv[]) {
     remoteSharerB->set_is_audio_on(true);
     remoteSharerB->set_is_video_on(true);
     remoteSharerB->set_is_sharing(true);
+    remoteSharerB->set_audio_ssrc(3333);
+    remoteSharerB->set_video_ssrc(4444);
 
     assert(emitProtoMessage(signalingClient, kMeetStateSync, stateSync));
+    assert(participantData(controller.participantModel(), QStringLiteral("u1002"), QByteArrayLiteral("audioSsrc")).toUInt() == 1111U);
+    assert(participantData(controller.participantModel(), QStringLiteral("u1002"), QByteArrayLiteral("videoSsrc")).toUInt() == 2222U);
+    assert(participantData(controller.participantModel(), QStringLiteral("u1003"), QByteArrayLiteral("audioSsrc")).toUInt() == 3333U);
+    assert(participantData(controller.participantModel(), QStringLiteral("u1003"), QByteArrayLiteral("videoSsrc")).toUInt() == 4444U);
+    assert(controller.remoteVideoSsrcForUser(QStringLiteral("u1002")) ==
+           expectedMappedVideoSsrc(QStringLiteral("m-mute"), QStringLiteral("u1001"), 8888U, 2222U, true));
+    assert(controller.remoteVideoSsrcForUser(QStringLiteral("u1003")) ==
+           expectedMappedVideoSsrc(QStringLiteral("m-mute"), QStringLiteral("u1001"), 8888U, 4444U, true));
+    assert(controller.remoteVideoSsrcForUser(QStringLiteral("u1002")) != controller.remoteVideoSsrcForUser(QStringLiteral("u1003")));
     assert(controller.activeAudioPeerUserId() == QStringLiteral("u1002"));
     assert(controller.hasActiveShare());
     assert(controller.activeShareUserId() == QStringLiteral("u1002"));
@@ -184,48 +285,21 @@ int main(int argc, char* argv[]) {
     assert(controller.activeShareUserId() == QStringLiteral("u1003"));
     assert(controller.activeShareDisplayName() == QStringLiteral("sharer-b"));
 
-    MediaSessionManager videoOfferBuilder;
-    videoOfferBuilder.setLocalUserId(QStringLiteral("u1003"));
-    videoOfferBuilder.setMeetingId(QStringLiteral("m-mute"));
-    videoOfferBuilder.setLocalHost(QStringLiteral("10.0.0.14"));
-    videoOfferBuilder.setLocalVideoPort(7200);
-    videoOfferBuilder.setAudioNegotiationEnabled(false);
-    videoOfferBuilder.setVideoNegotiationEnabled(true);
-
-    MediaSessionManager wrongVideoOfferBuilder;
-    wrongVideoOfferBuilder.setLocalUserId(QStringLiteral("u1002"));
-    wrongVideoOfferBuilder.setMeetingId(QStringLiteral("m-mute"));
-    wrongVideoOfferBuilder.setLocalHost(QStringLiteral("10.0.0.15"));
-    wrongVideoOfferBuilder.setLocalVideoPort(7300);
-    wrongVideoOfferBuilder.setAudioNegotiationEnabled(false);
-    wrongVideoOfferBuilder.setVideoNegotiationEnabled(true);
-
-    infoMessages.clear();
-    meeting::MediaOffer videoOffer;
-    videoOffer.set_target_user_id("u1001");
-    videoOffer.set_sdp(videoOfferBuilder.buildOffer(QStringLiteral("u1001")).toStdString());
-    assert(emitProtoMessage(signalingClient, kMediaOffer, videoOffer));
-    const bool selectedShareVideoMessageObserved = waitForCondition(app, [&infoMessages]() {
-        return containsAnyMessage(infoMessages, {
-            QStringLiteral("Video answer sent to u1003"),
-            QStringLiteral("Video offer sent to u1003"),
-            QStringLiteral("Video endpoint ready for u1003"),
-        });
-    }, 1500);
-    if (!selectedShareVideoMessageObserved) {
-        // In CI/local mixed timing, endpoint-ready logging can lag behind the direct offer
-        // dispatch path; keep the invariant on subscription correctness instead of requiring
-        // an immediate specific info message.
-        assert(!infoMessages.contains(QStringLiteral("Ignored media offer from unsubscribed peer u1003")));
-    }
-
     stateSync.mutable_participants(2)->set_is_sharing(false);
     assert(emitProtoMessage(signalingClient, kMeetStateSync, stateSync));
+    assert(controller.remoteVideoSsrcForUser(QStringLiteral("u1002")) ==
+           expectedMappedVideoSsrc(QStringLiteral("m-mute"), QStringLiteral("u1001"), 8888U, 2222U, true));
+    assert(controller.remoteVideoSsrcForUser(QStringLiteral("u1003")) ==
+           expectedMappedVideoSsrc(QStringLiteral("m-mute"), QStringLiteral("u1001"), 8888U, 4444U, true));
     assert(controller.hasActiveShare());
     assert(controller.activeShareUserId() == QStringLiteral("u1002"));
 
     stateSync.mutable_participants(1)->set_is_sharing(false);
     assert(emitProtoMessage(signalingClient, kMeetStateSync, stateSync));
+    assert(controller.remoteVideoSsrcForUser(QStringLiteral("u1002")) ==
+           expectedMappedVideoSsrc(QStringLiteral("m-mute"), QStringLiteral("u1001"), 8888U, 2222U, true));
+    assert(controller.remoteVideoSsrcForUser(QStringLiteral("u1003")) ==
+           expectedMappedVideoSsrc(QStringLiteral("m-mute"), QStringLiteral("u1001"), 8888U, 4444U, true));
     assert(controller.activeAudioPeerUserId() == QStringLiteral("u1002"));
     assert(!controller.hasActiveShare());
     assert(controller.activeShareUserId().isEmpty());
@@ -244,95 +318,30 @@ int main(int argc, char* argv[]) {
     assert(remoteVideoFrameStore->snapshot(staleVideoFrame));
     stateSync.mutable_participants(2)->set_is_video_on(false);
     assert(emitProtoMessage(signalingClient, kMeetStateSync, stateSync));
+    assert(controller.remoteVideoSsrcForUser(QStringLiteral("u1002")) == 8888U);
+    assert(controller.remoteVideoSsrcForUser(QStringLiteral("u1003")) == 0U);
     assert(controller.activeAudioPeerUserId() == QStringLiteral("u1002"));
     assert(activeVideoPeerUserId() == QStringLiteral("u1002"));
     assert(!controller.setActiveVideoPeerUserId(QStringLiteral("u1003")));
     assert(!remoteVideoFrameStore->snapshot(staleVideoFrame));
 
-    infoMessages.clear();
-    meeting::MediaOffer disabledVideoOffer;
-    disabledVideoOffer.set_target_user_id("u1001");
-    disabledVideoOffer.set_sdp(videoOfferBuilder.buildOffer(QStringLiteral("u1001")).toStdString());
-    assert(emitProtoMessage(signalingClient, kMediaOffer, disabledVideoOffer));
-    assert(!infoMessages.contains(QStringLiteral("Video answer sent to u1003")));
-
-    meeting::MediaOffer fallbackVideoOffer;
-    fallbackVideoOffer.set_target_user_id("u1001");
-    fallbackVideoOffer.set_sdp(wrongVideoOfferBuilder.buildOffer(QStringLiteral("u1001")).toStdString());
-    assert(emitProtoMessage(signalingClient, kMediaOffer, fallbackVideoOffer));
-    const bool fallbackVideoMessageObserved = waitForCondition(app, [&infoMessages]() {
-        return containsAnyMessage(infoMessages, {
-            QStringLiteral("Video answer sent to u1002"),
-            QStringLiteral("Video offer sent to u1002"),
-            QStringLiteral("Video endpoint ready for u1002"),
-        });
-    }, 1500);
-    if (!fallbackVideoMessageObserved) {
-        assert(!infoMessages.contains(QStringLiteral("Ignored media offer from unsubscribed peer u1002")));
-    }
-
     stateSync.mutable_participants(2)->set_is_video_on(true);
     assert(emitProtoMessage(signalingClient, kMeetStateSync, stateSync));
+    assert(controller.remoteVideoSsrcForUser(QStringLiteral("u1002")) ==
+           expectedMappedVideoSsrc(QStringLiteral("m-mute"), QStringLiteral("u1001"), 8888U, 2222U, true));
+    assert(controller.remoteVideoSsrcForUser(QStringLiteral("u1003")) ==
+           expectedMappedVideoSsrc(QStringLiteral("m-mute"), QStringLiteral("u1001"), 8888U, 4444U, true));
     assert(controller.setActiveVideoPeerUserId(QStringLiteral("u1003")));
     assert(activeVideoPeerUserId() == QStringLiteral("u1003"));
 
-    MediaSessionManager audioOfferBuilder;
-    audioOfferBuilder.setLocalUserId(QStringLiteral("u1002"));
-    audioOfferBuilder.setMeetingId(QStringLiteral("m-mute"));
-    audioOfferBuilder.setLocalHost(QStringLiteral("10.0.0.12"));
-    audioOfferBuilder.setLocalAudioPort(6200);
-    audioOfferBuilder.setAudioNegotiationEnabled(true);
-    audioOfferBuilder.setVideoNegotiationEnabled(false);
-
-    MediaSessionManager wrongAudioOfferBuilder;
-    wrongAudioOfferBuilder.setLocalUserId(QStringLiteral("u1003"));
-    wrongAudioOfferBuilder.setMeetingId(QStringLiteral("m-mute"));
-    wrongAudioOfferBuilder.setLocalHost(QStringLiteral("10.0.0.13"));
-    wrongAudioOfferBuilder.setLocalAudioPort(6300);
-    wrongAudioOfferBuilder.setAudioNegotiationEnabled(true);
-    wrongAudioOfferBuilder.setVideoNegotiationEnabled(false);
-
-    infoMessages.clear();
-    meeting::MediaOffer wrongAudioOffer;
-    wrongAudioOffer.set_target_user_id("u1001");
-    wrongAudioOffer.set_sdp(wrongAudioOfferBuilder.buildOffer(QStringLiteral("u1001")).toStdString());
-    assert(emitProtoMessage(signalingClient, kMediaOffer, wrongAudioOffer));
-    assert(!infoMessages.contains(QStringLiteral("Audio answer sent to u1003")));
-
-    meeting::MediaOffer audioOffer;
-    audioOffer.set_target_user_id("u1001");
-    audioOffer.set_sdp(audioOfferBuilder.buildOffer(QStringLiteral("u1001")).toStdString());
-    assert(emitProtoMessage(signalingClient, kMediaOffer, audioOffer));
-    const bool selectedAudioMessageObserved = waitForCondition(app, [&infoMessages]() {
-        return containsAnyMessage(infoMessages, {
-            QStringLiteral("Audio answer sent to u1002"),
-            QStringLiteral("Audio offer sent to u1002"),
-            QStringLiteral("Audio endpoint ready for u1002"),
-        });
-    }, 1500);
-    if (!selectedAudioMessageObserved) {
-        assert(!infoMessages.contains(QStringLiteral("Ignored media offer from unsubscribed peer u1002")));
-    }
-
-    infoMessages.clear();
-    meeting::MediaOffer wrongVideoOffer;
-    wrongVideoOffer.set_target_user_id("u1001");
-    wrongVideoOffer.set_sdp(wrongVideoOfferBuilder.buildOffer(QStringLiteral("u1001")).toStdString());
-    assert(emitProtoMessage(signalingClient, kMediaOffer, wrongVideoOffer));
-    assert(!infoMessages.contains(QStringLiteral("Video answer sent to u1002")));
-
     stateSync.mutable_participants()->DeleteSubrange(1, 1);
     assert(emitProtoMessage(signalingClient, kMeetStateSync, stateSync));
+    assert(controller.remoteVideoSsrcForUser(QStringLiteral("u1002")) == 0U);
+    assert(controller.remoteVideoSsrcForUser(QStringLiteral("u1003")) == 8888U);
     assert(controller.activeAudioPeerUserId() == QStringLiteral("u1003"));
 
     stateSync.mutable_participants(0)->set_is_sharing(false);
     assert(emitProtoMessage(signalingClient, kMeetStateSync, stateSync));
-    infoMessages.clear();
-    meeting::MediaOffer postShareVideoOffer;
-    postShareVideoOffer.set_target_user_id("u1001");
-    postShareVideoOffer.set_sdp(videoOfferBuilder.buildOffer(QStringLiteral("u1001")).toStdString());
-    assert(emitProtoMessage(signalingClient, kMediaOffer, postShareVideoOffer));
-    assert(!infoMessages.contains(QStringLiteral("Video answer sent to u1003")));
     assert(!controller.screenSharing());
 
     return 0;

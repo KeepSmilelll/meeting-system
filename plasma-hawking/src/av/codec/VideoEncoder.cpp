@@ -49,16 +49,109 @@ bool codecSupportsPixelFormat(const AVCodec* codec, AVPixelFormat pixelFormat) {
 bool hasAnnexBStartCode(const std::vector<uint8_t>& payload) {
     for (std::size_t i = 0; i + 3 < payload.size(); ++i) {
         if (payload[i] == 0x00 && payload[i + 1] == 0x00 &&
-            (payload[i + 2] == 0x01 || (i + 3 < payload.size() && payload[i + 2] == 0x00 && payload[i + 3] == 0x01))) {
+            (payload[i + 2] == 0x01 ||
+             (i + 3 < payload.size() && payload[i + 2] == 0x00 && payload[i + 3] == 0x01))) {
             return true;
         }
     }
     return false;
 }
 
+bool findAnnexBStartCode(const uint8_t* data,
+                         std::size_t size,
+                         std::size_t offset,
+                         std::size_t& start,
+                         std::size_t& prefixSize) {
+    if (data == nullptr || offset >= size) {
+        return false;
+    }
+    for (std::size_t i = offset; i + 3 < size; ++i) {
+        if (data[i] != 0x00 || data[i + 1] != 0x00) {
+            continue;
+        }
+        if (data[i + 2] == 0x01) {
+            start = i;
+            prefixSize = 3;
+            return true;
+        }
+        if (i + 3 < size && data[i + 2] == 0x00 && data[i + 3] == 0x01) {
+            start = i;
+            prefixSize = 4;
+            return true;
+        }
+    }
+    return false;
+}
+
+void inspectAnnexBNalus(const uint8_t* data,
+                        std::size_t size,
+                        bool* hasSps,
+                        bool* hasPps,
+                        std::vector<uint8_t>* parameterSets) {
+    if (data == nullptr || size == 0) {
+        return;
+    }
+
+    std::size_t start = 0;
+    std::size_t prefixSize = 0;
+    std::size_t cursor = 0;
+    static constexpr uint8_t kStartCode[] = {0x00, 0x00, 0x00, 0x01};
+    while (findAnnexBStartCode(data, size, cursor, start, prefixSize)) {
+        const std::size_t naluStart = start + prefixSize;
+        std::size_t nextStart = size;
+        std::size_t nextPrefixSize = 0;
+        if (findAnnexBStartCode(data, size, naluStart, nextStart, nextPrefixSize)) {
+            (void)nextPrefixSize;
+        }
+
+        std::size_t naluEnd = nextStart;
+        while (naluEnd > naluStart && data[naluEnd - 1] == 0x00) {
+            --naluEnd;
+        }
+
+        if (naluStart < naluEnd) {
+            const uint8_t nalType = static_cast<uint8_t>(data[naluStart] & 0x1FU);
+            const bool isSps = nalType == 7U;
+            const bool isPps = nalType == 8U;
+            if (isSps && hasSps != nullptr) {
+                *hasSps = true;
+            }
+            if (isPps && hasPps != nullptr) {
+                *hasPps = true;
+            }
+            if ((isSps || isPps) && parameterSets != nullptr) {
+                parameterSets->insert(parameterSets->end(), std::begin(kStartCode), std::end(kStartCode));
+                parameterSets->insert(parameterSets->end(), data + naluStart, data + naluEnd);
+            }
+        }
+
+        if (nextStart >= size) {
+            break;
+        }
+        cursor = nextStart;
+    }
+}
+
+bool annexBPayloadHasParameterSets(const std::vector<uint8_t>& payload) {
+    bool hasSps = false;
+    bool hasPps = false;
+    inspectAnnexBNalus(payload.data(), payload.size(), &hasSps, &hasPps, nullptr);
+    return hasSps && hasPps;
+}
+
 std::vector<uint8_t> buildAnnexBParameterSetsFromExtradata(const uint8_t* extradata, int extradataSize) {
     std::vector<uint8_t> parameterSets;
-    if (extradata == nullptr || extradataSize < 7 || extradata[0] != 1) {
+    if (extradata == nullptr || extradataSize <= 0) {
+        return parameterSets;
+    }
+
+    const std::size_t size = static_cast<std::size_t>(extradataSize);
+    inspectAnnexBNalus(extradata, size, nullptr, nullptr, &parameterSets);
+    if (!parameterSets.empty()) {
+        return parameterSets;
+    }
+
+    if (extradataSize < 7 || extradata[0] != 1) {
         return parameterSets;
     }
 
@@ -164,6 +257,9 @@ void prependParameterSetsForKeyFrame(std::vector<uint8_t>& payload,
                                      const uint8_t* extradata,
                                      int extradataSize) {
     if (!keyFrame) {
+        return;
+    }
+    if (annexBPayloadHasParameterSets(payload)) {
         return;
     }
 

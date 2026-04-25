@@ -14,6 +14,7 @@
 #include "av/render/AudioPlayer.h"
 #include "av/render/VideoFrameStore.h"
 #include "av/sync/AVSync.h"
+#include "security/CryptoUtils.h"
 #include <QByteArray>
 #include <QDateTime>
 #include <QDebug>
@@ -22,12 +23,14 @@
 #include <QJsonObject>
 #include <QNetworkInterface>
 #include <QProcessEnvironment>
+#include <QRandomGenerator>
 #include <QtMultimedia/QMediaDevices>
 #include <QTimer>
 #include <QtGlobal>
 
 #include <algorithm>
 #include <cstdlib>
+#include <cstring>
 #include <limits>
 #include <memory>
 #include <vector>
@@ -60,6 +63,7 @@ constexpr int kDefaultMaxVideoFramesPerDrain = 2;
 constexpr int kDefaultMinVideoCadenceMs = 12;
 constexpr int kDefaultMaxVideoCadenceMs = 80;
 constexpr int kFixedVideoRenderTickMs = 16;
+constexpr auto kSfuTransportKey = "@sfu";
 
 struct VideoRenderTuning {
     int maxRemoteQueueDepth{kDefaultMaxRemoteVideoRenderQueueDepth};
@@ -120,6 +124,30 @@ QString videoEncoderPresetLabel(av::codec::VideoEncoderPreset preset) {
     default:
         return QStringLiteral("realtime");
     }
+}
+
+quint32 routeRewriteSsrc(const QString& meetingId,
+                         const QString& subscriberUserId,
+                         quint32 sourceSsrc,
+                         bool video) {
+    if (sourceSsrc == 0U) {
+        return 0U;
+    }
+
+    const QByteArray key = QStringLiteral("%1|%2|%3|%4")
+                               .arg(meetingId, subscriberUserId, video ? QStringLiteral("video") : QStringLiteral("audio"))
+                               .arg(sourceSsrc)
+                               .toUtf8();
+    quint32 hash = 2166136261U;
+    for (const char ch : key) {
+        hash ^= static_cast<quint32>(static_cast<unsigned char>(ch));
+        hash *= 16777619U;
+    }
+    hash &= 0x7FFFFFFFU;
+    if (hash == 0U || hash == sourceSsrc) {
+        hash ^= 0x5A5A5A5AU;
+    }
+    return hash == 0U ? 0x13572468U : hash;
 }
 
 av::codec::VideoEncoderPreset resolveVideoEncoderPreset(const QProcessEnvironment& env,
@@ -259,7 +287,10 @@ bool shouldStartVideoMutedByDefault() {
         return qEnvironmentVariableIntValue("MEETING_DEFAULT_VIDEO_MUTED") != 0;
     }
     if (qEnvironmentVariableIntValue("MEETING_RUNTIME_SMOKE") != 0) {
-        return qEnvironmentVariableIntValue("MEETING_SMOKE_START_VIDEO_MUTED") != 0;
+        if (!qEnvironmentVariableIsEmpty("MEETING_SMOKE_START_VIDEO_MUTED")) {
+            return qEnvironmentVariableIntValue("MEETING_SMOKE_START_VIDEO_MUTED") != 0;
+        }
+        return true;
     }
     return true;
 }
@@ -272,6 +303,7 @@ bool shouldEmitVerboseNegotiationLogs() {
 struct MediaRouteStatusEvent {
     QString stage;
     QString message;
+    QString route;
 };
 
 MediaRouteStatusEvent parseMediaRouteStatusEvent(const QString& rawReason) {
@@ -286,6 +318,7 @@ MediaRouteStatusEvent parseMediaRouteStatusEvent(const QString& rawReason) {
         const QJsonObject obj = jsonDoc.object();
         event.stage = obj.value(QStringLiteral("stage")).toString().trimmed().toLower();
         event.message = obj.value(QStringLiteral("message")).toString().trimmed();
+        event.route = obj.value(QStringLiteral("route")).toString().trimmed();
     }
 
     if (event.message.isEmpty()) {
@@ -304,6 +337,36 @@ MediaRouteStatusEvent parseMediaRouteStatusEvent(const QString& rawReason) {
         }
     }
     return event;
+}
+
+bool parseIpv4Endpoint(const QString& endpointText, QString* host, quint16* port) {
+    const QString trimmed = endpointText.trimmed();
+    const int colonIndex = trimmed.lastIndexOf(QLatin1Char(':'));
+    if (colonIndex <= 0 || colonIndex + 1 >= trimmed.size()) {
+        return false;
+    }
+
+    const QString candidateHost = trimmed.left(colonIndex).trimmed();
+    const QString candidatePortText = trimmed.mid(colonIndex + 1).trimmed();
+    bool ok = false;
+    const int candidatePort = candidatePortText.toInt(&ok);
+    if (!ok || candidatePort <= 0 || candidatePort > 65535) {
+        return false;
+    }
+
+    QHostAddress parsedAddress;
+    if (!parsedAddress.setAddress(candidateHost) ||
+        parsedAddress.protocol() != QAbstractSocket::IPv4Protocol) {
+        return false;
+    }
+
+    if (host != nullptr) {
+        *host = parsedAddress.toString();
+    }
+    if (port != nullptr) {
+        *port = static_cast<quint16>(candidatePort);
+    }
+    return true;
 }
 
 QString resolveAdvertisedHost() {
@@ -396,6 +459,77 @@ QString resolveAdvertisedHost() {
     return QStringLiteral("127.0.0.1");
 }
 
+QString makeIceToken(int randomBytes) {
+    return security::CryptoUtils::generateRandomToken(randomBytes);
+}
+
+QString colonDelimitedSha256Fingerprint(const QString& seed) {
+    const QString hex = security::CryptoUtils::sha256Hex(seed.toUtf8()).toUpper();
+    QString fingerprint;
+    fingerprint.reserve(hex.size() + (hex.size() / 2));
+    for (int i = 0; i < hex.size(); i += 2) {
+        if (!fingerprint.isEmpty()) {
+            fingerprint.append(QLatin1Char(':'));
+        }
+        fingerprint.append(hex.mid(i, 2));
+    }
+    return fingerprint;
+}
+
+QString makeClientDtlsFingerprint(const QString& meetingId, const QString& userId, const QString& mediaKind) {
+    const QString seed = QStringLiteral("%1:%2:%3:%4")
+                             .arg(meetingId,
+                                  userId,
+                                  mediaKind,
+                                  security::CryptoUtils::generateRandomToken(32));
+    return colonDelimitedSha256Fingerprint(seed);
+}
+
+QString makeHostIceCandidate(const QString& host, quint16 port) {
+    if (host.trimmed().isEmpty() || port == 0) {
+        return {};
+    }
+    return QStringLiteral("candidate:1 1 udp 2130706431 %1 %2 typ host").arg(host.trimmed()).arg(port);
+}
+
+QStringList makeHostIceCandidates(quint16 localPort) {
+    const QString candidate = makeHostIceCandidate(resolveAdvertisedHost(), localPort);
+    return candidate.isEmpty() ? QStringList{} : QStringList{candidate};
+}
+
+std::vector<uint8_t> buildStunBindingRequest(const QString& username) {
+    const QByteArray usernameBytes = username.trimmed().toUtf8();
+    if (usernameBytes.isEmpty() || usernameBytes.size() > 255) {
+        return {};
+    }
+
+    const auto attributeLength = static_cast<std::size_t>(usernameBytes.size());
+    const std::size_t paddedAttributeLength = (attributeLength + 3U) & ~std::size_t{3U};
+    const std::size_t messageLength = 4U + paddedAttributeLength;
+    std::vector<uint8_t> packet(20U + messageLength, 0U);
+
+    packet[0] = 0x00U;
+    packet[1] = 0x01U;
+    packet[2] = static_cast<uint8_t>((messageLength >> 8U) & 0xFFU);
+    packet[3] = static_cast<uint8_t>(messageLength & 0xFFU);
+    packet[4] = 0x21U;
+    packet[5] = 0x12U;
+    packet[6] = 0xA4U;
+    packet[7] = 0x42U;
+    for (std::size_t i = 8U; i < 20U; ++i) {
+        packet[i] = static_cast<uint8_t>(QRandomGenerator::global()->generate() & 0xFFU);
+    }
+
+    packet[20] = 0x00U;
+    packet[21] = 0x06U;
+    packet[22] = static_cast<uint8_t>((attributeLength >> 8U) & 0xFFU);
+    packet[23] = static_cast<uint8_t>(attributeLength & 0xFFU);
+    std::memcpy(packet.data() + 24U,
+                usernameBytes.constData(),
+                static_cast<std::size_t>(usernameBytes.size()));
+    return packet;
+}
+
 QString normalizePreferredCameraDevice(const QString& deviceName) {
     return deviceName.trimmed();
 }
@@ -421,16 +555,6 @@ QStringList readAvailableAudioInputDeviceNames() {
 
 QStringList readAvailableAudioOutputDeviceNames() {
     return av::render::AudioPlayer::availableOutputDevices();
-}
-
-bool shouldInitiateOffer(bool isHost, const QString& localUserId, const QString& peerUserId) {
-    if (isHost) {
-        return true;
-    }
-    if (localUserId.isEmpty() || peerUserId.isEmpty()) {
-        return false;
-    }
-    return localUserId < peerUserId;
 }
 
 }  // namespace
@@ -484,85 +608,9 @@ MeetingController::MeetingController(const QString& databasePath, QObject* paren
 
     m_audioSessionManager = std::make_unique<MediaSessionManager>();
     m_mediaSessionManager = std::make_unique<MediaSessionManager>();
+    m_localVideoFrameStore = std::make_unique<av::render::VideoFrameStore>();
     m_remoteScreenFrameStore = std::make_unique<av::render::VideoFrameStore>();
     m_remoteVideoFrameStore = std::make_unique<av::render::VideoFrameStore>();
-    connect(m_audioSessionManager.get(), &MediaSessionManager::remoteEndpointReady, this,
-            [this](const QString& peerUserId, const QString& host, quint16 port, int payloadType, bool offer) {
-        if (!m_audioSessionManager || peerUserId.isEmpty()) {
-            return;
-        }
-
-        if (!m_audioCallSession) {
-            maybeStartAudioNegotiation();
-        }
-        updateAudioSessionSettings();
-
-        if (m_audioCallSession && !host.isEmpty() && port != 0) {
-            m_audioCallSession->setPeer(host.toStdString(), port);
-            m_audioSessionManager->setLocalPort(m_audioCallSession->localPort());
-        }
-
-        m_audioPeerUserId = peerUserId;
-        m_audioSessionManager->setPayloadType(payloadType > 0 ? payloadType : 111);
-
-        if (offer) {
-            if (!m_audioAnswerSentPeers.contains(peerUserId)) {
-                m_audioAnswerSentPeers.insert(peerUserId);
-                m_audioOfferSentPeers.remove(peerUserId);
-                m_audioNegotiationStarted = true;
-                const QString answer = m_audioSessionManager->buildAnswer(peerUserId);
-                const quint32 audioSsrc = m_audioCallSession ? m_audioCallSession->audioSsrc() : 0;
-                m_signaling->sendMediaAnswer(peerUserId, answer, audioSsrc, 0);
-                if (shouldEmitVerboseNegotiationLogs()) {
-                    emit infoMessage(QStringLiteral("Audio answer sent to %1").arg(peerUserId));
-                }
-            }
-            return;
-        }
-
-        m_audioNegotiationStarted = true;
-        if (shouldEmitVerboseNegotiationLogs()) {
-            emit infoMessage(QStringLiteral("Audio endpoint ready for %1").arg(peerUserId));
-        }
-    });
-    connect(m_mediaSessionManager.get(), &MediaSessionManager::remoteVideoEndpointReady, this,
-            [this](const QString& peerUserId, const QString& host, quint16 port, int payloadType, bool offer) {
-        Q_UNUSED(payloadType)
-        if (host.isEmpty() || port == 0) {
-            return;
-        }
-
-        if (!m_screenShareSession) {
-            maybeStartVideoNegotiation();
-        }
-        if (!m_screenShareSession) {
-            return;
-        }
-
-        m_videoPeerUserId = peerUserId;
-        m_screenShareSession->setPeer(host.toStdString(), port);
-        m_screenShareSession->setExpectedRemoteVideoSsrc(remoteVideoSsrcForPeer(peerUserId));
-
-        if (offer && !m_videoAnswerSentPeers.contains(peerUserId)) {
-            m_videoAnswerSentPeers.insert(peerUserId);
-            m_videoOfferSentPeers.remove(peerUserId);
-            m_videoNegotiationStarted = true;
-            updateVideoSessionSettings();
-            const QString answer = m_mediaSessionManager->buildAnswer(peerUserId);
-            const quint32 videoSsrc = currentVideoSsrc();
-            m_signaling->sendMediaAnswer(peerUserId, answer, 0, videoSsrc);
-            if (shouldEmitVerboseNegotiationLogs()) {
-                emit infoMessage(QStringLiteral("Video answer sent to %1").arg(peerUserId));
-            }
-            return;
-        }
-
-        m_videoNegotiationStarted = true;
-        if (shouldEmitVerboseNegotiationLogs()) {
-            emit infoMessage(QStringLiteral("Video endpoint ready for %1").arg(peerUserId));
-        }
-    });
-
     connect(m_signaling, &signaling::SignalingClient::connectedChanged, this, [this](bool connected) {
         if (connected) {
             if (m_reconnecting) {
@@ -710,7 +758,7 @@ MeetingController::MeetingController(const QString& databasePath, QObject* paren
     });
 
     connect(m_signaling, &signaling::SignalingClient::joinMeetingFinished, this,
-            [this](bool success, const QString& meetingId, const QString& title, const QStringList& participants, const QString& hostUserId, const QString& error) {
+            [this](bool success, const QString& meetingId, const QString& title, const QString& sfuAddress, const QStringList& participants, const QString& hostUserId, const QString& error) {
         if (!success) {
             const QString msg = error.isEmpty() ? QStringLiteral("Join meeting failed") : error;
             setStatusText(msg);
@@ -720,6 +768,7 @@ MeetingController::MeetingController(const QString& databasePath, QObject* paren
 
         m_meetingId = meetingId;
         m_meetingTitle = title;
+        updateSfuRoute(sfuAddress);
         m_inMeeting = true;
         m_audioMuted = false;
         m_videoMuted = shouldStartVideoMutedByDefault();
@@ -797,104 +846,21 @@ MeetingController::MeetingController(const QString& databasePath, QObject* paren
         emit infoMessage(QStringLiteral("[%1] %2").arg(senderName, content));
     });
 
-    connect(m_signaling, &signaling::SignalingClient::mediaOfferReceived, this,
-            [this](const QString& targetUserId, const QString& sdp, quint32 audioSsrc, quint32 videoSsrc) {
-        if (!m_inMeeting || (!targetUserId.isEmpty() && targetUserId != m_userId)) {
-            return;
-        }
-        Q_UNUSED(audioSsrc)
-        if (!m_audioSessionManager || !m_mediaSessionManager || !m_audioCallSession || !m_screenShareSession) {
-            maybeStartMediaNegotiation();
-        }
-        if (!m_audioSessionManager || !m_mediaSessionManager) {
-            return;
-        }
-
-        m_audioSessionManager->setLocalUserId(m_userId);
-        m_audioSessionManager->setMeetingId(m_meetingId);
-        m_mediaSessionManager->setLocalUserId(m_userId);
-        m_mediaSessionManager->setMeetingId(m_meetingId);
-        QString describedPeerUserId;
-        bool hasAudio = false;
-        bool hasVideo = false;
-        if (!m_mediaSessionManager->inspectDescription(sdp, &describedPeerUserId, &hasAudio, &hasVideo)) {
-            emit infoMessage(QStringLiteral("Failed to process media offer"));
-            return;
-        }
-        if (describedPeerUserId.isEmpty() || describedPeerUserId == m_userId) {
-            return;
-        }
-
-        if (videoSsrc != 0U) {
-            m_remoteVideoSsrcByPeer.insert(describedPeerUserId, videoSsrc);
-        } else {
-            m_remoteVideoSsrcByPeer.remove(describedPeerUserId);
-        }
-        updateExpectedRemoteVideoSsrcForCurrentPeer();
-
-        const QString audioPeerUserId = currentAudioPeerUserId();
-        const QString videoPeerUserId = currentVideoPeerUserId();
-        const bool allowAudio = hasAudio && (audioPeerUserId.isEmpty() || describedPeerUserId == audioPeerUserId);
-        const bool allowVideo = hasVideo && (videoPeerUserId.isEmpty() || describedPeerUserId == videoPeerUserId);
-
-        const bool audioHandled = allowAudio && m_audioSessionManager->handleRemoteOffer(describedPeerUserId, sdp);
-        const bool videoHandled = allowVideo && m_mediaSessionManager->handleRemoteOffer(describedPeerUserId, sdp);
-        if (!audioHandled && !videoHandled) {
-            emit infoMessage(QStringLiteral("Ignored media offer from unsubscribed peer %1").arg(describedPeerUserId));
-            return;
-        }
-        updateAudioSessionSettings();
-        updateVideoSessionSettings();
-    });
-
-    connect(m_signaling, &signaling::SignalingClient::mediaAnswerReceived, this,
-            [this](const QString& targetUserId, const QString& sdp, quint32 audioSsrc, quint32 videoSsrc) {
-        if (!m_inMeeting || (!targetUserId.isEmpty() && targetUserId != m_userId)) {
-            return;
-        }
-        Q_UNUSED(audioSsrc)
-        if (!m_audioSessionManager || !m_mediaSessionManager || !m_audioCallSession || !m_screenShareSession) {
-            maybeStartMediaNegotiation();
-        }
-        if (!m_audioSessionManager || !m_mediaSessionManager) {
-            return;
-        }
-
-        m_audioSessionManager->setLocalUserId(m_userId);
-        m_audioSessionManager->setMeetingId(m_meetingId);
-        m_mediaSessionManager->setLocalUserId(m_userId);
-        m_mediaSessionManager->setMeetingId(m_meetingId);
-        QString describedPeerUserId;
-        bool hasAudio = false;
-        bool hasVideo = false;
-        if (!m_mediaSessionManager->inspectDescription(sdp, &describedPeerUserId, &hasAudio, &hasVideo)) {
-            emit infoMessage(QStringLiteral("Failed to process media answer"));
-            return;
-        }
-        if (describedPeerUserId.isEmpty() || describedPeerUserId == m_userId) {
-            return;
-        }
-
-        if (videoSsrc != 0U) {
-            m_remoteVideoSsrcByPeer.insert(describedPeerUserId, videoSsrc);
-        } else {
-            m_remoteVideoSsrcByPeer.remove(describedPeerUserId);
-        }
-        updateExpectedRemoteVideoSsrcForCurrentPeer();
-
-        const QString audioPeerUserId = currentAudioPeerUserId();
-        const QString videoPeerUserId = currentVideoPeerUserId();
-        const bool allowAudio = hasAudio && (audioPeerUserId.isEmpty() || describedPeerUserId == audioPeerUserId);
-        const bool allowVideo = hasVideo && (videoPeerUserId.isEmpty() || describedPeerUserId == videoPeerUserId);
-
-        const bool audioHandled = allowAudio && m_audioSessionManager->handleRemoteAnswer(describedPeerUserId, sdp);
-        const bool videoHandled = allowVideo && m_mediaSessionManager->handleRemoteAnswer(describedPeerUserId, sdp);
-        if (!audioHandled && !videoHandled) {
-            emit infoMessage(QStringLiteral("Ignored media answer from unsubscribed peer %1").arg(describedPeerUserId));
-            return;
-        }
-        updateAudioSessionSettings();
-        updateVideoSessionSettings();
+    connect(m_signaling, &signaling::SignalingClient::mediaTransportAnswerReceived, this,
+            [this](const QString& meetingId,
+                   const QString& serverIceUfrag,
+                   const QString& serverIcePwd,
+                   const QString& serverDtlsFingerprint,
+                   const QStringList& serverCandidates,
+                   quint32 assignedAudioSsrc,
+                   quint32 assignedVideoSsrc) {
+        handleMediaTransportAnswer(meetingId,
+                                   serverIceUfrag,
+                                   serverIcePwd,
+                                   serverDtlsFingerprint,
+                                   serverCandidates,
+                                   assignedAudioSsrc,
+                                   assignedVideoSsrc);
     });
     connect(m_signaling, &signaling::SignalingClient::protobufMessageReceived, this,
             [this](quint16 signalType, const QByteArray& payload) {
@@ -954,6 +920,10 @@ bool MeetingController::hasActiveShare() const {
     return !m_activeShareUserId.isEmpty();
 }
 
+QObject* MeetingController::localVideoFrameSource() const {
+    return m_localVideoFrameStore.get();
+}
+
 QObject* MeetingController::remoteScreenFrameSource() const {
     return m_remoteScreenFrameStore.get();
 }
@@ -971,7 +941,7 @@ QObject* MeetingController::remoteVideoFrameSource() const {
 
 QObject* MeetingController::remoteVideoFrameSourceForUser(const QString& userId) const {
     const QString normalized = userId.trimmed();
-    if (normalized.isEmpty() || normalized == m_userId) {
+    if (normalized.isEmpty() || normalized == m_userId || !hasRemoteVideoParticipant(normalized)) {
         return nullptr;
     }
 
@@ -980,6 +950,20 @@ QObject* MeetingController::remoteVideoFrameSourceForUser(const QString& userId)
         return nullptr;
     }
     return it.value();
+}
+
+quint32 MeetingController::remoteVideoSsrcForUser(const QString& userId) const {
+    const QString normalized = userId.trimmed();
+    if (normalized.isEmpty() || normalized == m_userId || !hasRemoteVideoParticipant(normalized)) {
+        return 0U;
+    }
+
+    const auto it = m_remoteVideoSsrcByPeer.constFind(normalized);
+    if (it == m_remoteVideoSsrcByPeer.constEnd()) {
+        return 0U;
+    }
+
+    return *it;
 }
 
 QString MeetingController::username() const {
@@ -1067,6 +1051,30 @@ quint32 MeetingController::audioTargetBitrateBps() const {
         return 0;
     }
     return static_cast<quint32>(m_audioCallSession->targetBitrateBps());
+}
+
+bool MeetingController::audioIceConnected() const {
+    return m_audioCallSession && m_audioCallSession->iceConnected();
+}
+
+bool MeetingController::audioDtlsConnected() const {
+    return m_audioCallSession && m_audioCallSession->dtlsConnected();
+}
+
+bool MeetingController::audioSrtpReady() const {
+    return m_audioCallSession && m_audioCallSession->srtpReady();
+}
+
+bool MeetingController::videoIceConnected() const {
+    return m_screenShareSession && m_screenShareSession->iceConnected();
+}
+
+bool MeetingController::videoDtlsConnected() const {
+    return m_screenShareSession && m_screenShareSession->dtlsConnected();
+}
+
+bool MeetingController::videoSrtpReady() const {
+    return m_screenShareSession && m_screenShareSession->srtpReady();
 }
 
 qint64 MeetingController::videoLastAudioSkewMs() const {
@@ -1357,6 +1365,9 @@ void MeetingController::toggleAudio() {
     if (!m_audioMuted) {
         maybeStartMediaNegotiation();
     }
+    if (m_signaling->isConnected()) {
+        sendAudioOfferToPeer(true);
+    }
     syncLocalParticipantMediaState();
     emit audioMutedChanged();
 }
@@ -1371,8 +1382,13 @@ void MeetingController::toggleVideo() {
     }
     if (!m_videoMuted) {
         maybeStartMediaNegotiation();
+    } else if (m_localVideoFrameStore) {
+        m_localVideoFrameStore->clear();
     }
     updateVideoSessionSettings();
+    if (m_signaling->isConnected()) {
+        sendVideoOfferToPeer(true);
+    }
     syncLocalParticipantMediaState();
     emit videoMutedChanged();
 }
@@ -1525,13 +1541,18 @@ void MeetingController::resetMeetingState(const QString& leaveReason) {
     m_currentMeetingJoinedAt = 0;
     m_meetingId.clear();
     m_meetingTitle.clear();
+    m_sfuAddress.clear();
     m_participantModel->clearParticipants();
+    if (m_localVideoFrameStore) {
+        m_localVideoFrameStore->clear();
+    }
     clearRemoteVideoFrameStores();
     syncParticipantsChanged();
 
     emit inMeetingChanged();
     emit audioMutedChanged();
     emit videoMutedChanged();
+    emit localVideoFrameSourceChanged();
     emit meetingIdChanged();
     if (hadMeetingTitle) {
         emit meetingTitleChanged();
@@ -1588,7 +1609,7 @@ void MeetingController::handleProtobufMessage(quint16 signalType, const QByteArr
     case kMeetStateSync: {
         meeting::MeetStateSyncNotify notify;
         if (!notify.ParseFromArray(payload.constData(), payload.size())) {
-            emit infoMessage(QStringLiteral("Failed to parse MeetStateSyncNotify"));
+            emit infoMessage(QStringLiteral("Failed to parse MeetStateSyncNotify size=%1").arg(payload.size()));
             return;
         }
 
@@ -1670,7 +1691,9 @@ void MeetingController::handleProtobufMessage(quint16 signalType, const QByteArr
                                               participant.role,
                                               participant.audioOn,
                                               participant.videoOn,
-                                              participant.sharing);
+                                              participant.sharing,
+                                              participant.audioSsrc,
+                                              participant.videoSsrc);
         if (participant.role == 1) {
             m_participantModel->setHostUserId(participant.userId);
             m_currentMeetingHost = participant.userId == m_userId;
@@ -1795,6 +1818,13 @@ void MeetingController::handleProtobufMessage(quint16 signalType, const QByteArr
         if (shouldEmitInfo) {
             emit infoMessage(event.message);
         }
+        if (event.stage == QStringLiteral("switched") && !event.route.isEmpty()) {
+            updateSfuRoute(event.route);
+            if (m_inMeeting && m_signaling && m_signaling->isConnected()) {
+                (void)sendAudioOfferToPeer(true);
+                (void)sendVideoOfferToPeer(true);
+            }
+        }
         return;
     }
     default:
@@ -1827,7 +1857,9 @@ void MeetingController::ensureLocalParticipant(bool host) {
                                               host ? 1 : 0,
                                               !m_audioMuted,
                                               !m_videoMuted,
-                                              m_screenSharing);
+                                              m_screenSharing,
+                                              m_assignedAudioSsrc,
+                                              m_assignedVideoSsrc);
     } else if (host && existingItem.role != 1) {
         m_participantModel->upsertParticipant(m_userId,
                                               displayName,
@@ -1835,7 +1867,9 @@ void MeetingController::ensureLocalParticipant(bool host) {
                                               1,
                                               existingItem.audioOn,
                                               existingItem.videoOn,
-                                              existingItem.sharing);
+                                              existingItem.sharing,
+                                              m_assignedAudioSsrc != 0U ? m_assignedAudioSsrc : existingItem.audioSsrc,
+                                              m_assignedVideoSsrc != 0U ? m_assignedVideoSsrc : existingItem.videoSsrc);
     }
 
     if (host) {
@@ -1844,6 +1878,7 @@ void MeetingController::ensureLocalParticipant(bool host) {
 }
 
 void MeetingController::syncParticipantsChanged() {
+    updateRemoteVideoSsrcMappings();
     prunePeerNegotiationState();
     const QString previousActiveShareUserId = m_activeShareUserId;
     emit participantsChanged();
@@ -1853,6 +1888,49 @@ void MeetingController::syncParticipantsChanged() {
     if (previousActiveShareUserId != m_activeShareUserId) {
         sendVideoOfferToPeer(true);
     }
+}
+
+void MeetingController::updateRemoteVideoSsrcMappings() {
+    QHash<QString, quint32> next;
+
+    int roomVideoPublisherCount = 0;
+    for (const auto& participant : m_participantModel->items()) {
+        if (participant.userId.isEmpty() || participant.videoSsrc == 0U) {
+            continue;
+        }
+        ++roomVideoPublisherCount;
+    }
+
+    for (const auto& participant : m_participantModel->items()) {
+        if (participant.userId.isEmpty() || participant.userId == m_userId || participant.videoSsrc == 0U) {
+            continue;
+        }
+        quint32 remoteVideoSsrc = 0U;
+        if (roomVideoPublisherCount > 1 && m_assignedVideoSsrc != 0U) {
+            remoteVideoSsrc = routeRewriteSsrc(m_meetingId, m_userId, participant.videoSsrc, true);
+            if (remoteVideoSsrc == m_assignedVideoSsrc || remoteVideoSsrc == participant.videoSsrc) {
+                remoteVideoSsrc ^= 0x01010101U;
+            }
+            if (remoteVideoSsrc == 0U) {
+                remoteVideoSsrc = participant.videoSsrc ^ 0x01010101U;
+            }
+        } else if (m_assignedVideoSsrc != 0U) {
+            remoteVideoSsrc = m_assignedVideoSsrc;
+        } else {
+            remoteVideoSsrc = participant.videoSsrc;
+        }
+        if (remoteVideoSsrc != 0U) {
+            next.insert(participant.userId, remoteVideoSsrc);
+        }
+    }
+
+    if (m_remoteVideoSsrcByPeer == next) {
+        return;
+    }
+
+    m_remoteVideoSsrcByPeer = next;
+    updateExpectedRemoteVideoSsrcForCurrentPeer();
+    emit remoteVideoFrameSourceChanged();
 }
 
 bool MeetingController::hasRemoteParticipant(const QString& userId) const {
@@ -1876,7 +1954,7 @@ bool MeetingController::hasRemoteVideoParticipant(const QString& userId) const {
         if (participant.userId != userId || participant.userId == m_userId) {
             continue;
         }
-        return participant.videoOn || participant.sharing;
+        return participant.videoOn || participant.sharing || participant.videoSsrc != 0U;
     }
 
     return false;
@@ -1893,7 +1971,7 @@ void MeetingController::prunePeerNegotiationState() {
 
     auto pruneSet = [&remoteUsers](QSet<QString>& peers) {
         for (auto it = peers.begin(); it != peers.end();) {
-            if (!remoteUsers.contains(*it)) {
+            if (*it != QLatin1String(kSfuTransportKey) && !remoteUsers.contains(*it)) {
                 it = peers.erase(it);
             } else {
                 ++it;
@@ -1912,6 +1990,24 @@ void MeetingController::prunePeerNegotiationState() {
         } else {
             ++it;
         }
+    }
+
+    bool removedFrameStore = false;
+    for (auto it = m_remoteVideoFrameStoresByPeer.begin(); it != m_remoteVideoFrameStoresByPeer.end();) {
+        const bool keepStore = remoteUsers.contains(it.key()) && hasRemoteVideoParticipant(it.key());
+        if (keepStore) {
+            ++it;
+            continue;
+        }
+        if (it.value() != nullptr) {
+            it.value()->clear();
+            it.value()->deleteLater();
+        }
+        it = m_remoteVideoFrameStoresByPeer.erase(it);
+        removedFrameStore = true;
+    }
+    if (removedFrameStore) {
+        emit remoteVideoFrameSourceChanged();
     }
 
     if (!m_audioPeerUserId.isEmpty() && !remoteUsers.contains(m_audioPeerUserId)) {
@@ -2024,6 +2120,16 @@ QString MeetingController::currentVideoPeerUserId() const {
     return currentAudioPeerUserId();
 }
 
+QString MeetingController::currentAudioTransportKey() const {
+    return resolveSfuEndpoint(nullptr, nullptr) ? QString::fromLatin1(kSfuTransportKey)
+                                                : currentAudioPeerUserId();
+}
+
+QString MeetingController::currentVideoTransportKey() const {
+    return resolveSfuEndpoint(nullptr, nullptr) ? QString::fromLatin1(kSfuTransportKey)
+                                                : currentVideoPeerUserId();
+}
+
 quint32 MeetingController::currentVideoSsrc() const {
     if (!m_screenShareSession) {
         return 0;
@@ -2034,20 +2140,6 @@ quint32 MeetingController::currentVideoSsrc() const {
     }
 
     return 0;
-}
-
-quint32 MeetingController::remoteVideoSsrcForPeer(const QString& peerUserId) const {
-    const QString normalized = peerUserId.trimmed();
-    if (normalized.isEmpty()) {
-        return 0;
-    }
-
-    const auto it = m_remoteVideoSsrcByPeer.constFind(normalized);
-    if (it == m_remoteVideoSsrcByPeer.constEnd()) {
-        return 0;
-    }
-
-    return *it;
 }
 
 QString MeetingController::resolvePeerUserIdForRemoteVideoSsrc(quint32 remoteSsrc) const {
@@ -2089,7 +2181,7 @@ void MeetingController::updateExpectedRemoteVideoSsrcForCurrentPeer() {
     }
 
     const QString peerUserId = currentVideoPeerUserId();
-    m_screenShareSession->setExpectedRemoteVideoSsrc(remoteVideoSsrcForPeer(peerUserId));
+    m_screenShareSession->setExpectedRemoteVideoSsrc(remoteVideoSsrcForUser(peerUserId));
 }
 void MeetingController::updateAudioSessionSettings() {
     if (!m_audioSessionManager) {
@@ -2113,6 +2205,124 @@ void MeetingController::updateAudioSessionSettings() {
         m_audioSessionManager->setLocalAudioSsrc(0);
     }
     m_audioSessionManager->setLocalVideoSsrc(0);
+}
+
+void MeetingController::updateSfuRoute(const QString& route) {
+    const QString normalized = route.trimmed();
+    if (m_sfuAddress == normalized) {
+        return;
+    }
+
+    m_sfuAddress = normalized;
+    applySfuRouteToSessions();
+}
+
+bool MeetingController::resolveSfuEndpoint(QString* host, quint16* port) const {
+    QString parsedHost;
+    quint16 parsedPort = 0;
+    if (!parseIpv4Endpoint(m_sfuAddress, &parsedHost, &parsedPort)) {
+        return false;
+    }
+
+    if (host != nullptr) {
+        *host = parsedHost;
+    }
+    if (port != nullptr) {
+        *port = parsedPort;
+    }
+    return true;
+}
+
+void MeetingController::applySfuRouteToSessions() {
+    QString routeHost;
+    quint16 routePort = 0;
+    if (!resolveSfuEndpoint(&routeHost, &routePort)) {
+        return;
+    }
+
+    if (m_audioCallSession) {
+        m_audioCallSession->setPeer(routeHost.toStdString(), routePort);
+    }
+    if (m_screenShareSession) {
+        m_screenShareSession->setPeer(routeHost.toStdString(), routePort);
+    }
+}
+
+void MeetingController::handleMediaTransportAnswer(const QString& meetingId,
+                                                   const QString& serverIceUfrag,
+                                                   const QString& serverIcePwd,
+                                                   const QString& serverDtlsFingerprint,
+                                                   const QStringList& serverCandidates,
+                                                   quint32 assignedAudioSsrc,
+                                                   quint32 assignedVideoSsrc) {
+    if (!m_inMeeting || meetingId.trimmed() != m_meetingId) {
+        return;
+    }
+    if (serverIceUfrag.trimmed().isEmpty() ||
+        serverIcePwd.trimmed().isEmpty() ||
+        serverDtlsFingerprint.trimmed().isEmpty() ||
+        serverCandidates.isEmpty()) {
+        emit infoMessage(QStringLiteral("Media transport answer rejected: incomplete SFU transport parameters"));
+        return;
+    }
+
+    if (assignedAudioSsrc != 0U) {
+        m_assignedAudioSsrc = assignedAudioSsrc;
+        if (m_audioCallSession) {
+            m_audioCallSession->setAudioSsrc(assignedAudioSsrc);
+        }
+        if (m_audioSessionManager) {
+            m_audioSessionManager->setLocalAudioSsrc(assignedAudioSsrc);
+        }
+    }
+
+    if (assignedVideoSsrc != 0U) {
+        m_assignedVideoSsrc = assignedVideoSsrc;
+        if (m_screenShareSession) {
+            m_screenShareSession->setVideoSsrc(assignedVideoSsrc);
+            m_screenShareSession->setExpectedRemoteVideoSsrc(0U);
+        }
+        if (m_mediaSessionManager) {
+            m_mediaSessionManager->setLocalVideoSsrc(assignedVideoSsrc);
+        }
+    }
+    updateRemoteVideoSsrcMappings();
+
+    applySfuRouteToSessions();
+
+    const bool answerForAudio = assignedAudioSsrc != 0U ||
+                                (assignedAudioSsrc == 0U && assignedVideoSsrc == 0U);
+    const bool answerForVideo = assignedVideoSsrc != 0U;
+
+    if (answerForAudio && m_audioCallSession && !m_audioClientIceUfrag.isEmpty()) {
+        const auto stunRequest = buildStunBindingRequest(serverIceUfrag + QLatin1Char(':') + m_audioClientIceUfrag);
+        if (!m_audioCallSession->sendTransportProbe(stunRequest) && shouldEmitVerboseNegotiationLogs()) {
+            emit infoMessage(QStringLiteral("Audio ICE binding request send failed"));
+        }
+        if (!m_audioCallSession->startDtlsSrtp(serverDtlsFingerprint) && shouldEmitVerboseNegotiationLogs()) {
+            emit infoMessage(QStringLiteral("Audio DTLS-SRTP start failed: %1")
+                                 .arg(QString::fromStdString(m_audioCallSession->lastError())));
+        }
+    }
+    if (answerForVideo && m_screenShareSession && !m_videoClientIceUfrag.isEmpty()) {
+        const auto stunRequest = buildStunBindingRequest(serverIceUfrag + QLatin1Char(':') + m_videoClientIceUfrag);
+        if (!m_screenShareSession->sendTransportProbe(stunRequest) && shouldEmitVerboseNegotiationLogs()) {
+            emit infoMessage(QStringLiteral("Video ICE binding request send failed"));
+        }
+        if (!m_screenShareSession->startDtlsSrtp(serverDtlsFingerprint) && shouldEmitVerboseNegotiationLogs()) {
+            emit infoMessage(QStringLiteral("Video DTLS-SRTP start failed: %1")
+                                 .arg(QString::fromStdString(m_screenShareSession->lastError())));
+        }
+    }
+    updateAudioSessionSettings();
+    updateVideoSessionSettings();
+
+    if (shouldEmitVerboseNegotiationLogs()) {
+        emit infoMessage(QStringLiteral("Media transport answer accepted: sfu-candidates=%1 assigned-audio-ssrc=%2 assigned-video-ssrc=%3")
+                             .arg(serverCandidates.size())
+                             .arg(assignedAudioSsrc)
+                             .arg(assignedVideoSsrc));
+    }
 }
 
 void MeetingController::updateVideoSessionSettings() {
@@ -2494,12 +2704,13 @@ void MeetingController::resetRemoteVideoAvSyncStats() {
 }
 
 void MeetingController::resetAudioPeerState() {
-    if (!m_audioPeerUserId.isEmpty()) {
-        m_audioOfferSentPeers.remove(m_audioPeerUserId);
-        m_audioAnswerSentPeers.remove(m_audioPeerUserId);
+    if (!m_audioTransportKey.isEmpty()) {
+        m_audioOfferSentPeers.remove(m_audioTransportKey);
+        m_audioAnswerSentPeers.remove(m_audioTransportKey);
     }
     m_audioNegotiationStarted = false;
     m_audioPeerUserId.clear();
+    m_audioTransportKey.clear();
 
     if (m_audioSessionManager) {
         m_audioSessionManager->reset();
@@ -2534,12 +2745,13 @@ void MeetingController::clearRemoteVideoFrameStores() {
 }
 
 void MeetingController::resetVideoPeerState(bool clearRemoteFrame) {
-    if (!m_videoPeerUserId.isEmpty()) {
-        m_videoOfferSentPeers.remove(m_videoPeerUserId);
-        m_videoAnswerSentPeers.remove(m_videoPeerUserId);
+    if (!m_videoTransportKey.isEmpty()) {
+        m_videoOfferSentPeers.remove(m_videoTransportKey);
+        m_videoAnswerSentPeers.remove(m_videoTransportKey);
     }
     m_videoNegotiationStarted = false;
     m_videoPeerUserId.clear();
+    m_videoTransportKey.clear();
     if (m_screenShareSession) {
         m_screenShareSession->setExpectedRemoteVideoSsrc(0U);
     }
@@ -2589,7 +2801,9 @@ void MeetingController::syncLocalParticipantMediaState() {
                                           role,
                                           !m_audioMuted,
                                           !m_videoMuted,
-                                          m_screenSharing);
+                                          m_screenSharing,
+                                          m_assignedAudioSsrc,
+                                          m_assignedVideoSsrc);
     if (m_currentMeetingHost || role == 1) {
         m_participantModel->setHostUserId(m_userId);
     }
@@ -2603,6 +2817,9 @@ void MeetingController::setScreenSharing(bool sharing) {
     m_screenSharing = sharing;
     emit screenSharingChanged();
     if (m_screenSharing) {
+        if (m_localVideoFrameStore) {
+            m_localVideoFrameStore->clear();
+        }
         invalidateRemoteVideoRenderQueue(true);
     }
     updateActiveVideoPeerSelection();
@@ -2616,6 +2833,10 @@ void MeetingController::resetMediaNegotiation() {
     m_videoOfferSentPeers.clear();
     m_videoAnswerSentPeers.clear();
     m_remoteVideoSsrcByPeer.clear();
+    m_assignedAudioSsrc = 0;
+    m_assignedVideoSsrc = 0;
+    m_audioClientIceUfrag.clear();
+    m_videoClientIceUfrag.clear();
 
     if (m_audioCallSession) {
         m_audioCallSession->stop();
@@ -2639,8 +2860,10 @@ void MeetingController::maybeStartAudioNegotiation() {
         return;
     }
 
+    const QString transportKey = currentAudioTransportKey();
+    const bool useSfuTransport = transportKey == QLatin1String(kSfuTransportKey);
     const QString peerUserId = currentAudioPeerUserId();
-    if (peerUserId.isEmpty()) {
+    if (peerUserId.isEmpty() && !useSfuTransport) {
         resetAudioPeerState();
         if (m_audioCallSession) {
             m_audioCallSession->stop();
@@ -2649,7 +2872,12 @@ void MeetingController::maybeStartAudioNegotiation() {
         return;
     }
 
-    if (!m_audioPeerUserId.isEmpty() && m_audioPeerUserId != peerUserId) {
+    if (transportKey.isEmpty()) {
+        resetAudioPeerState();
+        return;
+    }
+
+    if (!m_audioTransportKey.isEmpty() && m_audioTransportKey != transportKey) {
         resetAudioPeerState();
     }
 
@@ -2668,6 +2896,9 @@ void MeetingController::maybeStartAudioNegotiation() {
         config.frameSamples = kAudioFrameSamples;
         config.bitrate = kAudioBitrate;
         m_audioCallSession = std::make_unique<av::session::AudioCallSession>(config);
+        if (m_assignedAudioSsrc != 0U) {
+            m_audioCallSession->setAudioSsrc(m_assignedAudioSsrc);
+        }
     }
 
     m_audioCallSession->setCaptureMuted(m_audioMuted);
@@ -2683,7 +2914,10 @@ void MeetingController::maybeStartAudioNegotiation() {
         m_audioNegotiationStarted = true;
     }
 
-    m_audioPeerUserId = peerUserId;
+    if (!peerUserId.isEmpty()) {
+        m_audioPeerUserId = peerUserId;
+    }
+    m_audioTransportKey = transportKey;
     updateAudioSessionSettings();
 
     if (!m_signaling->isConnected()) {
@@ -2698,8 +2932,10 @@ void MeetingController::maybeStartVideoNegotiation() {
         return;
     }
 
+    const QString transportKey = currentVideoTransportKey();
+    const bool useSfuTransport = transportKey == QLatin1String(kSfuTransportKey);
     const QString peerUserId = currentVideoPeerUserId();
-    if (peerUserId.isEmpty()) {
+    if (peerUserId.isEmpty() && !useSfuTransport) {
         resetVideoPeerState(true);
         if (m_screenShareSession) {
             m_screenShareSession->stop();
@@ -2708,7 +2944,12 @@ void MeetingController::maybeStartVideoNegotiation() {
         return;
     }
 
-    if (!m_videoPeerUserId.isEmpty() && m_videoPeerUserId != peerUserId) {
+    if (transportKey.isEmpty()) {
+        resetVideoPeerState(true);
+        return;
+    }
+
+    if (!m_videoTransportKey.isEmpty() && m_videoTransportKey != transportKey) {
         resetVideoPeerState(false);
     }
 
@@ -2731,6 +2972,9 @@ void MeetingController::maybeStartVideoNegotiation() {
         config.cameraPayloadType = static_cast<uint8_t>(kCameraPayloadType);
         config.payloadType = static_cast<uint8_t>(kScreenPayloadType);
         m_screenShareSession = std::make_unique<av::session::ScreenShareSession>(config);
+        if (m_assignedVideoSsrc != 0U) {
+            m_screenShareSession->setVideoSsrc(m_assignedVideoSsrc);
+        }
         emit infoMessage(QStringLiteral("Video profile active: %1x%2@%3fps bitrate=%4 preset=%5 encoder=%6")
                              .arg(videoTuning.width)
                              .arg(videoTuning.height)
@@ -2807,6 +3051,17 @@ void MeetingController::maybeStartVideoNegotiation() {
                                      : QStringLiteral("Video camera source: real-device"));
             }, Qt::QueuedConnection);
         });
+        m_screenShareSession->setLocalCameraPreviewCallback([this](av::codec::DecodedVideoFrame frame) {
+            QMetaObject::invokeMethod(
+                this,
+                [this, frame = std::move(frame)]() mutable {
+                    if (!m_localVideoFrameStore || !m_inMeeting || m_videoMuted || m_screenSharing) {
+                        return;
+                    }
+                    m_localVideoFrameStore->setFrame(std::move(frame));
+                },
+                Qt::QueuedConnection);
+        });
         m_screenShareSession->setStatusCallback([this](std::string statusMessage) {
             const QString statusText = QString::fromStdString(statusMessage);
             QMetaObject::invokeMethod(this, [this, statusText]() {
@@ -2861,7 +3116,10 @@ void MeetingController::maybeStartVideoNegotiation() {
         }
     }
 
-    m_videoPeerUserId = peerUserId;
+    if (!peerUserId.isEmpty()) {
+        m_videoPeerUserId = peerUserId;
+    }
+    m_videoTransportKey = transportKey;
     updateExpectedRemoteVideoSsrcForCurrentPeer();
     updateVideoSessionSettings();
 
@@ -2876,30 +3134,55 @@ bool MeetingController::sendAudioOfferToPeer(bool force) {
     if (!m_audioSessionManager || !m_signaling->isConnected()) {
         return false;
     }
-
-    const QString peerUserId = currentAudioPeerUserId();
-    if (peerUserId.isEmpty()) {
+    if (m_meetingId.trimmed().isEmpty()) {
+        return false;
+    }
+    if (!resolveSfuEndpoint(nullptr, nullptr)) {
+        emit infoMessage(QStringLiteral("Cannot send audio transport offer: SFU route is unavailable"));
         return false;
     }
 
-    if (!force && (!shouldInitiateOffer(m_currentMeetingHost, m_userId, peerUserId) ||
-                   m_audioOfferSentPeers.contains(peerUserId))) {
+    const QString transportKey = currentAudioTransportKey();
+    if (transportKey.isEmpty()) {
+        return false;
+    }
+
+    const bool useSfuTransport = transportKey == QLatin1String(kSfuTransportKey);
+    if (m_audioOfferSentPeers.contains(transportKey) && (!force || useSfuTransport)) {
         return false;
     }
 
     updateAudioSessionSettings();
-    const QString offer = m_audioSessionManager->buildOffer(peerUserId);
-    if (offer.isEmpty()) {
-        emit infoMessage(QStringLiteral("Failed to build audio offer"));
+    const quint16 localPort = m_audioCallSession ? m_audioCallSession->localPort() : 0;
+    const QStringList candidates = makeHostIceCandidates(localPort);
+    if (candidates.isEmpty()) {
+        emit infoMessage(QStringLiteral("Failed to build audio ICE host candidate"));
         return false;
     }
 
-    const quint32 audioSsrc = m_audioCallSession ? m_audioCallSession->audioSsrc() : 0;
-    m_signaling->sendMediaOffer(peerUserId, offer, audioSsrc, 0);
-    m_audioOfferSentPeers.insert(peerUserId);
-    m_audioAnswerSentPeers.remove(peerUserId);
+    const QString clientIceUfrag = makeIceToken(8);
+    const QString clientIcePwd = makeIceToken(24);
+    const QString clientDtlsFingerprint = m_audioCallSession ? m_audioCallSession->prepareDtlsFingerprint() : QString{};
+    if (clientDtlsFingerprint.isEmpty()) {
+        emit infoMessage(QStringLiteral("Failed to prepare audio DTLS fingerprint"));
+        return false;
+    }
+    m_audioClientIceUfrag = clientIceUfrag;
+    const bool publishAudio = !m_audioMuted;
+    m_signaling->sendTransportOffer(m_meetingId,
+                                    publishAudio,
+                                    false,
+                                    clientIceUfrag,
+                                    clientIcePwd,
+                                    clientDtlsFingerprint,
+                                    candidates);
+    m_audioOfferSentPeers.insert(transportKey);
+    m_audioAnswerSentPeers.remove(transportKey);
     if (shouldEmitVerboseNegotiationLogs()) {
-        emit infoMessage(QStringLiteral("Audio offer sent to %1").arg(peerUserId));
+        const QString offerTarget = transportKey == QLatin1String(kSfuTransportKey)
+                                        ? QStringLiteral("sfu")
+                                        : currentAudioPeerUserId();
+        emit infoMessage(QStringLiteral("Audio transport offer sent to SFU for %1").arg(offerTarget));
     }
     return true;
 }
@@ -2908,30 +3191,59 @@ bool MeetingController::sendVideoOfferToPeer(bool force) {
     if (!m_mediaSessionManager || !m_signaling->isConnected()) {
         return false;
     }
-
-    const QString peerUserId = currentVideoPeerUserId();
-    if (peerUserId.isEmpty()) {
+    if (m_meetingId.trimmed().isEmpty()) {
+        return false;
+    }
+    if (!resolveSfuEndpoint(nullptr, nullptr)) {
+        emit infoMessage(QStringLiteral("Cannot send video transport offer: SFU route is unavailable"));
         return false;
     }
 
-    if (!force && (!shouldInitiateOffer(m_currentMeetingHost, m_userId, peerUserId) ||
-                   m_videoOfferSentPeers.contains(peerUserId))) {
+    const QString transportKey = currentVideoTransportKey();
+    if (transportKey.isEmpty()) {
+        return false;
+    }
+
+    const bool useSfuTransport = transportKey == QLatin1String(kSfuTransportKey);
+    if (m_videoOfferSentPeers.contains(transportKey) && (!force || useSfuTransport)) {
         return false;
     }
 
     updateVideoSessionSettings();
-    const QString offer = m_mediaSessionManager->buildOffer(peerUserId);
-    if (offer.isEmpty()) {
-        emit infoMessage(QStringLiteral("Failed to build video offer"));
+    const quint32 videoSsrc = currentVideoSsrc();
+    if (!useSfuTransport && videoSsrc == 0U) {
+        return false;
+    }
+    const quint16 localPort = m_screenShareSession ? m_screenShareSession->localPort() : 0;
+    const QStringList candidates = makeHostIceCandidates(localPort);
+    if (candidates.isEmpty()) {
+        emit infoMessage(QStringLiteral("Failed to build video ICE host candidate"));
         return false;
     }
 
-    const quint32 videoSsrc = currentVideoSsrc();
-    m_signaling->sendMediaOffer(peerUserId, offer, 0, videoSsrc);
-    m_videoOfferSentPeers.insert(peerUserId);
-    m_videoAnswerSentPeers.remove(peerUserId);
+    const QString clientIceUfrag = makeIceToken(8);
+    const QString clientIcePwd = makeIceToken(24);
+    const QString clientDtlsFingerprint = m_screenShareSession ? m_screenShareSession->prepareDtlsFingerprint() : QString{};
+    if (clientDtlsFingerprint.isEmpty()) {
+        emit infoMessage(QStringLiteral("Failed to prepare video DTLS fingerprint"));
+        return false;
+    }
+    m_videoClientIceUfrag = clientIceUfrag;
+    const bool publishVideo = useSfuTransport || m_screenSharing || !m_videoMuted;
+    m_signaling->sendTransportOffer(m_meetingId,
+                                    false,
+                                    publishVideo,
+                                    clientIceUfrag,
+                                    clientIcePwd,
+                                    clientDtlsFingerprint,
+                                    candidates);
+    m_videoOfferSentPeers.insert(transportKey);
+    m_videoAnswerSentPeers.remove(transportKey);
     if (shouldEmitVerboseNegotiationLogs()) {
-        emit infoMessage(QStringLiteral("Video offer sent to %1").arg(peerUserId));
+        const QString offerTarget = transportKey == QLatin1String(kSfuTransportKey)
+                                        ? QStringLiteral("sfu")
+                                        : currentVideoPeerUserId();
+        emit infoMessage(QStringLiteral("Video transport offer sent to SFU for %1").arg(offerTarget));
     }
     return true;
 }

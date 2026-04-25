@@ -742,6 +742,8 @@ func (r *RedisRoomStore) AddMember(ctx context.Context, meetingID string, p *pro
 		"is_audio_on":  boolToInt(p.IsAudioOn),
 		"is_video_on":  boolToInt(p.IsVideoOn),
 		"is_sharing":   boolToInt(p.IsSharing),
+		"audio_ssrc":   p.AudioSsrc,
+		"video_ssrc":   p.VideoSsrc,
 	})
 
 	_, err := pipe.Exec(ctx)
@@ -790,6 +792,26 @@ func (r *RedisRoomStore) SetParticipantSharing(ctx context.Context, meetingID, u
 
 	detailKey := fmt.Sprintf("room_member:%s:%s", meetingID, userID)
 	return r.client.HSet(ctx, detailKey, "is_sharing", boolToInt(sharing)).Err()
+}
+
+func (r *RedisRoomStore) SetParticipantMediaSsrc(ctx context.Context, meetingID, userID string, audioSsrc, videoSsrc uint32) error {
+	if !r.Enabled() || meetingID == "" || userID == "" {
+		return nil
+	}
+
+	fields := make(map[string]any, 2)
+	if audioSsrc != 0 {
+		fields["audio_ssrc"] = audioSsrc
+	}
+	if videoSsrc != 0 {
+		fields["video_ssrc"] = videoSsrc
+	}
+	if len(fields) == 0 {
+		return nil
+	}
+
+	detailKey := fmt.Sprintf("room_member:%s:%s", meetingID, userID)
+	return r.client.HSet(ctx, detailKey, fields).Err()
 }
 
 func (r *RedisRoomStore) ReportParticipantQuality(ctx context.Context, meetingID, userID string, quality ParticipantQuality) error {
@@ -886,6 +908,16 @@ func (r *RedisRoomStore) HydrateParticipants(ctx context.Context, meetingID stri
 		}
 		if value, ok := values["is_sharing"]; ok {
 			participant.IsSharing = value != "0"
+		}
+		if value, ok := values["audio_ssrc"]; ok {
+			if parsed, err := strconv.ParseUint(value, 10, 32); err == nil {
+				participant.AudioSsrc = uint32(parsed)
+			}
+		}
+		if value, ok := values["video_ssrc"]; ok {
+			if parsed, err := strconv.ParseUint(value, 10, 32); err == nil {
+				participant.VideoSsrc = uint32(parsed)
+			}
 		}
 	}
 

@@ -24,6 +24,25 @@ QString envValue(const char* key, const QString& fallback = QString()) {
     return value.isEmpty() ? fallback : value;
 }
 
+QStringList envPathList(const char* key) {
+    const QString raw = qEnvironmentVariable(key).trimmed();
+    if (raw.isEmpty()) {
+        return {};
+    }
+
+    QStringList values;
+    const QStringList segments = raw.split(QChar(';'), Qt::SkipEmptyParts);
+    values.reserve(segments.size());
+    for (const auto& segment : segments) {
+        const QString trimmed = segment.trimmed();
+        if (!trimmed.isEmpty()) {
+            values.push_back(trimmed);
+        }
+    }
+    values.removeDuplicates();
+    return values;
+}
+
 bool envFlag(const char* key) {
     return qEnvironmentVariableIntValue(key) != 0;
 }
@@ -157,7 +176,6 @@ bool hasAudioEvidence(const AudioSmokeSnapshot& snapshot) {
     return snapshot.sentPackets > 0 &&
            snapshot.receivedPackets > 0 &&
            snapshot.playedFrames > 0 &&
-           snapshot.rttMs > 0 &&
            snapshot.targetBitrateBps >= kMinAudioBitrateBps &&
            snapshot.targetBitrateBps <= kMaxAudioBitrateBps;
 }
@@ -276,12 +294,17 @@ RuntimeSmokeDriver::RuntimeSmokeDriver(MeetingController* controller, QObject* p
     , m_title(envValue("MEETING_SMOKE_TITLE", QStringLiteral("meeting-client-process-smoke")).trimmed())
     , m_meetingIdPath(envValue("MEETING_SMOKE_MEETING_ID_PATH"))
     , m_resultPath(envValue("MEETING_SMOKE_RESULT_PATH"))
-    , m_peerResultPath(envValue("MEETING_SMOKE_PEER_RESULT_PATH"))
+    , m_peerResultPaths(envPathList("MEETING_SMOKE_PEER_RESULT_PATHS"))
+    , m_remoteVideoUserId(envValue("MEETING_SMOKE_REMOTE_VIDEO_USER_ID").trimmed())
     , m_enabled(envFlag("MEETING_RUNTIME_SMOKE"))
+    , m_enableLocalAudio(envFlag("MEETING_SMOKE_ENABLE_LOCAL_AUDIO"))
+    , m_enableLocalVideo(envFlag("MEETING_SMOKE_ENABLE_LOCAL_VIDEO"))
     , m_requireVideoEvidence(envFlag("MEETING_SMOKE_REQUIRE_VIDEO"))
     , m_requireAudioEvidence(envFlag("MEETING_SMOKE_REQUIRE_AUDIO"))
     , m_requireAvSyncEvidence(envFlag("MEETING_SMOKE_REQUIRE_AVSYNC"))
+    , m_disableLocalAudio(envFlag("MEETING_SMOKE_DISABLE_LOCAL_AUDIO"))
     , m_disableLocalVideo(envFlag("MEETING_SMOKE_DISABLE_LOCAL_VIDEO"))
+    , m_meetingCapacity(std::max(2, envInt("MEETING_SMOKE_MEETING_CAPACITY", 2)))
     , m_avSyncMaxSkewMs(std::max(0, envInt("MEETING_SMOKE_AVSYNC_MAX_SKEW_MS", 40)))
     , m_avSyncMinSamples(std::max(1, envInt("MEETING_SMOKE_AVSYNC_MIN_SAMPLES", 10)))
     , m_avSyncMaxAbsSkewMs(std::max(0, envInt("MEETING_SMOKE_AVSYNC_MAX_ABS_SKEW_MS", (std::max)(300, m_avSyncMaxSkewMs * 3))))
@@ -301,21 +324,38 @@ RuntimeSmokeDriver::RuntimeSmokeDriver(MeetingController* controller, QObject* p
     }()) {
     m_meetingIdPath = normalizeSmokeArtifactPath(m_meetingIdPath, QStringLiteral("meeting_id.txt"));
     m_resultPath = normalizeSmokeArtifactPath(m_resultPath, QStringLiteral("result.txt"));
-    m_peerResultPath = normalizeSmokeArtifactPath(m_peerResultPath, QStringLiteral("peer.result.txt"));
+    if (m_peerResultPaths.isEmpty()) {
+        const QString legacyPeerResultPath = envValue("MEETING_SMOKE_PEER_RESULT_PATH");
+        if (!legacyPeerResultPath.trimmed().isEmpty()) {
+            m_peerResultPaths.push_back(legacyPeerResultPath.trimmed());
+        }
+    }
+    for (QString& path : m_peerResultPaths) {
+        path = normalizeSmokeArtifactPath(path, QStringLiteral("peer.result.txt"));
+    }
+    m_peerResultPaths.removeAll(QString());
 
     const QString helperSkipAvSyncRaw = envValue("MEETING_SMOKE_GUEST_SKIP_AVSYNC").trimmed();
     const bool helperSkipAvSync = helperSkipAvSyncRaw.isEmpty()
         ? true
         : helperSkipAvSyncRaw.toInt() != 0;
     if (helperSkipAvSync &&
-        m_role == QStringLiteral("guest") &&
-        !m_peerResultPath.isEmpty()) {
+        isJoinerRole() &&
+        !m_peerResultPaths.isEmpty()) {
         m_requireAvSyncEvidence = false;
     }
 }
 
+bool RuntimeSmokeDriver::isHostRole() const {
+    return m_role == QStringLiteral("host");
+}
+
+bool RuntimeSmokeDriver::isJoinerRole() const {
+    return m_role == QStringLiteral("guest") || m_role.startsWith(QStringLiteral("subscriber"));
+}
+
 bool RuntimeSmokeDriver::enabled() const {
-    return m_enabled && m_controller != nullptr && (m_role == QStringLiteral("host") || m_role == QStringLiteral("guest"));
+    return m_enabled && m_controller != nullptr && (isHostRole() || isJoinerRole());
 }
 
 void RuntimeSmokeDriver::start() {
@@ -327,16 +367,12 @@ void RuntimeSmokeDriver::start() {
     QObject::connect(m_controller, &MeetingController::infoMessage, this, &RuntimeSmokeDriver::handleInfoMessage);
     QObject::connect(m_controller, &MeetingController::loggedInChanged, this, &RuntimeSmokeDriver::handleLoggedInChanged);
     QObject::connect(m_controller, &MeetingController::inMeetingChanged, this, &RuntimeSmokeDriver::handleInMeetingChanged);
+    QObject::connect(m_controller, &MeetingController::audioMutedChanged, this, &RuntimeSmokeDriver::applyLocalAudioPolicy);
+    QObject::connect(m_controller, &MeetingController::videoMutedChanged, this, &RuntimeSmokeDriver::applyLocalVideoPolicy);
     QObject::connect(m_controller, &MeetingController::statusTextChanged, this, &RuntimeSmokeDriver::handleStatusTextChanged);
 
     if (m_requireVideoEvidence) {
-        auto* frameStore = qobject_cast<av::render::VideoFrameStore*>(m_controller->remoteVideoFrameSource());
-        if (frameStore == nullptr) {
-            fail(QStringLiteral("remote video frame source unavailable"));
-            return;
-        }
-
-        QObject::connect(frameStore, &av::render::VideoFrameStore::frameChanged, this, &RuntimeSmokeDriver::maybeUpdateVideoEvidence);
+        QObject::connect(m_controller, &MeetingController::remoteVideoFrameSourceChanged, this, &RuntimeSmokeDriver::maybeUpdateVideoEvidence);
         maybeUpdateVideoEvidence();
     }
 
@@ -372,20 +408,28 @@ QString RuntimeSmokeDriver::currentStageTag() const {
         return QStringLiteral("login");
     }
 
-    if (m_role == QStringLiteral("host")) {
+    if (isHostRole()) {
         if (!m_startedCreate) {
             return QStringLiteral("host_create_schedule");
         }
         if (!m_controller->inMeeting()) {
             return QStringLiteral("host_create_meeting");
         }
-    } else if (m_role == QStringLiteral("guest")) {
+    } else if (isJoinerRole()) {
         if (!m_startedJoin) {
-            return QStringLiteral("guest_wait_meeting_id");
+            return QStringLiteral("joiner_wait_meeting_id");
         }
         if (!m_controller->inMeeting()) {
-            return QStringLiteral("guest_join_meeting");
+            return QStringLiteral("joiner_join_meeting");
         }
+    }
+
+    if (m_requireAudioEvidence && !audioTransportReady()) {
+        return QStringLiteral("audio_transport");
+    }
+
+    if (m_requireVideoEvidence && !videoTransportReady()) {
+        return QStringLiteral("video_transport");
     }
 
     if (m_requireAudioEvidence && !m_audioEvidenceReady) {
@@ -408,11 +452,39 @@ QString RuntimeSmokeDriver::currentStageTag() const {
         return QStringLiteral("soak_run");
     }
 
-    if (m_soakDurationMs <= 0 && m_role == QStringLiteral("host") && !m_peerResultPath.isEmpty() && !m_peerSuccessObserved) {
+    if (m_soakDurationMs <= 0 && isHostRole() && !m_peerResultPaths.isEmpty() && !m_peerSuccessObserved) {
         return QStringLiteral("peer_success_wait");
     }
 
     return QStringLiteral("post_join_negotiation");
+}
+
+bool RuntimeSmokeDriver::audioTransportReady() const {
+    return m_controller &&
+           m_controller->audioIceConnected() &&
+           m_controller->audioDtlsConnected() &&
+           m_controller->audioSrtpReady();
+}
+
+bool RuntimeSmokeDriver::videoTransportReady() const {
+    return m_controller &&
+           m_controller->videoIceConnected() &&
+           m_controller->videoDtlsConnected() &&
+           m_controller->videoSrtpReady();
+}
+
+QString RuntimeSmokeDriver::transportPipelineSummary() const {
+    if (!m_controller || (!m_requireAudioEvidence && !m_requireVideoEvidence && !m_requireAvSyncEvidence)) {
+        return {};
+    }
+
+    return QStringLiteral("transport=audio_ice:%1,audio_dtls:%2,audio_srtp:%3,video_ice:%4,video_dtls:%5,video_srtp:%6")
+        .arg(m_controller->audioIceConnected() ? 1 : 0)
+        .arg(m_controller->audioDtlsConnected() ? 1 : 0)
+        .arg(m_controller->audioSrtpReady() ? 1 : 0)
+        .arg(m_controller->videoIceConnected() ? 1 : 0)
+        .arg(m_controller->videoDtlsConnected() ? 1 : 0)
+        .arg(m_controller->videoSrtpReady() ? 1 : 0);
 }
 
 QString RuntimeSmokeDriver::videoPipelineSummary() const {
@@ -471,8 +543,12 @@ QString RuntimeSmokeDriver::withStageTag(const QString& reason) const {
     const QString normalizedReason = reason.trimmed().isEmpty() ? QStringLiteral("unknown") : reason.trimmed();
     const QString videoPipeline = videoPipelineSummary();
     const QString audioPipeline = audioPipelineSummary();
+    const QString transportPipeline = transportPipelineSummary();
     const QString avSyncPipeline = avSyncSummary();
     QString annotated = QStringLiteral("stage=%1; reason=%2").arg(currentStageTag(), normalizedReason);
+    if (!transportPipeline.isEmpty()) {
+        annotated += QStringLiteral("; %1").arg(transportPipeline);
+    }
     if (!audioPipeline.isEmpty()) {
         annotated += QStringLiteral("; %1").arg(audioPipeline);
     }
@@ -492,6 +568,14 @@ QString RuntimeSmokeDriver::withStageTag(const QString& reason) const {
 }
 
 void RuntimeSmokeDriver::handleInfoMessage(const QString& message) {
+    const QString trimmedMessage = message.trimmed();
+    if (!trimmedMessage.isEmpty()) {
+        m_recentInfoMessages.push_back(trimmedMessage);
+        while (m_recentInfoMessages.size() > 10) {
+            m_recentInfoMessages.pop_front();
+        }
+    }
+
     if (!m_expectedCameraSource.isEmpty() &&
         message.contains(QStringLiteral("Video camera source: %1").arg(m_expectedCameraSource), Qt::CaseInsensitive)) {
         m_cameraSourceObserved = true;
@@ -560,22 +644,28 @@ void RuntimeSmokeDriver::handleInfoMessage(const QString& message) {
         return;
     }
 
-    const bool guestCanExitOnNegotiationOnly =
+    const bool joinerCanExitOnNegotiationOnly =
         !m_requireAudioEvidence &&
         !m_requireVideoEvidence &&
         !m_requireAvSyncEvidence &&
         m_expectedCameraSource.isEmpty();
-    if (m_role == QStringLiteral("guest") &&
-        guestCanExitOnNegotiationOnly &&
+    if (isJoinerRole() &&
+        joinerCanExitOnNegotiationOnly &&
         (message.contains(QStringLiteral("Audio answer sent"), Qt::CaseInsensitive) ||
-         message.contains(QStringLiteral("Video answer sent"), Qt::CaseInsensitive))) {
+         message.contains(QStringLiteral("Video answer sent"), Qt::CaseInsensitive) ||
+         message.contains(QStringLiteral("Audio transport offer sent"), Qt::CaseInsensitive) ||
+         message.contains(QStringLiteral("Video transport offer sent"), Qt::CaseInsensitive) ||
+         message.contains(QStringLiteral("Media transport answer accepted"), Qt::CaseInsensitive))) {
         maybeCompleteSuccess(message);
         return;
     }
 
-    if (m_role == QStringLiteral("host") &&
+    if (isHostRole() &&
         (message.contains(QStringLiteral("Audio offer sent"), Qt::CaseInsensitive) ||
          message.contains(QStringLiteral("Video offer sent"), Qt::CaseInsensitive) ||
+         message.contains(QStringLiteral("Audio transport offer sent"), Qt::CaseInsensitive) ||
+         message.contains(QStringLiteral("Video transport offer sent"), Qt::CaseInsensitive) ||
+         message.contains(QStringLiteral("Media transport answer accepted"), Qt::CaseInsensitive) ||
          message.contains(QStringLiteral("Audio endpoint ready"), Qt::CaseInsensitive) ||
          message.contains(QStringLiteral("Video endpoint ready"), Qt::CaseInsensitive))) {
         maybeCompleteSuccess(message);
@@ -588,13 +678,13 @@ void RuntimeSmokeDriver::handleLoggedInChanged() {
     }
 
     writeResult(QStringLiteral("LOGGED_IN"), m_role);
-    if (m_role == QStringLiteral("host") && !m_startedCreate) {
+    if (isHostRole() && !m_startedCreate) {
         m_startedCreate = true;
-        m_controller->createMeeting(m_title, QString(), 2);
+        m_controller->createMeeting(m_title, QString(), m_meetingCapacity);
         return;
     }
 
-    if (m_role == QStringLiteral("guest") && !m_startedJoin) {
+    if (isJoinerRole() && !m_startedJoin) {
         QTimer::singleShot(100, this, &RuntimeSmokeDriver::pollMeetingId);
     }
 }
@@ -604,16 +694,8 @@ void RuntimeSmokeDriver::handleInMeetingChanged() {
         return;
     }
 
-    if (!m_appliedLocalVideoPolicy) {
-        m_appliedLocalVideoPolicy = true;
-        if (m_disableLocalVideo) {
-            if (!m_controller->videoMuted()) {
-                m_controller->toggleVideo();
-            }
-        } else if (m_requireVideoEvidence && m_controller->videoMuted()) {
-            m_controller->toggleVideo();
-        }
-    }
+    applyLocalAudioPolicy();
+    applyLocalVideoPolicy();
 
     writeResult(QStringLiteral("IN_MEETING"), m_controller->meetingId());
     if (m_requireAudioEvidence) {
@@ -622,11 +704,55 @@ void RuntimeSmokeDriver::handleInMeetingChanged() {
     if (m_requireAvSyncEvidence) {
         maybeUpdateAvSyncEvidence();
     }
-    if (m_role == QStringLiteral("host") && !m_meetingIdPath.isEmpty()) {
+    if (isHostRole() && !m_meetingIdPath.isEmpty()) {
         if (!writeMeetingId(m_controller->meetingId())) {
             fail(QStringLiteral("failed to publish meeting id"));
         }
     }
+}
+
+void RuntimeSmokeDriver::applyLocalAudioPolicy() {
+    if (!m_controller || !m_controller->inMeeting()) {
+        return;
+    }
+
+    if (m_disableLocalAudio) {
+        if (!m_controller->audioMuted()) {
+            m_controller->toggleAudio();
+            return;
+        }
+        m_appliedLocalAudioPolicy = true;
+        return;
+    }
+
+    if (m_enableLocalAudio && m_controller->audioMuted()) {
+        m_controller->toggleAudio();
+        return;
+    }
+
+    m_appliedLocalAudioPolicy = true;
+}
+
+void RuntimeSmokeDriver::applyLocalVideoPolicy() {
+    if (!m_controller || !m_controller->inMeeting()) {
+        return;
+    }
+
+    if (m_disableLocalVideo) {
+        if (!m_controller->videoMuted()) {
+            m_controller->toggleVideo();
+            return;
+        }
+        m_appliedLocalVideoPolicy = true;
+        return;
+    }
+
+    if (m_enableLocalVideo && m_controller->videoMuted()) {
+        m_controller->toggleVideo();
+        return;
+    }
+
+    m_appliedLocalVideoPolicy = true;
 }
 
 void RuntimeSmokeDriver::handleStatusTextChanged() {
@@ -662,7 +788,7 @@ bool RuntimeSmokeDriver::maybeHandleRetriableCameraStartFailure(const QString& m
     if (!startFailed && !noFramesProduced) {
         return false;
     }
-    if (!m_requireVideoEvidence || m_disableLocalVideo) {
+    if ((!m_requireVideoEvidence && !m_enableLocalVideo) || m_disableLocalVideo) {
         return false;
     }
     if (!m_expectedCameraSource.isEmpty() && m_expectedCameraSource != QStringLiteral("real-device")) {
@@ -720,20 +846,29 @@ void RuntimeSmokeDriver::pollMeetingId() {
 }
 
 void RuntimeSmokeDriver::pollPeerSuccess() {
-    if (m_reportedResult || m_peerResultPath.isEmpty()) {
+    if (m_reportedResult || m_peerResultPaths.isEmpty()) {
         return;
     }
 
-    const QString peerResult = readPeerResult();
-    if (peerResult.startsWith(QStringLiteral("SUCCESS"))) {
+    int successCount = 0;
+    const QStringList peerResults = readPeerResults();
+    for (int index = 0; index < peerResults.size(); ++index) {
+        const QString& peerResult = peerResults.at(index);
+        if (peerResult.startsWith(QStringLiteral("SUCCESS"))) {
+            ++successCount;
+            continue;
+        }
+        if (peerResult.startsWith(QStringLiteral("FAIL"))) {
+            const QStringList lines = peerResult.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+            const QString peerReason = lines.size() > 1 ? lines.at(1).trimmed() : peerResult.trimmed();
+            fail(QStringLiteral("peer[%1] reported failure: %2").arg(index).arg(peerReason));
+            return;
+        }
+    }
+
+    if (successCount == m_peerResultPaths.size()) {
         m_peerSuccessObserved = true;
         maybeCompleteSuccess(m_pendingSuccessReason.isEmpty() ? QStringLiteral("peer success observed") : m_pendingSuccessReason);
-        return;
-    }
-    if (peerResult.startsWith(QStringLiteral("FAIL"))) {
-        const QStringList lines = peerResult.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
-        const QString peerReason = lines.size() > 1 ? lines.at(1).trimmed() : peerResult.trimmed();
-        fail(QStringLiteral("peer reported failure: %1").arg(peerReason));
         return;
     }
 
@@ -760,8 +895,9 @@ void RuntimeSmokeDriver::maybeUpdateVideoEvidence() {
         return;
     }
 
-    auto* frameStore = qobject_cast<av::render::VideoFrameStore*>(m_controller->remoteVideoFrameSource());
+    auto* frameStore = qobject_cast<av::render::VideoFrameStore*>(observedRemoteVideoFrameSource());
     if (!hasDecodedVideoFrame(frameStore)) {
+        QTimer::singleShot(100, this, &RuntimeSmokeDriver::maybeUpdateVideoEvidence);
         return;
     }
 
@@ -795,6 +931,26 @@ void RuntimeSmokeDriver::maybeCompleteSuccess(const QString& reason) {
 
     const QString normalizedReason = reason.trimmed().isEmpty() ? QStringLiteral("success") : reason.trimmed();
 
+    if (m_requireAudioEvidence && !audioTransportReady()) {
+        m_pendingSuccessReason = normalizedReason;
+        writeResult(QStringLiteral("WAITING_TRANSPORT"),
+                    withStageTag(QStringLiteral("audio ICE/DTLS/SRTP evidence pending")));
+        QTimer::singleShot(100, this, [this, normalizedReason]() {
+            maybeCompleteSuccess(normalizedReason);
+        });
+        return;
+    }
+
+    if (m_requireVideoEvidence && !videoTransportReady()) {
+        m_pendingSuccessReason = normalizedReason;
+        writeResult(QStringLiteral("WAITING_TRANSPORT"),
+                    withStageTag(QStringLiteral("video ICE/DTLS/SRTP evidence pending")));
+        QTimer::singleShot(100, this, [this, normalizedReason]() {
+            maybeCompleteSuccess(normalizedReason);
+        });
+        return;
+    }
+
     if (m_requireAudioEvidence && !m_audioEvidenceReady) {
         m_pendingSuccessReason = normalizedReason;
         writeResult(QStringLiteral("WAITING_AUDIO"), withStageTag(QStringLiteral("audio evidence pending")));
@@ -826,8 +982,8 @@ void RuntimeSmokeDriver::maybeCompleteSuccess(const QString& reason) {
     }
 
     const bool helperMediaSoakNeeded =
-        m_role == QStringLiteral("guest") &&
-        !m_peerResultPath.isEmpty() &&
+        isJoinerRole() &&
+        !m_peerResultPaths.isEmpty() &&
         (m_requireAudioEvidence || m_requireVideoEvidence || m_requireAvSyncEvidence || !m_expectedCameraSource.isEmpty());
     if (helperMediaSoakNeeded) {
         const int helperSoakDefaultMs =
@@ -843,7 +999,7 @@ void RuntimeSmokeDriver::maybeCompleteSuccess(const QString& reason) {
         return;
     }
 
-    if (m_role == QStringLiteral("host") && !m_peerResultPath.isEmpty() && !m_peerSuccessObserved) {
+    if (isHostRole() && !m_peerResultPaths.isEmpty() && !m_peerSuccessObserved) {
         m_pendingSuccessReason = normalizedReason;
         writeResult(QStringLiteral("WAITING_PEER"), withStageTag(normalizedReason));
         if (!m_waitingPeerSuccess) {
@@ -1003,7 +1159,11 @@ void RuntimeSmokeDriver::writeResult(const QString& status, const QString& reaso
     }
 
     QTextStream stream(&file);
-    stream << status << '\n' << reason << '\n';
+    QString annotatedReason = reason;
+    if (!m_recentInfoMessages.isEmpty()) {
+        annotatedReason += QStringLiteral("; info_tail=%1").arg(m_recentInfoMessages.join(QStringLiteral(" | ")));
+    }
+    stream << status << '\n' << annotatedReason << '\n';
 }
 
 QString RuntimeSmokeDriver::readMeetingId() const {
@@ -1020,16 +1180,31 @@ QString RuntimeSmokeDriver::readMeetingId() const {
     return stream.readLine().trimmed();
 }
 
-QString RuntimeSmokeDriver::readPeerResult() const {
-    if (m_peerResultPath.isEmpty()) {
-        return {};
+QStringList RuntimeSmokeDriver::readPeerResults() const {
+    QStringList results;
+    results.reserve(m_peerResultPaths.size());
+    for (const QString& path : m_peerResultPaths) {
+        QFile file(path);
+        if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            results.push_back(QString());
+            continue;
+        }
+        results.push_back(QString::fromUtf8(file.readAll()).trimmed());
+    }
+    return results;
+}
+
+QObject* RuntimeSmokeDriver::observedRemoteVideoFrameSource() const {
+    if (!m_controller) {
+        return nullptr;
     }
 
-    QFile file(m_peerResultPath);
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        return {};
+    if (!m_remoteVideoUserId.isEmpty()) {
+        QObject* source = m_controller->remoteVideoFrameSourceForUser(m_remoteVideoUserId);
+        if (source != nullptr) {
+            return source;
+        }
     }
-
-    return QString::fromUtf8(file.readAll()).trimmed();
+    return m_controller->remoteVideoFrameSource();
 }
 

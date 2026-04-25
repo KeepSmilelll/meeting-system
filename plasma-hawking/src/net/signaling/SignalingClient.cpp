@@ -26,6 +26,7 @@ constexpr quint16 kMeetLeaveReq = 0x0205;
 constexpr quint16 kMeetLeaveRsp = 0x0206;
 constexpr quint16 kMediaOffer = 0x0301;
 constexpr quint16 kMediaAnswer = 0x0302;
+constexpr quint16 kMediaIceCandidate = 0x0303;
 constexpr quint16 kMediaMuteToggle = 0x0304;
 constexpr quint16 kMediaScreenShare = 0x0305;
 constexpr quint16 kChatSendReq = 0x0401;
@@ -202,12 +203,23 @@ void SignalingClient::sendChat(int type, const QString& content, const QString& 
     sendRawFrame(kChatSendReq, payload);
 }
 
-void SignalingClient::sendMediaOffer(const QString& targetUserId, const QString& sdp, quint32 audioSsrc, quint32 videoSsrc) {
+void SignalingClient::sendTransportOffer(const QString& meetingId,
+                                         bool publishAudio,
+                                         bool publishVideo,
+                                         const QString& clientIceUfrag,
+                                         const QString& clientIcePwd,
+                                         const QString& clientDtlsFingerprint,
+                                         const QStringList& clientCandidates) {
     meeting::MediaOffer req;
-    req.set_target_user_id(targetUserId.toStdString());
-    req.set_sdp(sdp.toStdString());
-    req.set_audio_ssrc(audioSsrc);
-    req.set_video_ssrc(videoSsrc);
+    req.set_meeting_id(meetingId.toStdString());
+    req.set_publish_audio(publishAudio);
+    req.set_publish_video(publishVideo);
+    req.set_client_ice_ufrag(clientIceUfrag.toStdString());
+    req.set_client_ice_pwd(clientIcePwd.toStdString());
+    req.set_client_dtls_fingerprint(clientDtlsFingerprint.toStdString());
+    for (const auto& candidate : clientCandidates) {
+        req.add_client_candidates(candidate.toStdString());
+    }
 
     std::string payload;
     if (!req.SerializeToString(&payload)) {
@@ -218,20 +230,25 @@ void SignalingClient::sendMediaOffer(const QString& targetUserId, const QString&
     sendRawFrame(kMediaOffer, payload);
 }
 
-void SignalingClient::sendMediaAnswer(const QString& targetUserId, const QString& sdp, quint32 audioSsrc, quint32 videoSsrc) {
-    meeting::MediaAnswer req;
-    req.set_target_user_id(targetUserId.toStdString());
-    req.set_sdp(sdp.toStdString());
-    req.set_audio_ssrc(audioSsrc);
-    req.set_video_ssrc(videoSsrc);
+void SignalingClient::sendTransportIceCandidate(const QString& meetingId,
+                                                const QString& candidate,
+                                                const QString& sdpMid,
+                                                int sdpMlineIndex,
+                                                bool endOfCandidates) {
+    meeting::MediaIceCandidate req;
+    req.set_meeting_id(meetingId.toStdString());
+    req.set_candidate(candidate.toStdString());
+    req.set_sdp_mid(sdpMid.toStdString());
+    req.set_sdp_mline_index(sdpMlineIndex);
+    req.set_end_of_candidates(endOfCandidates);
 
     std::string payload;
     if (!req.SerializeToString(&payload)) {
-        emit protocolError(QStringLiteral("Failed to serialize MediaAnswer"));
+        emit protocolError(QStringLiteral("Failed to serialize MediaIceCandidate"));
         return;
     }
 
-    sendRawFrame(kMediaAnswer, payload);
+    sendRawFrame(kMediaIceCandidate, payload);
 }
 
 void SignalingClient::sendMediaMuteToggle(int mediaType, bool muted) {
@@ -352,7 +369,13 @@ void SignalingClient::handlePayload(quint16 signalType, const QByteArray& payloa
         }
 
         const QString err = rsp.has_error() ? protobufError(rsp.error()) : QString();
-        emit joinMeetingFinished(rsp.success(), toQtString(rsp.meeting_id()), toQtString(rsp.title()), participants, hostUserId, err);
+        emit joinMeetingFinished(rsp.success(),
+                                 toQtString(rsp.meeting_id()),
+                                 toQtString(rsp.title()),
+                                 toQtString(rsp.sfu_address()),
+                                 participants,
+                                 hostUserId,
+                                 err);
         return;
     }
     case kMeetLeaveRsp: {
@@ -365,19 +388,9 @@ void SignalingClient::handlePayload(quint16 signalType, const QByteArray& payloa
         emit leaveMeetingFinished(rsp.success(), rsp.success() ? QString() : QStringLiteral("Leave meeting failed"));
         return;
     }
-    case kMediaOffer: {
-        meeting::MediaOffer offer;
-        if (!offer.ParseFromArray(payload.constData(), payload.size())) {
-            emit protocolError(QStringLiteral("Failed to parse MediaOffer"));
-            return;
-        }
-
-        emit mediaOfferReceived(toQtString(offer.target_user_id()),
-                                toQtString(offer.sdp()),
-                                static_cast<quint32>(offer.audio_ssrc()),
-                                static_cast<quint32>(offer.video_ssrc()));
+    case kMediaOffer:
+        emit protobufMessageReceived(signalType, payload);
         return;
-    }
     case kMediaAnswer: {
         meeting::MediaAnswer answer;
         if (!answer.ParseFromArray(payload.constData(), payload.size())) {
@@ -385,10 +398,23 @@ void SignalingClient::handlePayload(quint16 signalType, const QByteArray& payloa
             return;
         }
 
-        emit mediaAnswerReceived(toQtString(answer.target_user_id()),
-                                 toQtString(answer.sdp()),
-                                 static_cast<quint32>(answer.audio_ssrc()),
-                                 static_cast<quint32>(answer.video_ssrc()));
+        if (answer.meeting_id().empty()) {
+            emit protobufMessageReceived(signalType, payload);
+            return;
+        }
+
+        QStringList candidates;
+        candidates.reserve(answer.server_candidates_size());
+        for (const auto& candidate : answer.server_candidates()) {
+            candidates.push_back(toQtString(candidate));
+        }
+        emit mediaTransportAnswerReceived(toQtString(answer.meeting_id()),
+                                         toQtString(answer.server_ice_ufrag()),
+                                         toQtString(answer.server_ice_pwd()),
+                                         toQtString(answer.server_dtls_fingerprint()),
+                                         candidates,
+                                         static_cast<quint32>(answer.assigned_audio_ssrc()),
+                                         static_cast<quint32>(answer.assigned_video_ssrc()));
         return;
     }
     case kChatSendRsp: {

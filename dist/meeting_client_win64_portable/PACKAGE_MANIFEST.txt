@@ -1,6 +1,6 @@
 meeting_client portable package
-generated_at=2026-04-22 21:10:27
-git_commit=047bd10
+generated_at=2026-04-24 01:45:48
+git_commit=32acacf
 build_config=Release
 exe=meeting_client.exe
 qt_deploy=D:\QT\6.9.1\msvc2022_64\bin\windeployqt.exe

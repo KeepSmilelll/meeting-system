@@ -1,12 +1,18 @@
 #include "server/MediaIngress.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <cstring>
+#include <iomanip>
 #include <limits>
+#include <memory>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
+
+#include <openssl/rand.h>
 
 #include "room/Publisher.h"
 #include "room/Room.h"
@@ -60,6 +66,34 @@ std::pair<uint8_t, uint32_t> EncodeRembBitrate(uint32_t bitrateBps) {
     return {exp, static_cast<uint32_t>(mantissa & 0x3FFFFU)};
 }
 
+std::vector<uint8_t> BuildReceiverReportPacket(uint32_t receiverSsrc,
+                                               uint32_t sourceSsrc,
+                                               uint32_t lastSenderReport,
+                                               uint32_t delaySinceLastSenderReport) {
+    return std::vector<uint8_t>{
+        0x81, 0xC9, 0x00, 0x07,
+        static_cast<uint8_t>((receiverSsrc >> 24) & 0xFF),
+        static_cast<uint8_t>((receiverSsrc >> 16) & 0xFF),
+        static_cast<uint8_t>((receiverSsrc >> 8) & 0xFF),
+        static_cast<uint8_t>(receiverSsrc & 0xFF),
+        static_cast<uint8_t>((sourceSsrc >> 24) & 0xFF),
+        static_cast<uint8_t>((sourceSsrc >> 16) & 0xFF),
+        static_cast<uint8_t>((sourceSsrc >> 8) & 0xFF),
+        static_cast<uint8_t>(sourceSsrc & 0xFF),
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        static_cast<uint8_t>((lastSenderReport >> 24) & 0xFF),
+        static_cast<uint8_t>((lastSenderReport >> 16) & 0xFF),
+        static_cast<uint8_t>((lastSenderReport >> 8) & 0xFF),
+        static_cast<uint8_t>(lastSenderReport & 0xFF),
+        static_cast<uint8_t>((delaySinceLastSenderReport >> 24) & 0xFF),
+        static_cast<uint8_t>((delaySinceLastSenderReport >> 16) & 0xFF),
+        static_cast<uint8_t>((delaySinceLastSenderReport >> 8) & 0xFF),
+        static_cast<uint8_t>(delaySinceLastSenderReport & 0xFF),
+    };
+}
+
 } // namespace
 
 MediaIngress::MediaIngress(std::shared_ptr<RoomManager> roomManager, uint16_t listenPort, std::size_t nackCapacity)
@@ -88,7 +122,7 @@ bool MediaIngress::BindPublisher(const std::string& meetingId,
                                  const std::string& userId,
                                  uint32_t audioSsrc,
                                  uint32_t videoSsrc) {
-    if (meetingId.empty() || userId.empty() || (audioSsrc == 0 && videoSsrc == 0) || !roomManager_) {
+    if (meetingId.empty() || userId.empty() || !roomManager_) {
         return false;
     }
 
@@ -98,29 +132,164 @@ bool MediaIngress::BindPublisher(const std::string& meetingId,
     }
 
     const auto existing = room->GetPublisher(userId);
-    const uint32_t previousAudioSsrc = existing ? existing->AudioSsrc() : 0;
-    const uint32_t previousVideoSsrc = existing ? existing->VideoSsrc() : 0;
+    const uint32_t previousAudioSsrc = existing ? existing->AudioSsrc() : 0U;
+    const uint32_t previousVideoSsrc = existing ? existing->VideoSsrc() : 0U;
+    const uint32_t mergedAudioSsrc = audioSsrc != 0 ? audioSsrc : previousAudioSsrc;
+    const uint32_t mergedVideoSsrc = videoSsrc != 0 ? videoSsrc : previousVideoSsrc;
+    if (mergedAudioSsrc == 0 && mergedVideoSsrc == 0) {
+        return false;
+    }
 
-    const auto publisher = std::make_shared<Publisher>(userId, audioSsrc, videoSsrc);
+    const auto publisher = std::make_shared<Publisher>(userId, mergedAudioSsrc, mergedVideoSsrc);
     if (!room->AddPublisher(publisher)) {
         return false;
     }
 
-    if (previousAudioSsrc != 0 && previousAudioSsrc != audioSsrc) {
+    if (previousAudioSsrc != 0 && previousAudioSsrc != mergedAudioSsrc) {
         RemovePublisherRoutes(previousAudioSsrc);
     }
-    if (previousVideoSsrc != 0 && previousVideoSsrc != videoSsrc) {
+    if (previousVideoSsrc != 0 && previousVideoSsrc != mergedVideoSsrc) {
         RemovePublisherRoutes(previousVideoSsrc);
     }
 
-    if (audioSsrc != 0) {
-        router_.RegisterPublisher(audioSsrc);
+    if (mergedAudioSsrc != 0) {
+        router_.RegisterPublisher(mergedAudioSsrc);
     }
-    if (videoSsrc != 0) {
-        router_.RegisterPublisher(videoSsrc);
+    if (mergedVideoSsrc != 0) {
+        router_.RegisterPublisher(mergedVideoSsrc);
     }
 
     RefreshRoomRoutes(meetingId);
+    return true;
+}
+
+bool MediaIngress::BindSubscriber(const std::string& meetingId,
+                                  const std::string& userId,
+                                  uint32_t audioSsrc,
+                                  uint32_t videoSsrc) {
+    if (meetingId.empty() || userId.empty() || !roomManager_) {
+        return false;
+    }
+
+    const auto room = roomManager_->GetRoomShared(meetingId);
+    if (!room) {
+        return false;
+    }
+
+    const auto existing = room->GetSubscriber(userId);
+    const uint32_t mergedAudioSsrc = audioSsrc != 0
+        ? audioSsrc
+        : (existing ? existing->AudioSsrc() : 0U);
+    const uint32_t mergedVideoSsrc = videoSsrc != 0
+        ? videoSsrc
+        : (existing ? existing->VideoSsrc() : 0U);
+    const std::string fallbackEndpoint = existing ? existing->Endpoint() : std::string{};
+    auto subscriber = std::make_shared<Subscriber>(userId, fallbackEndpoint, mergedAudioSsrc, mergedVideoSsrc);
+    if (existing) {
+        subscriber->SetAudioEndpoint(existing->AudioEndpoint());
+        subscriber->SetVideoEndpoint(existing->VideoEndpoint());
+    }
+    if (!room->AddSubscriber(subscriber)) {
+        return false;
+    }
+
+    RefreshRoomRoutes(meetingId);
+    return true;
+}
+
+bool MediaIngress::SetupTransport(const std::string& meetingId,
+                                  const std::string& userId,
+                                  bool publishAudio,
+                                  bool publishVideo,
+                                  const std::string& clientIceUfrag,
+                                  const std::string& clientIcePwd,
+                                  const std::string& clientDtlsFingerprint,
+                                  const std::vector<std::string>& clientCandidates,
+                                  const std::string& advertisedAddress,
+                                  TransportSetupResult* result) {
+    if (result == nullptr) {
+        return false;
+    }
+    *result = {};
+    if (meetingId.empty() || userId.empty() ||
+        clientIceUfrag.empty() || clientIcePwd.empty() || clientDtlsFingerprint.empty() ||
+        !roomManager_) {
+        return false;
+    }
+
+    const auto room = roomManager_->GetRoomShared(meetingId);
+    if (!room || !dtlsContext_.Initialize()) {
+        return false;
+    }
+
+    const uint32_t assignedAudioSsrc = publishAudio ? MakeRandomSsrc() : 0U;
+    const uint32_t assignedVideoSsrc = publishVideo ? MakeRandomSsrc() : 0U;
+    const std::string serverIceUfrag = MakeRandomIceToken(8);
+    const std::string serverIcePwd = MakeRandomIceToken(24);
+    const std::string host = HostFromAdvertisedAddress(advertisedAddress);
+    std::vector<std::string> serverCandidates;
+    serverCandidates.push_back(MakeHostCandidate(host.empty() ? "127.0.0.1" : host, Port()));
+
+    IceLiteSession iceSession;
+    iceSession.Configure(clientIceUfrag,
+                         clientIcePwd,
+                         clientCandidates,
+                         serverIceUfrag,
+                         serverIcePwd,
+                         serverCandidates);
+    auto dtlsTransport = std::make_unique<DtlsTransport>(dtlsContext_, DtlsTransport::Role::Server);
+    if (!dtlsTransport->Start(clientDtlsFingerprint)) {
+        return false;
+    }
+    transportRegistry_.Upsert(ParticipantTransport(meetingId,
+                                                   userId,
+                                                   publishAudio,
+                                                   publishVideo,
+                                                   clientDtlsFingerprint,
+                                                   assignedAudioSsrc,
+                                                   assignedVideoSsrc,
+                                                   std::move(iceSession),
+                                                   std::move(dtlsTransport)),
+                              TransportRegistry::Kind(publishAudio, publishVideo));
+
+    if (!BindSubscriber(meetingId, userId, assignedAudioSsrc, assignedVideoSsrc)) {
+        return false;
+    }
+    if ((assignedAudioSsrc != 0 || assignedVideoSsrc != 0) &&
+        !BindPublisher(meetingId, userId, assignedAudioSsrc, assignedVideoSsrc)) {
+        return false;
+    }
+
+    result->success = true;
+    result->serverIceUfrag = std::move(serverIceUfrag);
+    result->serverIcePwd = std::move(serverIcePwd);
+    result->serverDtlsFingerprint = dtlsContext_.FingerprintSha256();
+    result->serverCandidates = std::move(serverCandidates);
+    result->assignedAudioSsrc = assignedAudioSsrc;
+    result->assignedVideoSsrc = assignedVideoSsrc;
+    return true;
+}
+
+bool MediaIngress::TrickleIceCandidate(const std::string& meetingId,
+                                       const std::string& userId,
+                                       const std::string& candidate,
+                                       const std::string& sdpMid,
+                                       bool endOfCandidates) {
+    (void)sdpMid;
+    if (meetingId.empty() || userId.empty()) {
+        return false;
+    }
+
+    return transportRegistry_.AppendIceCandidate(meetingId, userId, candidate, endOfCandidates);
+}
+
+bool MediaIngress::CloseTransport(const std::string& meetingId, const std::string& userId) {
+    if (meetingId.empty() || userId.empty()) {
+        return false;
+    }
+    (void)transportRegistry_.EraseUserTransports(meetingId, userId);
+    (void)RemoveSubscriber(meetingId, userId);
+    (void)RemovePublisher(meetingId, userId);
     return true;
 }
 
@@ -158,6 +327,25 @@ bool MediaIngress::RemovePublisher(const std::string& meetingId, const std::stri
         }
     }
 
+    return true;
+}
+
+bool MediaIngress::RemoveSubscriber(const std::string& meetingId, const std::string& userId) {
+    if (meetingId.empty() || userId.empty() || !roomManager_) {
+        return false;
+    }
+
+    const auto room = roomManager_->GetRoomShared(meetingId);
+    if (!room) {
+        return false;
+    }
+
+    const bool removed = room->RemoveSubscriber(userId);
+    if (!removed) {
+        return false;
+    }
+
+    RefreshRoomRoutes(meetingId);
     return true;
 }
 
@@ -270,8 +458,12 @@ bool MediaIngress::SendEstimatedRembToPublisher(const std::string& meetingId,
     }
 
     const auto [exp, mantissa] = EncodeRembBitrate(bitrateBps);
-    const auto packet = BuildRembPacket(0U, sourceSsrc, exp, mantissa, sourceSsrc);
+    auto packet = BuildRembPacket(0U, sourceSsrc, exp, mantissa, sourceSsrc);
     if (packet.empty()) {
+        return false;
+    }
+    if (EndpointRequiresSecureMedia(publisherEndpoint) &&
+        !transportRegistry_.ProtectRtcpToEndpoint(publisherEndpoint, &packet)) {
         return false;
     }
 
@@ -313,6 +505,123 @@ bool MediaIngress::ParseEndpoint(const std::string& endpointText, UdpServer::End
     endpoint->sin_port = htons(port);
     endpoint->sin_addr = address;
     return true;
+}
+
+std::string MediaIngress::HostFromAdvertisedAddress(const std::string& advertisedAddress) {
+    const auto normalized = StripUdpScheme(advertisedAddress);
+    const auto colon = normalized.rfind(':');
+    if (colon == std::string::npos || colon == 0) {
+        return {};
+    }
+    return normalized.substr(0, colon);
+}
+
+std::string MediaIngress::MakeHostCandidate(const std::string& host, uint16_t port) {
+    return "candidate:1 1 udp 2130706431 " + host + " " + std::to_string(port) + " typ host";
+}
+
+std::string MediaIngress::MakeRandomIceToken(std::size_t bytes) {
+    if (bytes == 0) {
+        return {};
+    }
+    std::vector<unsigned char> random(bytes);
+    if (RAND_bytes(random.data(), static_cast<int>(random.size())) != 1) {
+        return {};
+    }
+
+    std::ostringstream stream;
+    stream << std::hex << std::setfill('0');
+    for (const auto byte : random) {
+        stream << std::setw(2) << static_cast<unsigned int>(byte);
+    }
+    return stream.str();
+}
+
+uint32_t MediaIngress::MakeRandomSsrc() {
+    uint32_t value = 0;
+    while (value == 0) {
+        if (RAND_bytes(reinterpret_cast<unsigned char*>(&value), static_cast<int>(sizeof(value))) != 1) {
+            return 0;
+        }
+        value = ntohl(value);
+    }
+    return value;
+}
+
+bool MediaIngress::IsStunPacket(const uint8_t* data, std::size_t len) {
+    if (data == nullptr || len < 20U) {
+        return false;
+    }
+    if ((data[0] & 0xC0U) != 0U) {
+        return false;
+    }
+    return data[4] == 0x21U && data[5] == 0x12U && data[6] == 0xA4U && data[7] == 0x42U;
+}
+
+std::string MediaIngress::ParseStunUsername(const uint8_t* data, std::size_t len) {
+    if (!IsStunPacket(data, len)) {
+        return {};
+    }
+    const std::size_t messageLength = (static_cast<std::size_t>(data[2]) << 8U) |
+                                      static_cast<std::size_t>(data[3]);
+    if (20U + messageLength > len) {
+        return {};
+    }
+
+    std::size_t offset = 20U;
+    const std::size_t end = 20U + messageLength;
+    while (offset + 4U <= end) {
+        const uint16_t attrType = static_cast<uint16_t>((static_cast<uint16_t>(data[offset]) << 8U) |
+                                                        static_cast<uint16_t>(data[offset + 1U]));
+        const std::size_t attrLength = (static_cast<std::size_t>(data[offset + 2U]) << 8U) |
+                                       static_cast<std::size_t>(data[offset + 3U]);
+        offset += 4U;
+        if (offset + attrLength > end) {
+            return {};
+        }
+        if (attrType == 0x0006U) {
+            return std::string(reinterpret_cast<const char*>(data + offset), attrLength);
+        }
+        offset += ((attrLength + 3U) & ~std::size_t{3U});
+    }
+    return {};
+}
+
+std::vector<uint8_t> MediaIngress::BuildStunBindingResponse(const uint8_t* request,
+                                                            std::size_t len,
+                                                            const UdpServer::Endpoint& from) {
+    if (!IsStunPacket(request, len)) {
+        return {};
+    }
+
+    std::vector<uint8_t> response(20U + 12U, 0U);
+    response[0] = 0x01U;
+    response[1] = 0x01U;
+    response[2] = 0x00U;
+    response[3] = 0x0CU;
+    response[4] = 0x21U;
+    response[5] = 0x12U;
+    response[6] = 0xA4U;
+    response[7] = 0x42U;
+    std::memcpy(response.data() + 8U, request + 8U, 12U);
+
+    response[20] = 0x00U;
+    response[21] = 0x20U;
+    response[22] = 0x00U;
+    response[23] = 0x08U;
+    response[24] = 0x00U;
+    response[25] = 0x01U;
+
+    const uint16_t xport = static_cast<uint16_t>(ntohs(from.sin_port) ^ 0x2112U);
+    response[26] = static_cast<uint8_t>((xport >> 8U) & 0xFFU);
+    response[27] = static_cast<uint8_t>(xport & 0xFFU);
+
+    const uint32_t address = ntohl(from.sin_addr.s_addr) ^ 0x2112A442U;
+    response[28] = static_cast<uint8_t>((address >> 24U) & 0xFFU);
+    response[29] = static_cast<uint8_t>((address >> 16U) & 0xFFU);
+    response[30] = static_cast<uint8_t>((address >> 8U) & 0xFFU);
+    response[31] = static_cast<uint8_t>(address & 0xFFU);
+    return response;
 }
 
 bool MediaIngress::LooksLikeRtcp(const uint8_t* data, std::size_t len) {
@@ -364,6 +673,31 @@ void MediaIngress::RewriteRtpSsrc(uint32_t ssrc, uint8_t* packet, std::size_t le
     packet[9] = static_cast<uint8_t>((ssrc >> 16) & 0xFF);
     packet[10] = static_cast<uint8_t>((ssrc >> 8) & 0xFF);
     packet[11] = static_cast<uint8_t>(ssrc & 0xFF);
+}
+
+uint32_t MediaIngress::MakeRouteRewriteSsrc(const std::string& meetingId,
+                                            const std::string& subscriberUserId,
+                                            uint32_t sourceSsrc,
+                                            bool video) {
+    std::string key = meetingId;
+    key.push_back('|');
+    key += subscriberUserId;
+    key.push_back('|');
+    key += video ? "video" : "audio";
+    key.push_back('|');
+    key += std::to_string(sourceSsrc);
+
+    uint32_t hash = 2166136261U;
+    for (const unsigned char ch : key) {
+        hash ^= static_cast<uint32_t>(ch);
+        hash *= 16777619U;
+    }
+
+    hash &= 0x7FFFFFFFU;
+    if (hash == 0U || hash == sourceSsrc) {
+        hash ^= 0x5A5A5A5AU;
+    }
+    return hash == 0U ? 0x13572468U : hash;
 }
 
 uint32_t MediaIngress::JitterToMs(const RoomManager::PublisherLocation& location, uint32_t sourceSsrc, uint32_t jitter) {
@@ -488,6 +822,68 @@ bool MediaIngress::SelectAggregatedRembForSource(uint32_t sourceSsrc,
     return true;
 }
 
+bool MediaIngress::HandleStunPacket(const uint8_t* data, std::size_t len, const UdpServer::Endpoint& from) {
+    const std::string username = ParseStunUsername(data, len);
+    if (username.empty()) {
+        return false;
+    }
+
+    std::string meetingId;
+    std::string userId;
+    std::string mediaKind;
+    if (!transportRegistry_.SelectEndpointForUsername(username, from, &meetingId, &userId, &mediaKind)) {
+        return false;
+    }
+
+    const std::string endpointText = EndpointKey(from);
+    const auto room = roomManager_ ? roomManager_->GetRoomShared(meetingId) : nullptr;
+    if (room && !endpointText.empty()) {
+        if (auto subscriber = room->GetSubscriber(userId)) {
+            if (mediaKind == "audio") {
+                subscriber->SetAudioEndpoint(endpointText);
+            } else if (mediaKind == "video") {
+                subscriber->SetVideoEndpoint(endpointText);
+            } else {
+                subscriber->SetEndpoint(endpointText);
+                subscriber->SetAudioEndpoint(endpointText);
+                subscriber->SetVideoEndpoint(endpointText);
+            }
+            RefreshRoomRoutes(meetingId);
+        }
+    }
+
+    const std::vector<uint8_t> response = BuildStunBindingResponse(data, len, from);
+    if (!response.empty()) {
+        udpServer_.SendTo(response.data(), response.size(), from);
+    }
+    return true;
+}
+
+bool MediaIngress::HandleDtlsPacket(const uint8_t* data, std::size_t len, const UdpServer::Endpoint& from) {
+    std::vector<std::vector<uint8_t>> outgoingPackets;
+    if (!transportRegistry_.HandleDtlsFromEndpoint(from, data, len, &outgoingPackets)) {
+        return false;
+    }
+    for (const auto& packet : outgoingPackets) {
+        if (!packet.empty()) {
+            udpServer_.SendTo(packet.data(), packet.size(), from);
+        }
+    }
+    return true;
+}
+
+bool MediaIngress::TransportAllowsRtp(uint32_t ssrc, const UdpServer::Endpoint& from) const {
+    return transportRegistry_.TransportAllowsSsrcFrom(ssrc, from);
+}
+
+bool MediaIngress::TransportRequiresSrtp(uint32_t ssrc) const {
+    return transportRegistry_.HasTransportForSsrc(ssrc);
+}
+
+bool MediaIngress::EndpointRequiresSecureMedia(const UdpServer::Endpoint& from) const {
+    return transportRegistry_.HasSelectedTransportForEndpoint(from);
+}
+
 uint32_t MediaIngress::ResolveNackSourceSsrc(const UdpServer::Endpoint& from, uint32_t mediaSsrc) const {
     if (mediaSsrc == 0) {
         return 0;
@@ -553,6 +949,18 @@ void MediaIngress::RefreshPublisherRoutes(const std::string& meetingId, uint32_t
     Room::PublisherLookup lookup;
     const bool resolvedPublisher = room->FindPublisherBySsrc(sourceSsrc, &lookup) && lookup.publisher;
     const bool sourceIsVideo = resolvedPublisher && lookup.publisher->VideoSsrc() == sourceSsrc;
+    const std::string sourceUserId = resolvedPublisher ? lookup.userId : std::string{};
+    const bool skipSelfForward = room->SubscriberCount() > 1U;
+    std::size_t sameKindPublisherCount = 0;
+    for (const auto& publisher : room->SnapshotPublishers()) {
+        if (!publisher) {
+            continue;
+        }
+        const uint32_t candidateSsrc = sourceIsVideo ? publisher->VideoSsrc() : publisher->AudioSsrc();
+        if (candidateSsrc != 0U) {
+            ++sameKindPublisherCount;
+        }
+    }
 
     {
         std::lock_guard<std::mutex> lock(feedbackRouteMutex_);
@@ -569,19 +977,47 @@ void MediaIngress::RefreshPublisherRoutes(const std::string& meetingId, uint32_t
 
     const auto subscribers = room->SnapshotSubscribers();
     for (const auto& subscriber : subscribers) {
-        if (!subscriber || subscriber->Endpoint().empty()) {
+        if (!subscriber) {
+            continue;
+        }
+        if (skipSelfForward && !sourceUserId.empty() && subscriber->UserId() == sourceUserId) {
+            continue;
+        }
+
+        const std::string& endpointText = sourceIsVideo
+            ? (!subscriber->VideoEndpoint().empty()
+                   ? subscriber->VideoEndpoint()
+                   : (!subscriber->Endpoint().empty() ? subscriber->Endpoint() : subscriber->AudioEndpoint()))
+            : (!subscriber->AudioEndpoint().empty()
+                   ? subscriber->AudioEndpoint()
+                   : (!subscriber->Endpoint().empty() ? subscriber->Endpoint() : subscriber->VideoEndpoint()));
+        if (endpointText.empty()) {
             continue;
         }
 
         UdpServer::Endpoint endpoint{};
-        if (!ParseEndpoint(subscriber->Endpoint(), &endpoint)) {
+        if (!ParseEndpoint(endpointText, &endpoint)) {
             continue;
         }
 
         const uint32_t preferredRewrittenSsrc = sourceIsVideo ? subscriber->VideoSsrc() : subscriber->AudioSsrc();
-        const uint32_t rewrittenSsrc = preferredRewrittenSsrc != 0 ? preferredRewrittenSsrc : sourceSsrc;
+        uint32_t rewrittenSsrc = preferredRewrittenSsrc != 0 ? preferredRewrittenSsrc : sourceSsrc;
+        if (sameKindPublisherCount > 1U && preferredRewrittenSsrc != 0U) {
+            rewrittenSsrc = MakeRouteRewriteSsrc(meetingId, subscriber->UserId(), sourceSsrc, sourceIsVideo);
+            if (rewrittenSsrc == preferredRewrittenSsrc || rewrittenSsrc == sourceSsrc) {
+                rewrittenSsrc ^= 0x01010101U;
+            }
+            if (rewrittenSsrc == 0U) {
+                rewrittenSsrc = sourceSsrc ^ 0x01010101U;
+            }
+        }
         router_.AddSubscriber(sourceSsrc, rewrittenSsrc, [this, endpoint](const uint8_t* data, std::size_t len) {
-            udpServer_.SendTo(data, len, endpoint);
+            std::vector<uint8_t> packet(data, data + len);
+            if (EndpointRequiresSecureMedia(endpoint) &&
+                !transportRegistry_.ProtectRtpToEndpoint(endpoint, &packet)) {
+                return;
+            }
+            udpServer_.SendTo(packet.data(), packet.size(), endpoint);
         });
         std::lock_guard<std::mutex> lock(feedbackRouteMutex_);
         feedbackRoutes_[FeedbackRouteKey(endpoint, rewrittenSsrc)] = sourceSsrc;
@@ -628,17 +1064,31 @@ bool MediaIngress::HandleControlPacket(const uint8_t* data, std::size_t len, con
 
     const auto senderReports = rtcpHandler_.ParseSenderReports(data, len);
     if (!senderReports.empty()) {
-        std::lock_guard<std::mutex> lock(publisherTrafficMutex_);
         for (const auto& report : senderReports) {
             RoomManager::PublisherLocation location;
             if (!ResolvePublisher(report.senderSsrc, &location)) {
                 continue;
             }
+            if (!TransportAllowsRtp(report.senderSsrc, from)) {
+                continue;
+            }
 
-            senderReports_[report.senderSsrc] = SenderReportLedgerEntry{
-                CompactNtpFromTimestamp(report.ntpTimestamp),
-                now,
-            };
+            const uint32_t compactNtp = CompactNtpFromTimestamp(report.ntpTimestamp);
+            {
+                std::lock_guard<std::mutex> lock(publisherTrafficMutex_);
+                senderReports_[report.senderSsrc] = SenderReportLedgerEntry{
+                    compactNtp,
+                    now,
+                };
+            }
+            auto receiverReport = BuildReceiverReportPacket(0U, report.senderSsrc, compactNtp, 0U);
+            if (!receiverReport.empty()) {
+                if (EndpointRequiresSecureMedia(from) &&
+                    !transportRegistry_.ProtectRtcpToEndpoint(from, &receiverReport)) {
+                    continue;
+                }
+                udpServer_.SendTo(receiverReport.data(), receiverReport.size(), from);
+            }
             updated = true;
         }
     }
@@ -681,6 +1131,10 @@ bool MediaIngress::HandleControlPacket(const uint8_t* data, std::size_t len, con
             if (nack.mediaSsrc != 0 && nack.mediaSsrc != sourceSsrc) {
                 RewriteRtpSsrc(nack.mediaSsrc, retransmitPacket.data(), retransmitPacket.size());
             }
+            if (EndpointRequiresSecureMedia(from) &&
+                !transportRegistry_.ProtectRtpToEndpoint(from, &retransmitPacket)) {
+                continue;
+            }
             udpServer_.SendTo(retransmitPacket.data(), retransmitPacket.size(), from);
             updated = true;
         }
@@ -701,7 +1155,7 @@ bool MediaIngress::HandleControlPacket(const uint8_t* data, std::size_t len, con
             continue;
         }
 
-        const std::vector<uint8_t> pliPacket = {
+        std::vector<uint8_t> pliPacket = {
             0x81, 0xCE, 0x00, 0x02,
             static_cast<uint8_t>((pli.senderSsrc >> 24) & 0xFF),
             static_cast<uint8_t>((pli.senderSsrc >> 16) & 0xFF),
@@ -712,6 +1166,10 @@ bool MediaIngress::HandleControlPacket(const uint8_t* data, std::size_t len, con
             static_cast<uint8_t>((sourceSsrc >> 8) & 0xFF),
             static_cast<uint8_t>(sourceSsrc & 0xFF),
         };
+        if (EndpointRequiresSecureMedia(publisherEndpoint) &&
+            !transportRegistry_.ProtectRtcpToEndpoint(publisherEndpoint, &pliPacket)) {
+            continue;
+        }
         udpServer_.SendTo(pliPacket.data(), pliPacket.size(), publisherEndpoint);
         updated = true;
     }
@@ -735,11 +1193,15 @@ bool MediaIngress::HandleControlPacket(const uint8_t* data, std::size_t len, con
                 continue;
             }
 
-            const std::vector<uint8_t> rembPacket = BuildRembPacket(remb.senderSsrc,
-                                                                    sourceSsrc,
-                                                                    selectedExp,
-                                                                    selectedMantissa,
-                                                                    sourceSsrc);
+            std::vector<uint8_t> rembPacket = BuildRembPacket(remb.senderSsrc,
+                                                              sourceSsrc,
+                                                              selectedExp,
+                                                              selectedMantissa,
+                                                              sourceSsrc);
+            if (EndpointRequiresSecureMedia(publisherEndpoint) &&
+                !transportRegistry_.ProtectRtcpToEndpoint(publisherEndpoint, &rembPacket)) {
+                continue;
+            }
             udpServer_.SendTo(rembPacket.data(), rembPacket.size(), publisherEndpoint);
             updated = true;
         }
@@ -749,16 +1211,34 @@ bool MediaIngress::HandleControlPacket(const uint8_t* data, std::size_t len, con
 }
 
 bool MediaIngress::HandlePacket(const uint8_t* data, std::size_t len, const UdpServer::Endpoint& from) {
-    (void)from;
+    if (IsStunPacket(data, len)) {
+        return HandleStunPacket(data, len, from);
+    }
+
+    if (DtlsTransport::LooksLikeDtlsRecord(data, len)) {
+        return HandleDtlsPacket(data, len, from);
+    }
 
     if (LooksLikeRtcp(data, len)) {
-        const auto packets = rtcpHandler_.ParseCompound(data, len);
+        std::vector<uint8_t> controlPacket;
+        const uint8_t* controlData = data;
+        std::size_t controlLen = len;
+        if (EndpointRequiresSecureMedia(from)) {
+            controlPacket.assign(data, data + len);
+            if (!transportRegistry_.UnprotectRtcpFromEndpoint(from, &controlPacket)) {
+                return false;
+            }
+            controlData = controlPacket.data();
+            controlLen = controlPacket.size();
+        }
+
+        const auto packets = rtcpHandler_.ParseCompound(controlData, controlLen);
         std::size_t consumed = 0;
         for (const auto& packet : packets) {
             consumed += packet.packetSize;
         }
-        if (!packets.empty() && consumed == len) {
-            (void)HandleControlPacket(data, len, from);
+        if (!packets.empty() && consumed == controlLen) {
+            (void)HandleControlPacket(controlData, controlLen, from);
             return true;
         }
     }
@@ -766,6 +1246,27 @@ bool MediaIngress::HandlePacket(const uint8_t* data, std::size_t len, const UdpS
     ParsedRtpPacket parsed;
     if (!parser_.Parse(data, len, &parsed)) {
         return false;
+    }
+    if (!TransportAllowsRtp(parsed.header.ssrc, from)) {
+        return false;
+    }
+
+    std::vector<uint8_t> mediaPacket;
+    const uint8_t* mediaData = data;
+    std::size_t mediaLen = len;
+    if (TransportRequiresSrtp(parsed.header.ssrc)) {
+        if (!transportRegistry_.SrtpReadyForSsrcFrom(parsed.header.ssrc, from)) {
+            return false;
+        }
+        mediaPacket.assign(data, data + len);
+        if (!transportRegistry_.UnprotectRtpFromEndpoint(from, &mediaPacket)) {
+            return false;
+        }
+        mediaData = mediaPacket.data();
+        mediaLen = mediaPacket.size();
+        if (!parser_.Parse(mediaData, mediaLen, &parsed)) {
+            return false;
+        }
     }
 
     RoomManager::PublisherLocation location;
@@ -785,7 +1286,7 @@ bool MediaIngress::HandlePacket(const uint8_t* data, std::size_t len, const UdpS
         lastObservation_.ssrc = parsed.header.ssrc;
         lastObservation_.sequence = parsed.header.sequence;
         lastObservation_.timestamp = parsed.header.timestamp;
-        lastObservation_.bytes = len;
+        lastObservation_.bytes = mediaLen;
     }
     {
         std::lock_guard<std::mutex> lock(publisherTrafficMutex_);
@@ -793,11 +1294,11 @@ bool MediaIngress::HandlePacket(const uint8_t* data, std::size_t len, const UdpS
         counters.meetingId = location.meetingId;
         counters.userId = location.publisher.userId;
         counters.packetCount += 1;
-        counters.byteCount += len;
+        counters.byteCount += mediaLen;
     }
     packetCount_.fetch_add(1);
 
-    return router_.Route(data, len);
+    return router_.Route(mediaData, mediaLen);
 }
 
 } // namespace sfu

@@ -41,21 +41,36 @@ func assertNoFrame(t *testing.T, conn net.Conn, label string) {
 type stubSFUClient struct {
 	mu sync.Mutex
 
-	createRoomRequests  []*pb.CreateRoomReq
-	createRoomResponse  *pb.CreateRoomRsp
-	createRoomErr       error
-	requests            []*pb.AddPublisherReq
-	removePublisherReqs []*pb.RemovePublisherReq
-	destroyRoomReqs     []*pb.DestroyRoomReq
-	addPublisherRsp     *pb.AddPublisherRsp
-	addPublisherErr     error
-	addPublisherHook    func(*pb.AddPublisherReq)
-	removePublisherRsp  *pb.RemovePublisherRsp
-	removePublisherErr  error
-	destroyRoomRsp      *pb.DestroyRoomRsp
-	destroyRoomErr      error
-	getNodeStatusRsp    *pb.GetNodeStatusRsp
-	getNodeStatusErr    error
+	createRoomRequests   []*pb.CreateRoomReq
+	createRoomResponse   *pb.CreateRoomRsp
+	createRoomErr        error
+	setupTransportReqs   []*pb.SetupTransportReq
+	setupTransportRsp    *pb.SetupTransportRsp
+	setupTransportErr    error
+	trickleIceReqs       []*pb.TrickleIceCandidateReq
+	trickleIceRsp        *pb.TrickleIceCandidateRsp
+	trickleIceErr        error
+	closeTransportReqs   []*pb.CloseTransportReq
+	closeTransportRsp    *pb.CloseTransportRsp
+	closeTransportErr    error
+	requests             []*pb.AddPublisherReq
+	addSubscriberReqs    []*pb.AddSubscriberReq
+	removePublisherReqs  []*pb.RemovePublisherReq
+	removeSubscriberReqs []*pb.RemoveSubscriberReq
+	destroyRoomReqs      []*pb.DestroyRoomReq
+	addPublisherRsp      *pb.AddPublisherRsp
+	addPublisherErr      error
+	addPublisherHook     func(*pb.AddPublisherReq)
+	addSubscriberRsp     *pb.AddSubscriberRsp
+	addSubscriberErr     error
+	removePublisherRsp   *pb.RemovePublisherRsp
+	removePublisherErr   error
+	removeSubscriberRsp  *pb.RemoveSubscriberRsp
+	removeSubscriberErr  error
+	destroyRoomRsp       *pb.DestroyRoomRsp
+	destroyRoomErr       error
+	getNodeStatusRsp     *pb.GetNodeStatusRsp
+	getNodeStatusErr     error
 }
 
 type stubSessionStore struct {
@@ -131,6 +146,60 @@ func (c *stubSFUClient) DestroyRoom(_ context.Context, req *pb.DestroyRoomReq) (
 	return &pb.DestroyRoomRsp{Success: true}, nil
 }
 
+func (c *stubSFUClient) SetupTransport(_ context.Context, req *pb.SetupTransportReq) (*pb.SetupTransportRsp, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	clone := *req
+	clone.ClientCandidates = append([]string(nil), req.GetClientCandidates()...)
+	c.setupTransportReqs = append(c.setupTransportReqs, &clone)
+	if c.setupTransportRsp != nil || c.setupTransportErr != nil {
+		if c.setupTransportRsp == nil {
+			return &pb.SetupTransportRsp{}, c.setupTransportErr
+		}
+		return c.setupTransportRsp, c.setupTransportErr
+	}
+	return &pb.SetupTransportRsp{
+		Success:               true,
+		ServerIceUfrag:        "serverUfrag",
+		ServerIcePwd:          "serverPwd",
+		ServerDtlsFingerprint: "AA:BB",
+		ServerCandidates:      []string{"candidate:1 1 udp 2130706431 127.0.0.1 5004 typ host"},
+		AssignedAudioSsrc:     1111,
+		AssignedVideoSsrc:     2222,
+	}, nil
+}
+
+func (c *stubSFUClient) TrickleIceCandidate(_ context.Context, req *pb.TrickleIceCandidateReq) (*pb.TrickleIceCandidateRsp, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	clone := *req
+	c.trickleIceReqs = append(c.trickleIceReqs, &clone)
+	if c.trickleIceRsp != nil || c.trickleIceErr != nil {
+		if c.trickleIceRsp == nil {
+			return &pb.TrickleIceCandidateRsp{}, c.trickleIceErr
+		}
+		return c.trickleIceRsp, c.trickleIceErr
+	}
+	return &pb.TrickleIceCandidateRsp{Success: true}, nil
+}
+
+func (c *stubSFUClient) CloseTransport(_ context.Context, req *pb.CloseTransportReq) (*pb.CloseTransportRsp, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	clone := *req
+	c.closeTransportReqs = append(c.closeTransportReqs, &clone)
+	if c.closeTransportRsp != nil || c.closeTransportErr != nil {
+		if c.closeTransportRsp == nil {
+			return &pb.CloseTransportRsp{}, c.closeTransportErr
+		}
+		return c.closeTransportRsp, c.closeTransportErr
+	}
+	return &pb.CloseTransportRsp{Success: true}, nil
+}
+
 func (c *stubSFUClient) AddPublisher(_ context.Context, req *pb.AddPublisherReq) (*pb.AddPublisherRsp, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -146,7 +215,22 @@ func (c *stubSFUClient) AddPublisher(_ context.Context, req *pb.AddPublisherReq)
 		}
 		return c.addPublisherRsp, c.addPublisherErr
 	}
-	return &pb.AddPublisherRsp{Success: true, UdpPort: 5004}, nil
+	return &pb.AddPublisherRsp{Success: true}, nil
+}
+
+func (c *stubSFUClient) AddSubscriber(_ context.Context, req *pb.AddSubscriberReq) (*pb.AddSubscriberRsp, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	clone := *req
+	c.addSubscriberReqs = append(c.addSubscriberReqs, &clone)
+	if c.addSubscriberRsp != nil || c.addSubscriberErr != nil {
+		if c.addSubscriberRsp == nil {
+			return &pb.AddSubscriberRsp{}, c.addSubscriberErr
+		}
+		return c.addSubscriberRsp, c.addSubscriberErr
+	}
+	return &pb.AddSubscriberRsp{Success: true}, nil
 }
 
 func (c *stubSFUClient) RemovePublisher(_ context.Context, req *pb.RemovePublisherReq) (*pb.RemovePublisherRsp, error) {
@@ -164,6 +248,21 @@ func (c *stubSFUClient) RemovePublisher(_ context.Context, req *pb.RemovePublish
 	return &pb.RemovePublisherRsp{Success: true}, nil
 }
 
+func (c *stubSFUClient) RemoveSubscriber(_ context.Context, req *pb.RemoveSubscriberReq) (*pb.RemoveSubscriberRsp, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	clone := *req
+	c.removeSubscriberReqs = append(c.removeSubscriberReqs, &clone)
+	if c.removeSubscriberRsp != nil || c.removeSubscriberErr != nil {
+		if c.removeSubscriberRsp == nil {
+			return &pb.RemoveSubscriberRsp{}, c.removeSubscriberErr
+		}
+		return c.removeSubscriberRsp, c.removeSubscriberErr
+	}
+	return &pb.RemoveSubscriberRsp{Success: true}, nil
+}
+
 func (c *stubSFUClient) GetNodeStatus(_ context.Context, req *pb.GetNodeStatusReq) (*pb.GetNodeStatusRsp, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -178,7 +277,7 @@ func (c *stubSFUClient) GetNodeStatus(_ context.Context, req *pb.GetNodeStatusRe
 	return &pb.GetNodeStatusRsp{Success: true}, nil
 }
 
-func TestRouterRoutesMediaOfferAnswerAndIceCandidate(t *testing.T) {
+func TestRouterSetsUpMediaTransportAndTricklesIce(t *testing.T) {
 	cfg := config.Load()
 	sessions := server.NewSessionManager()
 	memStore := store.NewMemoryStore()
@@ -186,48 +285,49 @@ func TestRouterRoutesMediaOfferAnswerAndIceCandidate(t *testing.T) {
 	defer roomState.Close()
 	tokenManager := auth.NewTokenManager("unit-test-secret", time.Hour)
 	limiter := auth.NewRateLimiter(nil, 5, 10*time.Minute)
-	router := NewRouter(cfg, sessions, memStore, memStore, roomState, nil, tokenManager, limiter, nil, nil)
+	sfuClient := &stubSFUClient{}
+	router := NewRouter(cfg, sessions, memStore, memStore, roomState, nil, tokenManager, limiter, sfuClient, nil)
 
-	senderSess, senderConn, senderCleanup := newRunningSession(t, 201, cfg)
+	meeting, hostParticipant, err := memStore.CreateMeeting("media-room", "", "u1001", 4)
+	if err != nil {
+		t.Fatalf("create meeting failed: %v", err)
+	}
+	if err := roomState.UpsertRoom(context.Background(), meeting.ID, hostParticipant.UserId, "sfu-node-01", "127.0.0.1:5000"); err != nil {
+		t.Fatalf("upsert room failed: %v", err)
+	}
+	if err := roomState.AddMember(context.Background(), meeting.ID, hostParticipant); err != nil {
+		t.Fatalf("add host member failed: %v", err)
+	}
+
+	senderSess, senderConn, senderCleanup := newRunningSession(t, 301, cfg)
 	defer senderCleanup()
 	sessions.Add(senderSess)
 	sessions.BindUser(senderSess, "u1001")
-	senderSess.SetMeetingID("m-media")
+	senderSess.SetMeetingID(meeting.ID)
 	senderSess.SetState(server.StateInMeeting)
 
-	targetSess, targetConn, targetCleanup := newRunningSession(t, 202, cfg)
-	defer targetCleanup()
-	sessions.Add(targetSess)
-	sessions.BindUser(targetSess, "u1002")
-	targetSess.SetMeetingID("m-media")
-	targetSess.SetState(server.StateInMeeting)
-
-	offerPayload, err := proto.Marshal(&protocol.MediaOfferBody{TargetUserId: "u1002", Sdp: "offer-sdp"})
+	offerPayload, err := proto.Marshal(&protocol.MediaOfferBody{
+		MeetingId:             meeting.ID,
+		PublishAudio:          true,
+		PublishVideo:          true,
+		ClientIceUfrag:        "clientUfrag",
+		ClientIcePwd:          "clientPwd",
+		ClientDtlsFingerprint: "AA:BB",
+		ClientCandidates:      []string{"candidate:1 1 udp 2130706431 127.0.0.1 5004 typ host"},
+	})
 	if err != nil {
-		t.Fatalf("marshal offer failed: %v", err)
+		t.Fatalf("marshal transport offer failed: %v", err)
 	}
 	router.HandleMessage(senderSess, protocol.MediaOffer, offerPayload)
 
-	msgType, payload := readFrame(t, targetConn, cfg.MaxPayloadBytes)
-	if msgType != protocol.MediaOffer {
-		t.Fatalf("unexpected media offer type: got %v want %v", msgType, protocol.MediaOffer)
+	if len(sfuClient.setupTransportReqs) != 1 {
+		t.Fatalf("expected one setup transport call, got %d", len(sfuClient.setupTransportReqs))
 	}
-	var offer protocol.MediaOfferBody
-	if err := proto.Unmarshal(payload, &offer); err != nil {
-		t.Fatalf("unmarshal offer failed: %v", err)
+	if got := sfuClient.setupTransportReqs[0]; got.GetMeetingId() != meeting.ID || got.GetUserId() != "u1001" || !got.GetPublishAudio() || !got.GetPublishVideo() || got.GetClientIceUfrag() != "clientUfrag" {
+		t.Fatalf("unexpected setup transport request: %+v", got)
 	}
-	if offer.TargetUserId != "u1002" || offer.Sdp != "offer-sdp" {
-		t.Fatalf("unexpected offer payload: %+v", offer)
-	}
-	assertNoFrame(t, senderConn, "sender on offer")
 
-	answerPayload, err := proto.Marshal(&protocol.MediaAnswerBody{TargetUserId: "u1001", Sdp: "answer-sdp"})
-	if err != nil {
-		t.Fatalf("marshal answer failed: %v", err)
-	}
-	router.HandleMessage(targetSess, protocol.MediaAnswer, answerPayload)
-
-	msgType, payload = readFrame(t, senderConn, cfg.MaxPayloadBytes)
+	msgType, payload := readFrame(t, senderConn, cfg.MaxPayloadBytes)
 	if msgType != protocol.MediaAnswer {
 		t.Fatalf("unexpected media answer type: got %v want %v", msgType, protocol.MediaAnswer)
 	}
@@ -235,31 +335,40 @@ func TestRouterRoutesMediaOfferAnswerAndIceCandidate(t *testing.T) {
 	if err := proto.Unmarshal(payload, &answer); err != nil {
 		t.Fatalf("unmarshal answer failed: %v", err)
 	}
-	if answer.TargetUserId != "u1001" || answer.Sdp != "answer-sdp" {
+	if answer.GetMeetingId() != meeting.ID || answer.GetServerIceUfrag() != "serverUfrag" || answer.GetAssignedAudioSsrc() != 1111 || answer.GetAssignedVideoSsrc() != 2222 {
 		t.Fatalf("unexpected answer payload: %+v", answer)
 	}
-	assertNoFrame(t, targetConn, "target on answer")
 
-	candidatePayload, err := proto.Marshal(&protocol.MediaIceCandidateBody{TargetUserId: "u1002", Candidate: "cand", SdpMid: "0", SdpMlineIndex: 1})
+	msgType, payload = readFrame(t, senderConn, cfg.MaxPayloadBytes)
+	if msgType != protocol.MeetStateSync {
+		t.Fatalf("unexpected state sync type after transport answer: got %v want %v", msgType, protocol.MeetStateSync)
+	}
+	var sync protocol.MeetStateSyncNotifyBody
+	if err := proto.Unmarshal(payload, &sync); err != nil {
+		t.Fatalf("unmarshal media state sync failed: %v", err)
+	}
+	assertParticipantMediaSsrc(t, sync.Participants, "u1001", 1111, 2222)
+
+	candidatePayload, err := proto.Marshal(&protocol.MediaIceCandidateBody{
+		MeetingId:       meeting.ID,
+		Candidate:       "candidate:2 1 udp 2130706431 127.0.0.1 5005 typ host",
+		SdpMid:          "audio",
+		SdpMlineIndex:   0,
+		EndOfCandidates: true,
+	})
 	if err != nil {
 		t.Fatalf("marshal candidate failed: %v", err)
 	}
 	router.HandleMessage(senderSess, protocol.MediaIceCandidate, candidatePayload)
-
-	msgType, payload = readFrame(t, targetConn, cfg.MaxPayloadBytes)
-	if msgType != protocol.MediaIceCandidate {
-		t.Fatalf("unexpected media candidate type: got %v want %v", msgType, protocol.MediaIceCandidate)
+	if len(sfuClient.trickleIceReqs) != 1 {
+		t.Fatalf("expected one trickle candidate call, got %d", len(sfuClient.trickleIceReqs))
 	}
-	var candidate protocol.MediaIceCandidateBody
-	if err := proto.Unmarshal(payload, &candidate); err != nil {
-		t.Fatalf("unmarshal candidate failed: %v", err)
-	}
-	if candidate.TargetUserId != "u1002" || candidate.Candidate != "cand" || candidate.SdpMid != "0" || candidate.SdpMlineIndex != 1 {
-		t.Fatalf("unexpected candidate payload: %+v", candidate)
+	if got := sfuClient.trickleIceReqs[0]; got.GetMeetingId() != meeting.ID || got.GetUserId() != "u1001" || got.GetSdpMid() != "audio" || !got.GetEndOfCandidates() {
+		t.Fatalf("unexpected trickle request: %+v", got)
 	}
 }
 
-func TestRouterRejectsInvalidMediaTargets(t *testing.T) {
+func TestRouterAllowsReceiveOnlyTransportOffer(t *testing.T) {
 	cfg := config.Load()
 	sessions := server.NewSessionManager()
 	memStore := store.NewMemoryStore()
@@ -267,40 +376,72 @@ func TestRouterRejectsInvalidMediaTargets(t *testing.T) {
 	defer roomState.Close()
 	tokenManager := auth.NewTokenManager("unit-test-secret", time.Hour)
 	limiter := auth.NewRateLimiter(nil, 5, 10*time.Minute)
-	router := NewRouter(cfg, sessions, memStore, memStore, roomState, nil, tokenManager, limiter, nil, nil)
+	sfuClient := &stubSFUClient{
+		setupTransportRsp: &pb.SetupTransportRsp{
+			Success:               true,
+			ServerIceUfrag:        "serverUfrag",
+			ServerIcePwd:          "serverPwd",
+			ServerDtlsFingerprint: "AA:BB",
+			ServerCandidates:      []string{"candidate:1 1 udp 2130706431 127.0.0.1 5004 typ host"},
+			AssignedAudioSsrc:     0,
+			AssignedVideoSsrc:     0,
+		},
+	}
+	router := NewRouter(cfg, sessions, memStore, memStore, roomState, nil, tokenManager, limiter, sfuClient, nil)
 
-	senderSess, senderConn, senderCleanup := newRunningSession(t, 301, cfg)
+	meeting, hostParticipant, err := memStore.CreateMeeting("recv-only-room", "", "u1001", 4)
+	if err != nil {
+		t.Fatalf("create meeting failed: %v", err)
+	}
+	if err := roomState.UpsertRoom(context.Background(), meeting.ID, hostParticipant.UserId, "sfu-node-01", "127.0.0.1:5000"); err != nil {
+		t.Fatalf("upsert room failed: %v", err)
+	}
+	if err := roomState.AddMember(context.Background(), meeting.ID, hostParticipant); err != nil {
+		t.Fatalf("add host member failed: %v", err)
+	}
+
+	senderSess, senderConn, senderCleanup := newRunningSession(t, 302, cfg)
 	defer senderCleanup()
 	sessions.Add(senderSess)
 	sessions.BindUser(senderSess, "u1001")
-	senderSess.SetMeetingID("m-a")
+	senderSess.SetMeetingID(meeting.ID)
 	senderSess.SetState(server.StateInMeeting)
 
-	targetSess, targetConn, targetCleanup := newRunningSession(t, 302, cfg)
-	defer targetCleanup()
-	sessions.Add(targetSess)
-	sessions.BindUser(targetSess, "u1002")
-	targetSess.SetMeetingID("m-b")
-	targetSess.SetState(server.StateInMeeting)
-
-	missingTargetPayload, err := proto.Marshal(&protocol.MediaOfferBody{TargetUserId: "", Sdp: "offer-sdp"})
+	offerPayload, err := proto.Marshal(&protocol.MediaOfferBody{
+		MeetingId:             meeting.ID,
+		PublishAudio:          false,
+		PublishVideo:          false,
+		ClientIceUfrag:        "recvOnlyUfrag",
+		ClientIcePwd:          "recvOnlyPwd",
+		ClientDtlsFingerprint: "AA:BB",
+		ClientCandidates:      []string{"candidate:1 1 udp 2130706431 127.0.0.1 5006 typ host"},
+	})
 	if err != nil {
-		t.Fatalf("marshal missing target payload failed: %v", err)
+		t.Fatalf("marshal receive-only transport offer failed: %v", err)
 	}
-	router.HandleMessage(senderSess, protocol.MediaOffer, missingTargetPayload)
-	assertNoFrame(t, targetConn, "target on missing target id")
-	assertNoFrame(t, senderConn, "sender on missing target id")
+	router.HandleMessage(senderSess, protocol.MediaOffer, offerPayload)
 
-	wrongMeetingPayload, err := proto.Marshal(&protocol.MediaAnswerBody{TargetUserId: "u1002", Sdp: "answer-sdp"})
-	if err != nil {
-		t.Fatalf("marshal wrong meeting payload failed: %v", err)
+	if len(sfuClient.setupTransportReqs) != 1 {
+		t.Fatalf("expected one setup transport call, got %d", len(sfuClient.setupTransportReqs))
 	}
-	router.HandleMessage(senderSess, protocol.MediaAnswer, wrongMeetingPayload)
-	assertNoFrame(t, targetConn, "target on wrong meeting")
-	assertNoFrame(t, senderConn, "sender on wrong meeting")
+	if got := sfuClient.setupTransportReqs[0]; got.GetMeetingId() != meeting.ID || got.GetUserId() != "u1001" || got.GetPublishAudio() || got.GetPublishVideo() {
+		t.Fatalf("unexpected receive-only setup transport request: %+v", got)
+	}
+
+	msgType, payload := readFrame(t, senderConn, cfg.MaxPayloadBytes)
+	if msgType != protocol.MediaAnswer {
+		t.Fatalf("unexpected media answer type: got %v want %v", msgType, protocol.MediaAnswer)
+	}
+	var answer protocol.MediaAnswerBody
+	if err := proto.Unmarshal(payload, &answer); err != nil {
+		t.Fatalf("unmarshal answer failed: %v", err)
+	}
+	if answer.GetMeetingId() != meeting.ID || answer.GetAssignedAudioSsrc() != 0 || answer.GetAssignedVideoSsrc() != 0 {
+		t.Fatalf("unexpected receive-only answer payload: %+v", answer)
+	}
 }
 
-func TestRouterRegistersPublisherFromMediaDescription(t *testing.T) {
+func TestRouterIgnoresLegacyMediaMessagesWithoutMeetingID(t *testing.T) {
 	cfg := config.Load()
 	sessions := server.NewSessionManager()
 	memStore := store.NewMemoryStore()
@@ -315,315 +456,39 @@ func TestRouterRegistersPublisherFromMediaDescription(t *testing.T) {
 	defer senderCleanup()
 	sessions.Add(senderSess)
 	sessions.BindUser(senderSess, "u2001")
-	senderSess.SetMeetingID("m-ssrc")
+	senderSess.SetMeetingID("m-legacy")
 	senderSess.SetState(server.StateInMeeting)
 
 	targetSess, targetConn, targetCleanup := newRunningSession(t, 402, cfg)
 	defer targetCleanup()
 	sessions.Add(targetSess)
 	sessions.BindUser(targetSess, "u2002")
-	targetSess.SetMeetingID("m-ssrc")
+	targetSess.SetMeetingID("m-legacy")
 	targetSess.SetState(server.StateInMeeting)
 
-	offerPayload, err := proto.Marshal(&protocol.MediaOfferBody{TargetUserId: "u2002", Sdp: `{"audio_ssrc":12345}`})
+	offerPayload, err := proto.Marshal(&protocol.MediaOfferBody{})
 	if err != nil {
 		t.Fatalf("marshal offer failed: %v", err)
 	}
 	router.HandleMessage(senderSess, protocol.MediaOffer, offerPayload)
 
-	msgType, _ := readFrame(t, targetConn, cfg.MaxPayloadBytes)
-	if msgType != protocol.MediaOffer {
-		t.Fatalf("unexpected media offer type: got %v want %v", msgType, protocol.MediaOffer)
-	}
-	if len(sfuClient.requests) != 1 {
-		t.Fatalf("unexpected add publisher call count after offer: got %d want 1", len(sfuClient.requests))
-	}
-	if got := sfuClient.requests[0]; got.MeetingId != "m-ssrc" || got.UserId != "u2001" || got.AudioSsrc != 12345 {
-		t.Fatalf("unexpected add publisher request after offer: %+v", got)
-	}
-	assertNoFrame(t, senderConn, "sender on offer registration")
-
-	answerPayload, err := proto.Marshal(&protocol.MediaAnswerBody{TargetUserId: "u2001", Sdp: `{"audio_ssrc":54321}`})
+	answerPayload, err := proto.Marshal(&protocol.MediaAnswerBody{})
 	if err != nil {
 		t.Fatalf("marshal answer failed: %v", err)
 	}
 	router.HandleMessage(targetSess, protocol.MediaAnswer, answerPayload)
 
-	msgType, _ = readFrame(t, senderConn, cfg.MaxPayloadBytes)
-	if msgType != protocol.MediaAnswer {
-		t.Fatalf("unexpected media answer type: got %v want %v", msgType, protocol.MediaAnswer)
-	}
-	if len(sfuClient.requests) != 2 {
-		t.Fatalf("unexpected add publisher call count after answer: got %d want 2", len(sfuClient.requests))
-	}
-	if got := sfuClient.requests[1]; got.MeetingId != "m-ssrc" || got.UserId != "u2002" || got.AudioSsrc != 54321 {
-		t.Fatalf("unexpected add publisher request after answer: %+v", got)
-	}
-}
-func TestRouterRegistersPublisherFromExplicitSsrcFields(t *testing.T) {
-	cfg := config.Load()
-	sessions := server.NewSessionManager()
-	memStore := store.NewMemoryStore()
-	roomState := store.NewRedisRoomStore(cfg)
-	defer roomState.Close()
-	tokenManager := auth.NewTokenManager("unit-test-secret", time.Hour)
-	limiter := auth.NewRateLimiter(nil, 5, 10*time.Minute)
-	sfuClient := &stubSFUClient{}
-	router := NewRouter(cfg, sessions, memStore, memStore, roomState, nil, tokenManager, limiter, sfuClient, nil)
-
-	senderSess, senderConn, senderCleanup := newRunningSession(t, 451, cfg)
-	defer senderCleanup()
-	sessions.Add(senderSess)
-	sessions.BindUser(senderSess, "u3001")
-	senderSess.SetMeetingID("m-explicit")
-	senderSess.SetState(server.StateInMeeting)
-
-	targetSess, targetConn, targetCleanup := newRunningSession(t, 452, cfg)
-	defer targetCleanup()
-	sessions.Add(targetSess)
-	sessions.BindUser(targetSess, "u3002")
-	targetSess.SetMeetingID("m-explicit")
-	targetSess.SetState(server.StateInMeeting)
-
-	offerPayload, err := proto.Marshal(&protocol.MediaOfferBody{TargetUserId: "u3002", Sdp: "offer-sdp", AudioSsrc: 111, VideoSsrc: 222})
+	candidatePayload, err := proto.Marshal(&protocol.MediaIceCandidateBody{Candidate: "cand", SdpMid: "0", SdpMlineIndex: 1})
 	if err != nil {
-		t.Fatalf("marshal offer failed: %v", err)
+		t.Fatalf("marshal candidate failed: %v", err)
 	}
-	router.HandleMessage(senderSess, protocol.MediaOffer, offerPayload)
+	router.HandleMessage(senderSess, protocol.MediaIceCandidate, candidatePayload)
 
-	msgType, payload := readFrame(t, targetConn, cfg.MaxPayloadBytes)
-	if msgType != protocol.MediaOffer {
-		t.Fatalf("unexpected media offer type: got %v want %v", msgType, protocol.MediaOffer)
+	if len(sfuClient.setupTransportReqs) != 0 || len(sfuClient.trickleIceReqs) != 0 || len(sfuClient.requests) != 0 || len(sfuClient.addSubscriberReqs) != 0 {
+		t.Fatalf("legacy media messages must not touch SFU client: %+v", sfuClient)
 	}
-	var offer protocol.MediaOfferBody
-	if err := proto.Unmarshal(payload, &offer); err != nil {
-		t.Fatalf("unmarshal offer failed: %v", err)
-	}
-	if offer.GetAudioSsrc() != 111 || offer.GetVideoSsrc() != 222 {
-		t.Fatalf("unexpected offer SSRC fields: %+v", offer)
-	}
-	if len(sfuClient.requests) != 1 {
-		t.Fatalf("unexpected add publisher call count after explicit offer: got %d want 1", len(sfuClient.requests))
-	}
-	if got := sfuClient.requests[0]; got.MeetingId != "m-explicit" || got.UserId != "u3001" || got.AudioSsrc != 111 || got.VideoSsrc != 222 {
-		t.Fatalf("unexpected add publisher request after explicit offer: %+v", got)
-	}
-	assertNoFrame(t, senderConn, "sender on explicit offer registration")
-}
-
-func TestRouterRegistersPublisherAgainstRoomRouteClient(t *testing.T) {
-	mini := miniredis.RunT(t)
-
-	cfg := config.Load()
-	cfg.EnableRedis = true
-	cfg.RedisAddr = mini.Addr()
-
-	sessions := server.NewSessionManager()
-	memStore := store.NewMemoryStore()
-	roomState := store.NewRedisRoomStore(cfg)
-	defer roomState.Close()
-	tokenManager := auth.NewTokenManager("unit-test-secret", time.Hour)
-	limiter := auth.NewRateLimiter(nil, 5, 10*time.Minute)
-
-	const routeAddress = "10.0.0.2:10000"
-	if err := roomState.UpsertRoom(context.Background(), "m-routed", "u3001", "sfu-node-02", routeAddress); err != nil {
-		t.Fatalf("upsert room failed: %v", err)
-	}
-
-	defaultClient := &stubSFUClient{}
-	routeClient := &stubSFUClient{}
-	sfuClient := signalingSfu.NewRoutedClientWithClients(defaultClient, roomState, map[string]signalingSfu.Client{
-		routeAddress: routeClient,
-	})
-	router := NewRouter(cfg, sessions, memStore, memStore, roomState, nil, tokenManager, limiter, sfuClient, nil)
-
-	senderSess, senderConn, senderCleanup := newRunningSession(t, 461, cfg)
-	defer senderCleanup()
-	sessions.Add(senderSess)
-	sessions.BindUser(senderSess, "u3001")
-	senderSess.SetMeetingID("m-routed")
-	senderSess.SetState(server.StateInMeeting)
-
-	targetSess, targetConn, targetCleanup := newRunningSession(t, 462, cfg)
-	defer targetCleanup()
-	sessions.Add(targetSess)
-	sessions.BindUser(targetSess, "u3002")
-	targetSess.SetMeetingID("m-routed")
-	targetSess.SetState(server.StateInMeeting)
-
-	offerPayload, err := proto.Marshal(&protocol.MediaOfferBody{TargetUserId: "u3002", Sdp: `{"audio_ssrc":333}`})
-	if err != nil {
-		t.Fatalf("marshal routed offer failed: %v", err)
-	}
-	router.HandleMessage(senderSess, protocol.MediaOffer, offerPayload)
-
-	msgType, _ := readFrame(t, targetConn, cfg.MaxPayloadBytes)
-	if msgType != protocol.MediaOffer {
-		t.Fatalf("unexpected routed media offer type: got %v want %v", msgType, protocol.MediaOffer)
-	}
-	if len(defaultClient.requests) != 0 {
-		t.Fatalf("expected default client to stay idle, got %+v", defaultClient.requests)
-	}
-	if len(routeClient.requests) != 1 {
-		t.Fatalf("expected room-route client to receive one add publisher call, got %d", len(routeClient.requests))
-	}
-	if got := routeClient.requests[0]; got.MeetingId != "m-routed" || got.UserId != "u3001" || got.AudioSsrc != 333 {
-		t.Fatalf("unexpected route client add publisher request: %+v", got)
-	}
-	assertNoFrame(t, senderConn, "sender on routed offer registration")
-}
-
-func TestRouterRecoversPublisherRegistrationByReroutingSFUNode(t *testing.T) {
-	mini := miniredis.RunT(t)
-
-	cfg := config.Load()
-	cfg.EnableRedis = true
-	cfg.RedisAddr = mini.Addr()
-	cfg.SFUNodeQuarantine = time.Minute
-	cfg.SFUNodes = []config.SFUNode{
-		{NodeID: "sfu-a", MediaAddress: "10.0.0.2:10000", RPCAddress: "10.0.0.2:19000", MaxMeetings: 10},
-		{NodeID: "sfu-b", MediaAddress: "10.0.0.3:10000", RPCAddress: "10.0.0.3:19000", MaxMeetings: 10},
-	}
-
-	sessions := server.NewSessionManager()
-	memStore := store.NewMemoryStore()
-	roomState := store.NewRedisRoomStore(cfg)
-	defer roomState.Close()
-	tokenManager := auth.NewTokenManager("unit-test-secret", time.Hour)
-	limiter := auth.NewRateLimiter(nil, 5, 10*time.Minute)
-
-	meeting, hostParticipant, err := memStore.CreateMeeting("reroute-room", "", "u1001", 4)
-	if err != nil {
-		t.Fatalf("create meeting failed: %v", err)
-	}
-	_, _, joined, err := memStore.JoinMeeting(meeting.ID, "", "u1002")
-	if err != nil {
-		t.Fatalf("join meeting failed: %v", err)
-	}
-	if err := roomState.UpsertRoom(context.Background(), meeting.ID, hostParticipant.UserId, "sfu-a", "10.0.0.2:10000"); err != nil {
-		t.Fatalf("seed room route failed: %v", err)
-	}
-	if err := roomState.SetMuteAll(context.Background(), meeting.ID, true); err != nil {
-		t.Fatalf("set mute all failed: %v", err)
-	}
-	if err := roomState.AddMember(context.Background(), meeting.ID, hostParticipant); err != nil {
-		t.Fatalf("add host member failed: %v", err)
-	}
-	if err := roomState.AddMember(context.Background(), meeting.ID, joined); err != nil {
-		t.Fatalf("add joined member failed: %v", err)
-	}
-
-	primaryRouteClient := &stubSFUClient{addPublisherErr: errors.New("primary node down")}
-	backupRouteClient := &stubSFUClient{
-		createRoomResponse: &pb.CreateRoomRsp{Success: true, SfuAddress: "10.0.0.3:10000"},
-	}
-	sfuClient := signalingSfu.NewRoutedClientWithClients(&stubSFUClient{}, roomState, map[string]signalingSfu.Client{
-		"10.0.0.2:10000": primaryRouteClient,
-		"10.0.0.3:10000": backupRouteClient,
-	})
-	router := NewRouter(cfg, sessions, memStore, memStore, roomState, nil, tokenManager, limiter, sfuClient, nil)
-
-	senderSess, senderConn, senderCleanup := newRunningSession(t, 551, cfg)
-	defer senderCleanup()
-	sessions.Add(senderSess)
-	sessions.BindUser(senderSess, "u1001")
-	senderSess.SetMeetingID(meeting.ID)
-	senderSess.SetState(server.StateInMeeting)
-
-	targetSess, targetConn, targetCleanup := newRunningSession(t, 552, cfg)
-	defer targetCleanup()
-	sessions.Add(targetSess)
-	sessions.BindUser(targetSess, "u1002")
-	targetSess.SetMeetingID(meeting.ID)
-	targetSess.SetState(server.StateInMeeting)
-
-	offerPayload, err := proto.Marshal(&protocol.MediaOfferBody{TargetUserId: "u1002", Sdp: `{"audio_ssrc":12345}`})
-	if err != nil {
-		t.Fatalf("marshal routed offer failed: %v", err)
-	}
-	router.HandleMessage(senderSess, protocol.MediaOffer, offerPayload)
-
-	msgType, payload := readFrame(t, targetConn, cfg.MaxPayloadBytes)
-	if msgType != protocol.MediaRouteStatusNotify {
-		t.Fatalf("unexpected target route status type: got %v want %v", msgType, protocol.MediaRouteStatusNotify)
-	}
-	assertRouteStatusStage(t, payload, routeStatusStageSwitching)
-
-	msgType, payload = readFrame(t, targetConn, cfg.MaxPayloadBytes)
-	if msgType != protocol.MediaRouteStatusNotify {
-		t.Fatalf("unexpected target route status type: got %v want %v", msgType, protocol.MediaRouteStatusNotify)
-	}
-	assertRouteStatusStage(t, payload, routeStatusStageSwitched)
-
-	msgType, _ = readFrame(t, targetConn, cfg.MaxPayloadBytes)
-	if msgType != protocol.MediaOffer {
-		t.Fatalf("unexpected media offer type: got %v want %v", msgType, protocol.MediaOffer)
-	}
-
-	msgType, payload = readFrame(t, senderConn, cfg.MaxPayloadBytes)
-	if msgType != protocol.MediaRouteStatusNotify {
-		t.Fatalf("unexpected sender route status type: got %v want %v", msgType, protocol.MediaRouteStatusNotify)
-	}
-	assertRouteStatusStage(t, payload, routeStatusStageSwitching)
-
-	msgType, payload = readFrame(t, senderConn, cfg.MaxPayloadBytes)
-	if msgType != protocol.MediaRouteStatusNotify {
-		t.Fatalf("unexpected sender route status type: got %v want %v", msgType, protocol.MediaRouteStatusNotify)
-	}
-	assertRouteStatusStage(t, payload, routeStatusStageSwitched)
-
-	if len(primaryRouteClient.requests) < 1 {
-		t.Fatalf("expected failed add publisher call on primary route, got %d", len(primaryRouteClient.requests))
-	}
-	if len(backupRouteClient.createRoomRequests) != 1 {
-		t.Fatalf("expected recovery create room on backup node, got %d", len(backupRouteClient.createRoomRequests))
-	}
-	if len(backupRouteClient.requests) != 1 {
-		t.Fatalf("expected recovery add publisher on backup node, got %d", len(backupRouteClient.requests))
-	}
-
-	meta, err := roomState.RoomMetadata(context.Background(), meeting.ID)
-	if err != nil {
-		t.Fatalf("load room metadata failed: %v", err)
-	}
-	if meta == nil || meta.SFUNodeID != "sfu-b" || meta.SFUAddress != "10.0.0.3:10000" || !meta.MuteAll {
-		t.Fatalf("expected room route switched to backup node, got %+v", meta)
-	}
-	if !mini.Exists("sfu_node_quarantine:sfu-a") {
-		t.Fatal("expected failed primary node to be quarantined")
-	}
-
-	sourceStatus, err := roomState.SFUNodeStatus(context.Background(), "sfu-a")
-	if err != nil {
-		t.Fatalf("load source sfu status failed: %v", err)
-	}
-	if sourceStatus == nil || sourceStatus.RecoveryAttempts != 1 || sourceStatus.RecoveryFailoverSuccess != 0 || sourceStatus.RecoveryFailoverFailed != 0 {
-		t.Fatalf("unexpected source recovery status: %+v", sourceStatus)
-	}
-	targetStatus, err := roomState.SFUNodeStatus(context.Background(), "sfu-b")
-	if err != nil {
-		t.Fatalf("load target sfu status failed: %v", err)
-	}
-	if targetStatus == nil || targetStatus.RecoveryFailoverSuccess != 1 || targetStatus.RecoveryFailoverFailed != 0 {
-		t.Fatalf("unexpected target recovery status: %+v", targetStatus)
-	}
-
-	metrics, err := roomState.LoadRecoveryMetrics(context.Background(), cfg.NodeID)
-	if err != nil {
-		t.Fatalf("load recovery metrics failed: %v", err)
-	}
-	if metrics == nil {
-		t.Fatal("expected recovery metrics for local signaling node")
-	}
-	if metrics.LockAttempts != 1 || metrics.LockAcquired != 1 || metrics.LockContended != 0 {
-		t.Fatalf("unexpected lock metrics: %+v", metrics)
-	}
-	if metrics.FailoverAttempts != 1 || metrics.FailoverSuccess != 1 || metrics.FailoverFailed != 0 {
-		t.Fatalf("unexpected failover metrics on successful reroute: %+v", metrics)
-	}
-
-	assertNoFrame(t, senderConn, "sender on rerouted offer registration")
-	assertNoFrame(t, targetConn, "target on rerouted offer registration")
+	assertNoFrame(t, targetConn, "target on legacy media")
+	assertNoFrame(t, senderConn, "sender on legacy media")
 }
 
 func TestMediaHandlerRecoveryDoesNotRequireHostMetadata(t *testing.T) {
@@ -1187,64 +1052,6 @@ func TestMediaHandlerRouteStatusCacheSweepsStaleMeetings(t *testing.T) {
 	}
 }
 
-func TestRouterRoutesRemoteMediaViaNodeBus(t *testing.T) {
-	cfg := config.Load()
-	cfg.NodeID = "sig-node-a"
-
-	sessions := server.NewSessionManager()
-	memStore := store.NewMemoryStore()
-	roomState := store.NewRedisRoomStore(cfg)
-	defer roomState.Close()
-	tokenManager := auth.NewTokenManager("unit-test-secret", time.Hour)
-	limiter := auth.NewRateLimiter(nil, 5, 10*time.Minute)
-	sessionStore := &stubSessionStore{
-		presence: &store.SessionPresence{
-			UserID:    "u4002",
-			NodeID:    "sig-node-b",
-			SessionID: 902,
-			MeetingID: "m-remote",
-			Status:    int32(server.StateInMeeting),
-		},
-	}
-	directBus := &stubUserFramePublisher{}
-	router := NewRouter(cfg, sessions, memStore, memStore, roomState, sessionStore, tokenManager, limiter, nil, directBus)
-
-	senderSess, senderConn, senderCleanup := newRunningSession(t, 501, cfg)
-	defer senderCleanup()
-	sessions.Add(senderSess)
-	sessions.BindUser(senderSess, "u4001")
-	senderSess.SetMeetingID("m-remote")
-	senderSess.SetState(server.StateInMeeting)
-
-	offerPayload, err := proto.Marshal(&protocol.MediaOfferBody{TargetUserId: "u4002", Sdp: "offer-sdp"})
-	if err != nil {
-		t.Fatalf("marshal remote offer failed: %v", err)
-	}
-
-	router.HandleMessage(senderSess, protocol.MediaOffer, offerPayload)
-
-	if directBus.calls != 1 {
-		t.Fatalf("expected one remote publish call, got %d", directBus.calls)
-	}
-	if directBus.nodeID != "sig-node-b" || directBus.userID != "u4002" || directBus.targetSessionID != 902 {
-		t.Fatalf("unexpected remote publish metadata: %+v", directBus)
-	}
-
-	msgType, payload := decodeFrameBytes(t, directBus.frame, cfg.MaxPayloadBytes)
-	if msgType != protocol.MediaOffer {
-		t.Fatalf("unexpected remote media type: got %v want %v", msgType, protocol.MediaOffer)
-	}
-	var offer protocol.MediaOfferBody
-	if err := proto.Unmarshal(payload, &offer); err != nil {
-		t.Fatalf("unmarshal remote offer failed: %v", err)
-	}
-	if offer.TargetUserId != "u4002" || offer.Sdp != "offer-sdp" {
-		t.Fatalf("unexpected remote offer payload: %+v", offer)
-	}
-
-	assertNoFrame(t, senderConn, "sender on remote offer")
-}
-
 func TestRouterBroadcastsStateSyncForMediaMuteToggle(t *testing.T) {
 	mini := miniredis.RunT(t)
 
@@ -1485,6 +1292,27 @@ func assertParticipantMediaState(t *testing.T, participants []*protocol.Particip
 		}
 		if participant.IsAudioOn != audioOn || participant.IsVideoOn != videoOn || participant.IsSharing != sharing {
 			t.Fatalf("unexpected participant media state for %s: %+v", userID, participant)
+		}
+		return
+	}
+
+	t.Fatalf("participant %s not found in state sync", userID)
+}
+
+func assertParticipantMediaSsrc(t *testing.T, participants []*protocol.Participant, userID string, audioSsrc, videoSsrc uint32) {
+	t.Helper()
+
+	for _, participant := range participants {
+		if participant == nil || participant.UserId != userID {
+			continue
+		}
+		if participant.AudioSsrc != audioSsrc || participant.VideoSsrc != videoSsrc {
+			t.Fatalf("unexpected participant SSRCs for %s: got audio=%d video=%d want audio=%d video=%d",
+				userID,
+				participant.AudioSsrc,
+				participant.VideoSsrc,
+				audioSsrc,
+				videoSsrc)
 		}
 		return
 	}

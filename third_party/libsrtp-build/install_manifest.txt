@@ -1,0 +1,9 @@
+D:/meeting/third_party/libsrtp2/lib/srtp2.lib
+D:/meeting/third_party/libsrtp2/include/srtp2/srtp.h
+D:/meeting/third_party/libsrtp2/include/srtp2/auth.h
+D:/meeting/third_party/libsrtp2/include/srtp2/cipher.h
+D:/meeting/third_party/libsrtp2/include/srtp2/crypto_types.h
+D:/meeting/third_party/libsrtp2/lib/cmake/libSRTP/libSRTPTargets.cmake
+D:/meeting/third_party/libsrtp2/lib/cmake/libSRTP/libSRTPTargets-release.cmake
+D:/meeting/third_party/libsrtp2/lib/cmake/libSRTP/libSRTPConfig.cmake
+D:/meeting/third_party/libsrtp2/lib/cmake/libSRTP/libSRTPConfigVersion.cmake

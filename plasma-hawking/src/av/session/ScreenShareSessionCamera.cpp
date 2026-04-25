@@ -8,14 +8,18 @@
 #include "av/capture/ScreenCapture.h"
 
 #include <QDebug>
+#include <QImage>
 #include <QMutexLocker>
 #include <QtMultimedia/QCameraDevice>
 #include <QtMultimedia/QMediaDevices>
+#include <QtMultimedia/QVideoFrame>
 #include <QtGlobal>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <cstring>
 #include <memory>
 #include <random>
 
@@ -28,6 +32,10 @@ uint32_t makeSsrc() {
         value = static_cast<uint32_t>(std::random_device{}());
     }
     return value;
+}
+
+uint32_t chooseConfiguredOrRandomSsrc(uint32_t configuredSsrc) {
+    return configuredSsrc != 0U ? configuredSsrc : makeSsrc();
 }
 
 uint64_t steadyNowMs() {
@@ -89,6 +97,125 @@ QCameraDevice resolvePreferredCameraDeviceName(const QString& preferredDeviceNam
     return {};
 }
 
+uint8_t clampToByte(int value) {
+    return static_cast<uint8_t>(std::clamp(value, 0, 255));
+}
+
+uint8_t lumaFromBgra(uint8_t b, uint8_t g, uint8_t r) {
+    return clampToByte((((66 * static_cast<int>(r)) +
+                         (129 * static_cast<int>(g)) +
+                         (25 * static_cast<int>(b)) +
+                         128) >> 8) + 16);
+}
+
+uint8_t chromaUFromBgra(uint8_t b, uint8_t g, uint8_t r) {
+    return clampToByte((((-38 * static_cast<int>(r)) -
+                         (74 * static_cast<int>(g)) +
+                         (112 * static_cast<int>(b)) +
+                         128) >> 8) + 128);
+}
+
+uint8_t chromaVFromBgra(uint8_t b, uint8_t g, uint8_t r) {
+    return clampToByte((((112 * static_cast<int>(r)) -
+                         (94 * static_cast<int>(g)) -
+                         (18 * static_cast<int>(b)) +
+                         128) >> 8) + 128);
+}
+
+bool fillNv12PreviewFromArgb32Image(const QImage& image, av::codec::DecodedVideoFrame& outFrame) {
+    if (image.isNull() || image.format() != QImage::Format_ARGB32 ||
+        image.width() <= 0 || image.height() <= 0 ||
+        (image.width() % 2) != 0 || (image.height() % 2) != 0) {
+        return false;
+    }
+
+    outFrame = av::codec::DecodedVideoFrame{};
+    outFrame.width = image.width();
+    outFrame.height = image.height();
+    outFrame.pixelFormat = AV_PIX_FMT_NV12;
+    outFrame.yPlane.resize(static_cast<std::size_t>(outFrame.width) * static_cast<std::size_t>(outFrame.height));
+    outFrame.uvPlane.resize(static_cast<std::size_t>(outFrame.width) * static_cast<std::size_t>(outFrame.height / 2));
+
+    for (int y = 0; y < outFrame.height; ++y) {
+        const uint8_t* srcRow = image.constScanLine(y);
+        auto* yRow = outFrame.yPlane.data() + static_cast<std::ptrdiff_t>(y) * outFrame.width;
+        for (int x = 0; x < outFrame.width; ++x) {
+            const uint8_t* pixel = srcRow + static_cast<std::ptrdiff_t>(x) * 4;
+            yRow[x] = lumaFromBgra(pixel[0], pixel[1], pixel[2]);
+        }
+    }
+
+    for (int y = 0; y < outFrame.height; y += 2) {
+        const uint8_t* srcRow0 = image.constScanLine(y);
+        const uint8_t* srcRow1 = image.constScanLine(std::min(y + 1, outFrame.height - 1));
+        auto* uvRow = outFrame.uvPlane.data() + static_cast<std::ptrdiff_t>(y / 2) * outFrame.width;
+        for (int x = 0; x < outFrame.width; x += 2) {
+            const uint8_t* p00 = srcRow0 + static_cast<std::ptrdiff_t>(x) * 4;
+            const uint8_t* p01 = srcRow0 + static_cast<std::ptrdiff_t>(std::min(x + 1, outFrame.width - 1)) * 4;
+            const uint8_t* p10 = srcRow1 + static_cast<std::ptrdiff_t>(x) * 4;
+            const uint8_t* p11 = srcRow1 + static_cast<std::ptrdiff_t>(std::min(x + 1, outFrame.width - 1)) * 4;
+
+            const int uAvg = (static_cast<int>(chromaUFromBgra(p00[0], p00[1], p00[2])) +
+                              static_cast<int>(chromaUFromBgra(p01[0], p01[1], p01[2])) +
+                              static_cast<int>(chromaUFromBgra(p10[0], p10[1], p10[2])) +
+                              static_cast<int>(chromaUFromBgra(p11[0], p11[1], p11[2])) +
+                              2) / 4;
+            const int vAvg = (static_cast<int>(chromaVFromBgra(p00[0], p00[1], p00[2])) +
+                              static_cast<int>(chromaVFromBgra(p01[0], p01[1], p01[2])) +
+                              static_cast<int>(chromaVFromBgra(p10[0], p10[1], p10[2])) +
+                              static_cast<int>(chromaVFromBgra(p11[0], p11[1], p11[2])) +
+                              2) / 4;
+
+            uvRow[x] = clampToByte(uAvg);
+            uvRow[x + 1] = clampToByte(vAvg);
+        }
+    }
+
+    return true;
+}
+
+bool buildLocalCameraPreviewFrame(const av::capture::CameraCaptureFrame& frame,
+                                  int targetWidth,
+                                  int targetHeight,
+                                  av::codec::DecodedVideoFrame& outFrame) {
+    targetWidth = std::max(2, targetWidth & ~1);
+    targetHeight = std::max(2, targetHeight & ~1);
+
+    QImage image;
+    if (frame.hasRawBgra()) {
+        image = QImage(reinterpret_cast<const uchar*>(frame.bgra.data()),
+                       frame.width,
+                       frame.height,
+                       frame.stride,
+                       QImage::Format_ARGB32).copy();
+    } else if (frame.hasVideoFrame()) {
+        QVideoFrame cpuFrame(frame.videoFrame);
+        image = cpuFrame.toImage();
+        if (image.isNull() && cpuFrame.map(QVideoFrame::ReadOnly)) {
+            image = cpuFrame.toImage();
+            cpuFrame.unmap();
+        }
+    }
+
+    if (image.isNull()) {
+        return false;
+    }
+    if (image.format() != QImage::Format_ARGB32) {
+        image = image.convertToFormat(QImage::Format_ARGB32);
+    }
+    if (image.width() != targetWidth || image.height() != targetHeight) {
+        image = image.scaled(targetWidth, targetHeight, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+        if (image.format() != QImage::Format_ARGB32) {
+            image = image.convertToFormat(QImage::Format_ARGB32);
+        }
+    }
+    if (image.isNull()) {
+        return false;
+    }
+
+    return fillNv12PreviewFromArgb32Image(image, outFrame);
+}
+
 }  // namespace
 
 bool ScreenShareSession::setCameraSendingEnabled(bool enabled) {
@@ -113,7 +240,10 @@ bool ScreenShareSession::setCameraSendingEnabled(bool enabled) {
             }
             debugCameraRelayTrace(QStringLiteral("[camera-relay] setCameraSendingEnabled startCameraCaptureLocked ok"));
             if (enablePlan.shouldStartSendThread) {
-                resetSenderForFreshStream(m_sender, m_rtcpActionPipeline, makeSsrc());
+                resetSenderForFreshStream(m_sender,
+                                          m_rtcpActionPipeline,
+                                          chooseConfiguredOrRandomSsrc(
+                                              m_configuredVideoSsrc.load(std::memory_order_acquire)));
                 startSendThread = true;
             }
         }
@@ -325,12 +455,18 @@ bool ScreenShareSession::startCameraCaptureLocked() {
     std::weak_ptr<CameraFrameRelay> weakRelay = m_cameraRelay;
     const auto statusCallback = m_statusCallback;
     const auto cameraSourceCallback = m_cameraSourceCallback;
+    const auto localCameraPreviewCallback = m_localCameraPreviewCallback;
+    const int previewWidth = m_config.width;
+    const int previewHeight = m_config.height;
     auto firstCameraFrameObserved = std::make_shared<std::atomic<bool>>(false);
     auto firstCameraFrameConvertFailureReported = std::make_shared<std::atomic<bool>>(false);
     cameraCapture->setFrameCallback([weakRelay,
                                      generation,
                                      statusCallback,
                                      cameraSourceCallback,
+                                     localCameraPreviewCallback,
+                                     previewWidth,
+                                     previewHeight,
                                      firstCameraFrameObserved,
                                      firstCameraFrameConvertFailureReported](av::capture::CameraCaptureFrame frame) {
         if (const auto relay = weakRelay.lock()) {
@@ -353,14 +489,25 @@ bool ScreenShareSession::startCameraCaptureLocked() {
                                   << (frame.hasRawBgra() ? "raw" : "qt")
                                   << convertFailureDetail;
             }
+            av::capture::CameraCaptureFrame previewFrame;
+            if (localCameraPreviewCallback) {
+                previewFrame = frame;
+            }
             CameraFrameRelay::EnqueueDropReason dropReason = CameraFrameRelay::EnqueueDropReason::None;
-            if (relay->enqueueFrame(generation, std::move(frame), &dropReason) &&
-                !firstCameraFrameObserved->exchange(true, std::memory_order_acq_rel)) {
-                if (cameraSourceCallback) {
-                    cameraSourceCallback(false);
+            if (relay->enqueueFrame(generation, std::move(frame), &dropReason)) {
+                if (localCameraPreviewCallback) {
+                    av::codec::DecodedVideoFrame preview;
+                    if (buildLocalCameraPreviewFrame(previewFrame, previewWidth, previewHeight, preview)) {
+                        localCameraPreviewCallback(std::move(preview));
+                    }
                 }
-                if (statusCallback) {
-                    statusCallback("Video camera frame observed");
+                if (!firstCameraFrameObserved->exchange(true, std::memory_order_acq_rel)) {
+                    if (cameraSourceCallback) {
+                        cameraSourceCallback(false);
+                    }
+                    if (statusCallback) {
+                        statusCallback("Video camera frame observed");
+                    }
                 }
                 return;
             }

@@ -46,6 +46,7 @@ class MeetingController : public QObject {
     Q_PROPERTY(QString activeVideoPeerUserId READ activeVideoPeerUserId NOTIFY activeVideoPeerUserIdChanged)
     Q_PROPERTY(QString activeShareDisplayName READ activeShareDisplayName NOTIFY activeShareChanged)
     Q_PROPERTY(bool hasActiveShare READ hasActiveShare NOTIFY activeShareChanged)
+    Q_PROPERTY(QObject* localVideoFrameSource READ localVideoFrameSource NOTIFY localVideoFrameSourceChanged)
     Q_PROPERTY(QObject* remoteScreenFrameSource READ remoteScreenFrameSource NOTIFY remoteScreenFrameSourceChanged)
     Q_PROPERTY(QObject* remoteVideoFrameSource READ remoteVideoFrameSource NOTIFY remoteVideoFrameSourceChanged)
     Q_PROPERTY(QStringList availableCameraDevices READ availableCameraDevices NOTIFY availableCameraDevicesChanged)
@@ -78,9 +79,11 @@ public:
     QString activeVideoPeerUserId() const;
     QString activeShareDisplayName() const;
     bool hasActiveShare() const;
+    QObject* localVideoFrameSource() const;
     QObject* remoteScreenFrameSource() const;
     QObject* remoteVideoFrameSource() const;
     Q_INVOKABLE QObject* remoteVideoFrameSourceForUser(const QString& userId) const;
+    Q_INVOKABLE quint32 remoteVideoSsrcForUser(const QString& userId) const;
     QStringList availableCameraDevices() const;
     QString preferredCameraDevice() const;
     QStringList availableAudioInputDevices() const;
@@ -99,6 +102,12 @@ public:
     quint64 audioPlayedFrameCount() const;
     quint32 audioLastRttMs() const;
     quint32 audioTargetBitrateBps() const;
+    bool audioIceConnected() const;
+    bool audioDtlsConnected() const;
+    bool audioSrtpReady() const;
+    bool videoIceConnected() const;
+    bool videoDtlsConnected() const;
+    bool videoSrtpReady() const;
     qint64 videoLastAudioSkewMs() const;
     qint64 videoMaxAbsAudioSkewMs() const;
     quint64 videoAudioSkewSampleCount() const;
@@ -146,6 +155,7 @@ signals:
     void availableAudioOutputDevicesChanged();
     void preferredMicrophoneDeviceChanged();
     void preferredSpeakerDeviceChanged();
+    void localVideoFrameSourceChanged();
     void remoteScreenFrameSourceChanged();
     void remoteVideoFrameSourceChanged();
     void sessionChanged();
@@ -187,12 +197,24 @@ private:
     bool sendVideoOfferToPeer(bool force);
     QString currentAudioPeerUserId() const;
     QString currentVideoPeerUserId() const;
+    QString currentAudioTransportKey() const;
+    QString currentVideoTransportKey() const;
     quint32 currentVideoSsrc() const;
-    quint32 remoteVideoSsrcForPeer(const QString& peerUserId) const;
     QString resolvePeerUserIdForRemoteVideoSsrc(quint32 remoteSsrc) const;
+    void updateRemoteVideoSsrcMappings();
     void updateExpectedRemoteVideoSsrcForCurrentPeer();
     void updateAudioSessionSettings();
     void updateVideoSessionSettings();
+    void updateSfuRoute(const QString& route);
+    bool resolveSfuEndpoint(QString* host, quint16* port) const;
+    void applySfuRouteToSessions();
+    void handleMediaTransportAnswer(const QString& meetingId,
+                                    const QString& serverIceUfrag,
+                                    const QString& serverIcePwd,
+                                    const QString& serverDtlsFingerprint,
+                                    const QStringList& serverCandidates,
+                                    quint32 assignedAudioSsrc,
+                                    quint32 assignedVideoSsrc);
     void updateActiveShareSelection();
     void updateActiveVideoPeerSelection();
     void enqueueRemoteVideoRenderTask(std::function<void()> renderTask,
@@ -222,6 +244,7 @@ private:
     std::unique_ptr<MediaSessionManager> m_mediaSessionManager;
     std::unique_ptr<av::session::AudioCallSession> m_audioCallSession;
     std::unique_ptr<av::session::ScreenShareSession> m_screenShareSession;
+    std::unique_ptr<av::render::VideoFrameStore> m_localVideoFrameStore;
     std::unique_ptr<av::render::VideoFrameStore> m_remoteScreenFrameStore;
     std::unique_ptr<av::render::VideoFrameStore> m_remoteVideoFrameStore;
     QHash<QString, av::render::VideoFrameStore*> m_remoteVideoFrameStoresByPeer;
@@ -241,8 +264,10 @@ private:
     bool m_currentMeetingHost{false};
     bool m_audioNegotiationStarted{false};
     QString m_audioPeerUserId;
+    QString m_audioTransportKey;
     bool m_videoNegotiationStarted{false};
     QString m_videoPeerUserId;
+    QString m_videoTransportKey;
     QString m_activeShareUserId;
     QString m_activeVideoPeerUserId;
     QString m_activeShareDisplayName;
@@ -251,8 +276,13 @@ private:
     QSet<QString> m_videoOfferSentPeers;
     QSet<QString> m_videoAnswerSentPeers;
     QHash<QString, quint32> m_remoteVideoSsrcByPeer;
+    quint32 m_assignedAudioSsrc{0};
+    quint32 m_assignedVideoSsrc{0};
+    QString m_audioClientIceUfrag;
+    QString m_videoClientIceUfrag;
     QString m_meetingId;
     QString m_meetingTitle;
+    QString m_sfuAddress;
     QString m_pendingMeetingTitle;
     QString m_statusText{QStringLiteral("Ready")};
     qint64 m_currentMeetingJoinedAt{0};

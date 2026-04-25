@@ -31,7 +31,60 @@ message AddPublisherReq {
 
 message AddPublisherRsp {
   bool success = 1;
-  uint32 udp_port = 2;
+}
+
+message SetupTransportReq {
+  string meeting_id = 1;
+  string user_id = 2;
+  bool publish_audio = 3;
+  bool publish_video = 4;
+  string client_ice_ufrag = 5;
+  string client_ice_pwd = 6;
+  string client_dtls_fingerprint = 7;
+  repeated string client_candidates = 8;
+}
+
+message SetupTransportRsp {
+  bool success = 1;
+  string server_ice_ufrag = 2;
+  string server_ice_pwd = 3;
+  string server_dtls_fingerprint = 4;
+  repeated string server_candidates = 5;
+  uint32 assigned_audio_ssrc = 6;
+  uint32 assigned_video_ssrc = 7;
+}
+
+message TrickleIceCandidateReq {
+  string meeting_id = 1;
+  string user_id = 2;
+  string candidate = 3;
+  string sdp_mid = 4;
+  int32 sdp_mline_index = 5;
+  bool end_of_candidates = 6;
+}
+
+message TrickleIceCandidateRsp {
+  bool success = 1;
+}
+
+message CloseTransportReq {
+  string meeting_id = 1;
+  string user_id = 2;
+}
+
+message CloseTransportRsp {
+  bool success = 1;
+}
+
+message AddSubscriberReq {
+  string meeting_id = 1;
+  string user_id = 2;
+  uint32 audio_ssrc = 3;
+  uint32 video_ssrc = 4;
+}
+
+message AddSubscriberRsp {
+  bool success = 1;
 }
 
 message RemovePublisherReq {
@@ -40,6 +93,15 @@ message RemovePublisherReq {
 }
 
 message RemovePublisherRsp {
+  bool success = 1;
+}
+
+message RemoveSubscriberReq {
+  string meeting_id = 1;
+  string user_id = 2;
+}
+
+message RemoveSubscriberRsp {
   bool success = 1;
 }
 

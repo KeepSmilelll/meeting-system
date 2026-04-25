@@ -29,6 +29,22 @@ void Subscriber::SetEndpoint(std::string endpoint) {
     endpoint_ = std::move(endpoint);
 }
 
+const std::string& Subscriber::AudioEndpoint() const noexcept {
+    return audioEndpoint_;
+}
+
+void Subscriber::SetAudioEndpoint(std::string endpoint) {
+    audioEndpoint_ = std::move(endpoint);
+}
+
+const std::string& Subscriber::VideoEndpoint() const noexcept {
+    return videoEndpoint_;
+}
+
+void Subscriber::SetVideoEndpoint(std::string endpoint) {
+    videoEndpoint_ = std::move(endpoint);
+}
+
 uint32_t Subscriber::AudioSsrc() const noexcept {
     return audioSsrc_;
 }

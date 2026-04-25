@@ -84,12 +84,32 @@ func (c *routedClient) DestroyRoom(ctx context.Context, req *pb.DestroyRoomReq) 
 	return c.clientForMeeting(ctx, req.GetMeetingId()).DestroyRoom(ctx, req)
 }
 
+func (c *routedClient) SetupTransport(ctx context.Context, req *pb.SetupTransportReq) (*pb.SetupTransportRsp, error) {
+	return c.clientForMeeting(ctx, req.GetMeetingId()).SetupTransport(ctx, req)
+}
+
+func (c *routedClient) TrickleIceCandidate(ctx context.Context, req *pb.TrickleIceCandidateReq) (*pb.TrickleIceCandidateRsp, error) {
+	return c.clientForMeeting(ctx, req.GetMeetingId()).TrickleIceCandidate(ctx, req)
+}
+
+func (c *routedClient) CloseTransport(ctx context.Context, req *pb.CloseTransportReq) (*pb.CloseTransportRsp, error) {
+	return c.clientForMeeting(ctx, req.GetMeetingId()).CloseTransport(ctx, req)
+}
+
 func (c *routedClient) AddPublisher(ctx context.Context, req *pb.AddPublisherReq) (*pb.AddPublisherRsp, error) {
 	return c.clientForMeeting(ctx, req.GetMeetingId()).AddPublisher(ctx, req)
 }
 
+func (c *routedClient) AddSubscriber(ctx context.Context, req *pb.AddSubscriberReq) (*pb.AddSubscriberRsp, error) {
+	return c.clientForMeeting(ctx, req.GetMeetingId()).AddSubscriber(ctx, req)
+}
+
 func (c *routedClient) RemovePublisher(ctx context.Context, req *pb.RemovePublisherReq) (*pb.RemovePublisherRsp, error) {
 	return c.clientForMeeting(ctx, req.GetMeetingId()).RemovePublisher(ctx, req)
+}
+
+func (c *routedClient) RemoveSubscriber(ctx context.Context, req *pb.RemoveSubscriberReq) (*pb.RemoveSubscriberRsp, error) {
+	return c.clientForMeeting(ctx, req.GetMeetingId()).RemoveSubscriber(ctx, req)
 }
 
 func (c *routedClient) GetNodeStatus(ctx context.Context, req *pb.GetNodeStatusReq) (*pb.GetNodeStatusRsp, error) {

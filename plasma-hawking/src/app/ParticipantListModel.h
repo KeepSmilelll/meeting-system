@@ -22,6 +22,8 @@ public:
         VideoOnRole,
         SharingRole,
         HostRole,
+        AudioSsrcRole,
+        VideoSsrcRole,
     };
     Q_ENUM(ParticipantRole)
 
@@ -34,6 +36,8 @@ public:
         bool videoOn{true};
         bool sharing{false};
         bool host{false};
+        quint32 audioSsrc{0};
+        quint32 videoSsrc{0};
     };
 
     explicit ParticipantListModel(QObject* parent = nullptr);
@@ -51,7 +55,9 @@ public:
                                        int role = 0,
                                        bool audioOn = true,
                                        bool videoOn = true,
-                                       bool sharing = false);
+                                       bool sharing = false,
+                                       quint32 audioSsrc = 0,
+                                       quint32 videoSsrc = 0);
     Q_INVOKABLE void removeParticipant(const QString& userId);
     Q_INVOKABLE void setHostUserId(const QString& userId);
     Q_INVOKABLE bool contains(const QString& userId) const;

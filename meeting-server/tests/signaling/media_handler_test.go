@@ -64,7 +64,7 @@ func assertNoSignalFrame(t *testing.T, conn net.Conn) {
 	}
 }
 
-func TestMediaRouterForwardsOfferAnswerAndIceCandidate(t *testing.T) {
+func TestMediaRouterDoesNotForwardPeerTargetedMedia(t *testing.T) {
 	cfg := config.Load()
 	sessions := server.NewSessionManager()
 	memStore := store.NewMemoryStore()
@@ -88,64 +88,32 @@ func TestMediaRouterForwardsOfferAnswerAndIceCandidate(t *testing.T) {
 	targetSess.SetMeetingID("meeting-media")
 	targetSess.SetState(server.StateInMeeting)
 
-	offerPayload, err := proto.Marshal(&protocol.MediaOfferBody{TargetUserId: "u1002", Sdp: "offer-sdp"})
+	offerPayload, err := proto.Marshal(&protocol.MediaOfferBody{})
 	if err != nil {
 		t.Fatalf("marshal offer failed: %v", err)
 	}
 	router.HandleMessage(senderSess, protocol.MediaOffer, offerPayload)
-
-	msgType, payload := readSignalFrame(t, targetConn, cfg.MaxPayloadBytes)
-	if msgType != protocol.MediaOffer {
-		t.Fatalf("unexpected offer type: got %v want %v", msgType, protocol.MediaOffer)
-	}
-	var offer protocol.MediaOfferBody
-	if err := proto.Unmarshal(payload, &offer); err != nil {
-		t.Fatalf("unmarshal offer failed: %v", err)
-	}
-	if offer.TargetUserId != "u1002" || offer.Sdp != "offer-sdp" {
-		t.Fatalf("unexpected offer payload: %+v", offer)
-	}
+	assertNoSignalFrame(t, targetConn)
 	assertNoSignalFrame(t, senderConn)
 
-	answerPayload, err := proto.Marshal(&protocol.MediaAnswerBody{TargetUserId: "u1001", Sdp: "answer-sdp"})
+	answerPayload, err := proto.Marshal(&protocol.MediaAnswerBody{MeetingId: "meeting-media"})
 	if err != nil {
 		t.Fatalf("marshal answer failed: %v", err)
 	}
 	router.HandleMessage(targetSess, protocol.MediaAnswer, answerPayload)
-
-	msgType, payload = readSignalFrame(t, senderConn, cfg.MaxPayloadBytes)
-	if msgType != protocol.MediaAnswer {
-		t.Fatalf("unexpected answer type: got %v want %v", msgType, protocol.MediaAnswer)
-	}
-	var answer protocol.MediaAnswerBody
-	if err := proto.Unmarshal(payload, &answer); err != nil {
-		t.Fatalf("unmarshal answer failed: %v", err)
-	}
-	if answer.TargetUserId != "u1001" || answer.Sdp != "answer-sdp" {
-		t.Fatalf("unexpected answer payload: %+v", answer)
-	}
+	assertNoSignalFrame(t, senderConn)
 	assertNoSignalFrame(t, targetConn)
 
-	candidatePayload, err := proto.Marshal(&protocol.MediaIceCandidateBody{TargetUserId: "u1002", Candidate: "cand", SdpMid: "0", SdpMlineIndex: 1})
+	candidatePayload, err := proto.Marshal(&protocol.MediaIceCandidateBody{Candidate: "cand", SdpMid: "0", SdpMlineIndex: 1})
 	if err != nil {
 		t.Fatalf("marshal candidate failed: %v", err)
 	}
 	router.HandleMessage(senderSess, protocol.MediaIceCandidate, candidatePayload)
-
-	msgType, payload = readSignalFrame(t, targetConn, cfg.MaxPayloadBytes)
-	if msgType != protocol.MediaIceCandidate {
-		t.Fatalf("unexpected candidate type: got %v want %v", msgType, protocol.MediaIceCandidate)
-	}
-	var candidate protocol.MediaIceCandidateBody
-	if err := proto.Unmarshal(payload, &candidate); err != nil {
-		t.Fatalf("unmarshal candidate failed: %v", err)
-	}
-	if candidate.TargetUserId != "u1002" || candidate.Candidate != "cand" || candidate.SdpMid != "0" || candidate.SdpMlineIndex != 1 {
-		t.Fatalf("unexpected candidate payload: %+v", candidate)
-	}
+	assertNoSignalFrame(t, targetConn)
+	assertNoSignalFrame(t, senderConn)
 }
 
-func TestMediaRouterRejectsInvalidTargets(t *testing.T) {
+func TestMediaRouterRejectsMissingTransportMeetingId(t *testing.T) {
 	cfg := config.Load()
 	sessions := server.NewSessionManager()
 	memStore := store.NewMemoryStore()
@@ -169,19 +137,19 @@ func TestMediaRouterRejectsInvalidTargets(t *testing.T) {
 	targetSess.SetMeetingID("meeting-b")
 	targetSess.SetState(server.StateInMeeting)
 
-	emptyTargetPayload, err := proto.Marshal(&protocol.MediaOfferBody{TargetUserId: "", Sdp: "offer-sdp"})
+	offerPayload, err := proto.Marshal(&protocol.MediaOfferBody{PublishAudio: true, ClientIceUfrag: "u", ClientIcePwd: "p", ClientDtlsFingerprint: "f"})
 	if err != nil {
-		t.Fatalf("marshal empty target failed: %v", err)
+		t.Fatalf("marshal offer failed: %v", err)
 	}
-	router.HandleMessage(senderSess, protocol.MediaOffer, emptyTargetPayload)
+	router.HandleMessage(senderSess, protocol.MediaOffer, offerPayload)
 	assertNoSignalFrame(t, targetConn)
 	assertNoSignalFrame(t, senderConn)
 
-	wrongRoomPayload, err := proto.Marshal(&protocol.MediaAnswerBody{TargetUserId: "u1002", Sdp: "answer-sdp"})
+	candidatePayload, err := proto.Marshal(&protocol.MediaIceCandidateBody{Candidate: "cand", SdpMid: "0", SdpMlineIndex: 1})
 	if err != nil {
-		t.Fatalf("marshal wrong room failed: %v", err)
+		t.Fatalf("marshal candidate failed: %v", err)
 	}
-	router.HandleMessage(senderSess, protocol.MediaAnswer, wrongRoomPayload)
+	router.HandleMessage(senderSess, protocol.MediaIceCandidate, candidatePayload)
 	assertNoSignalFrame(t, targetConn)
 	assertNoSignalFrame(t, senderConn)
 }

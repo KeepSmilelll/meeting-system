@@ -26,12 +26,32 @@ func (c *stubNodeStatusClient) DestroyRoom(context.Context, *pb.DestroyRoomReq) 
 	return &pb.DestroyRoomRsp{Success: true}, nil
 }
 
+func (c *stubNodeStatusClient) SetupTransport(context.Context, *pb.SetupTransportReq) (*pb.SetupTransportRsp, error) {
+	return &pb.SetupTransportRsp{Success: true}, nil
+}
+
+func (c *stubNodeStatusClient) TrickleIceCandidate(context.Context, *pb.TrickleIceCandidateReq) (*pb.TrickleIceCandidateRsp, error) {
+	return &pb.TrickleIceCandidateRsp{Success: true}, nil
+}
+
+func (c *stubNodeStatusClient) CloseTransport(context.Context, *pb.CloseTransportReq) (*pb.CloseTransportRsp, error) {
+	return &pb.CloseTransportRsp{Success: true}, nil
+}
+
 func (c *stubNodeStatusClient) AddPublisher(context.Context, *pb.AddPublisherReq) (*pb.AddPublisherRsp, error) {
 	return &pb.AddPublisherRsp{Success: true}, nil
 }
 
+func (c *stubNodeStatusClient) AddSubscriber(context.Context, *pb.AddSubscriberReq) (*pb.AddSubscriberRsp, error) {
+	return &pb.AddSubscriberRsp{Success: true}, nil
+}
+
 func (c *stubNodeStatusClient) RemovePublisher(context.Context, *pb.RemovePublisherReq) (*pb.RemovePublisherRsp, error) {
 	return &pb.RemovePublisherRsp{Success: true}, nil
+}
+
+func (c *stubNodeStatusClient) RemoveSubscriber(context.Context, *pb.RemoveSubscriberReq) (*pb.RemoveSubscriberRsp, error) {
+	return &pb.RemoveSubscriberRsp{Success: true}, nil
 }
 
 func (c *stubNodeStatusClient) GetNodeStatus(context.Context, *pb.GetNodeStatusReq) (*pb.GetNodeStatusRsp, error) {

@@ -440,6 +440,27 @@ func (s *MemoryStore) HasParticipant(meetingID, userID string) (bool, error) {
 	return exists, nil
 }
 
+func (s *MemoryStore) SetParticipantMediaSsrc(meetingID, userID string, audioSsrc, videoSsrc uint32) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	members, ok := s.participants[meetingID]
+	if !ok {
+		return ErrMeetingNotFound
+	}
+	participant, ok := members[userID]
+	if !ok || participant == nil {
+		return ErrUserNotFound
+	}
+	if audioSsrc != 0 {
+		participant.AudioSsrc = audioSsrc
+	}
+	if videoSsrc != 0 {
+		participant.VideoSsrc = videoSsrc
+	}
+	return nil
+}
+
 func (s *MemoryStore) SnapshotMeeting(meetingID string) (*Meeting, []*protocol.Participant, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

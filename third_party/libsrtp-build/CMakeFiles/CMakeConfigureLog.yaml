@@ -1,0 +1,1398 @@
+
+---
+events:
+  -
+    kind: "message-v1"
+    backtrace:
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CMakeDetermineSystem.cmake:205 (message)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      The system is: Windows - 10.0.26200 - AMD64
+  -
+    kind: "message-v1"
+    backtrace:
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CMakeDetermineCCompiler.cmake:123 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Compiling the C compiler identification source file "CMakeCCompilerId.c" succeeded.
+      Compiler: C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe 
+      Build flags: 
+      Id flags:  
+      
+      The output was:
+      0
+      鐢ㄤ簬 x64 鐨?Microsoft (R) C/C++ 浼樺寲缂栬瘧鍣?19.44.35211 鐗?
+      鐗堟潈鎵€鏈?C) Microsoft Corporation銆備繚鐣欐墍鏈夋潈鍒┿€?
+      
+      CMakeCCompilerId.c
+      Microsoft (R) Incremental Linker Version 14.44.35211.0
+      Copyright (C) Microsoft Corporation.  All rights reserved.
+      
+      /out:CMakeCCompilerId.exe 
+      CMakeCCompilerId.obj 
+      
+      
+      Compilation of the C compiler identification source "CMakeCCompilerId.c" produced "CMakeCCompilerId.exe"
+      
+      Compilation of the C compiler identification source "CMakeCCompilerId.c" produced "CMakeCCompilerId.obj"
+      
+      The C compiler identification is MSVC, found in:
+        D:/meeting/third_party/libsrtp-build/CMakeFiles/3.30.5/CompilerIdC/CMakeCCompilerId.exe
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CMakeDetermineCompilerId.cmake:1243 (message)"
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CMakeDetermineCompilerId.cmake:250 (CMAKE_DETERMINE_MSVC_SHOWINCLUDES_PREFIX)"
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CMakeDetermineCCompiler.cmake:123 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Detecting C compiler /showIncludes prefix:
+        main.c
+        娉ㄦ剰: 鍖呭惈鏂囦欢:  D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\ShowIncludes\\foo.h
+        
+      Found prefix "娉ㄦ剰: 鍖呭惈鏂囦欢:  "
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CMakeDetermineCompilerABI.cmake:74 (try_compile)"
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    checks:
+      - "Detecting C compiler ABI info"
+    directories:
+      source: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-2b0hrs"
+      binary: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-2b0hrs"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+    buildResult:
+      variable: "CMAKE_C_ABI_COMPILED"
+      cached: true
+      stdout: |
+        Change Dir: 'D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-2b0hrs'
+        
+        Run Build Command(s): D:/QT/Tools/Ninja/ninja.exe -v cmTC_94373
+        [1/2] C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo   /DWIN32 /D_WINDOWS  /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_94373.dir\\CMakeCCompilerABI.c.obj /FdCMakeFiles\\cmTC_94373.dir\\ /FS -c D:\\QT\\Tools\\CMake_64\\share\\cmake-3.30\\Modules\\CMakeCCompilerABI.c
+        娉ㄦ剰: 鍖呭惈鏂囦欢:  D:\\QT\\Tools\\CMake_64\\share\\cmake-3.30\\Modules\\CMakeCompilerABI.h
+        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && D:\\QT\\Tools\\CMake_64\\bin\\cmake.exe -E vs_link_exe --intdir=CMakeFiles\\cmTC_94373.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_94373.dir\\CMakeCCompilerABI.c.obj  /out:cmTC_94373.exe /implib:cmTC_94373.lib /pdb:cmTC_94373.pdb /version:0.0 /machine:x64  /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+        
+      exitCode: 0
+  -
+    kind: "message-v1"
+    backtrace:
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CMakeDetermineCompilerABI.cmake:218 (message)"
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Parsed C implicit link information:
+        link line regex: [^( *|.*[/\\])(ld[0-9]*(\\.[a-z]+)?|link\\.exe|lld-link(\\.exe)?|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
+        linker tool regex: [^[ 	]*(->|")?[ 	]*(([^"]*[/\\])?(ld[0-9]*(\\.[a-z]+)?|link\\.exe|lld-link(\\.exe)?))("|,| |$)]
+        linker tool for 'C': C:/PROGRA~1/MICROS~4/2022/COMMUN~1/VC/Tools/MSVC/1444~1.352/bin/Hostx64/x64/link.exe
+        implicit libs: []
+        implicit objs: []
+        implicit dirs: []
+        implicit fwks: []
+      
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/Internal/CMakeDetermineLinkerId.cmake:40 (message)"
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CMakeDetermineCompilerABI.cmake:255 (cmake_determine_linker_id)"
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Running the C compiler's linker: "C:/PROGRA~1/MICROS~4/2022/COMMUN~1/VC/Tools/MSVC/1444~1.352/bin/Hostx64/x64/link.exe" "-v"
+      Microsoft (R) Incremental Linker Version 14.44.35211.0
+      Copyright (C) Microsoft Corporation.  All rights reserved.
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CheckIncludeFile.cmake:90 (try_compile)"
+      - "CMakeLists.txt:49 (check_include_file)"
+    checks:
+      - "Looking for arpa/inet.h"
+    directories:
+      source: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-s6jezy"
+      binary: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-s6jezy"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "D:/meeting/third_party/libsrtp-src/cmake"
+    buildResult:
+      variable: "HAVE_ARPA_INET_H"
+      cached: true
+      stdout: |
+        Change Dir: 'D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-s6jezy'
+        
+        Run Build Command(s): D:/QT/Tools/Ninja/ninja.exe -v cmTC_04ef5
+        [1/2] C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo   /DWIN32 /D_WINDOWS  /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_04ef5.dir\\CheckIncludeFile.c.obj /FdCMakeFiles\\cmTC_04ef5.dir\\ /FS -c D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-s6jezy\\CheckIncludeFile.c
+        FAILED: CMakeFiles/cmTC_04ef5.dir/CheckIncludeFile.c.obj 
+        C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo   /DWIN32 /D_WINDOWS  /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_04ef5.dir\\CheckIncludeFile.c.obj /FdCMakeFiles\\cmTC_04ef5.dir\\ /FS -c D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-s6jezy\\CheckIncludeFile.c
+        D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-s6jezy\\CheckIncludeFile.c(1): fatal error C1083: 鏃犳硶鎵撳紑鍖呮嫭鏂囦欢: 鈥渁rpa/inet.h鈥? No such file or directory
+        ninja: build stopped: subcommand failed.
+        
+      exitCode: 1
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CheckIncludeFile.cmake:90 (try_compile)"
+      - "CMakeLists.txt:50 (check_include_file)"
+    checks:
+      - "Looking for byteswap.h"
+    directories:
+      source: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-tnc4zy"
+      binary: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-tnc4zy"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "D:/meeting/third_party/libsrtp-src/cmake"
+    buildResult:
+      variable: "HAVE_BYTESWAP_H"
+      cached: true
+      stdout: |
+        Change Dir: 'D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-tnc4zy'
+        
+        Run Build Command(s): D:/QT/Tools/Ninja/ninja.exe -v cmTC_d04d1
+        [1/2] C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo   /DWIN32 /D_WINDOWS  /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_d04d1.dir\\CheckIncludeFile.c.obj /FdCMakeFiles\\cmTC_d04d1.dir\\ /FS -c D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-tnc4zy\\CheckIncludeFile.c
+        FAILED: CMakeFiles/cmTC_d04d1.dir/CheckIncludeFile.c.obj 
+        C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo   /DWIN32 /D_WINDOWS  /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_d04d1.dir\\CheckIncludeFile.c.obj /FdCMakeFiles\\cmTC_d04d1.dir\\ /FS -c D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-tnc4zy\\CheckIncludeFile.c
+        D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-tnc4zy\\CheckIncludeFile.c(1): fatal error C1083: 鏃犳硶鎵撳紑鍖呮嫭鏂囦欢: 鈥渂yteswap.h鈥? No such file or directory
+        ninja: build stopped: subcommand failed.
+        
+      exitCode: 1
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CheckIncludeFile.cmake:90 (try_compile)"
+      - "CMakeLists.txt:51 (check_include_file)"
+    checks:
+      - "Looking for inttypes.h"
+    directories:
+      source: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-2pi2rw"
+      binary: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-2pi2rw"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "D:/meeting/third_party/libsrtp-src/cmake"
+    buildResult:
+      variable: "HAVE_INTTYPES_H"
+      cached: true
+      stdout: |
+        Change Dir: 'D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-2pi2rw'
+        
+        Run Build Command(s): D:/QT/Tools/Ninja/ninja.exe -v cmTC_0343b
+        [1/2] C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo   /DWIN32 /D_WINDOWS  /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_0343b.dir\\CheckIncludeFile.c.obj /FdCMakeFiles\\cmTC_0343b.dir\\ /FS -c D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-2pi2rw\\CheckIncludeFile.c
+        娉ㄦ剰: 鍖呭惈鏂囦欢:  C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\inttypes.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\corecrt.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\vcruntime.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\sal.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\concurrencysal.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\vadefs.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\stdint.h
+        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && D:\\QT\\Tools\\CMake_64\\bin\\cmake.exe -E vs_link_exe --intdir=CMakeFiles\\cmTC_0343b.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_0343b.dir\\CheckIncludeFile.c.obj  /out:cmTC_0343b.exe /implib:cmTC_0343b.lib /pdb:cmTC_0343b.pdb /version:0.0 /machine:x64  /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CheckIncludeFile.cmake:90 (try_compile)"
+      - "CMakeLists.txt:52 (check_include_file)"
+    checks:
+      - "Looking for machine/types.h"
+    directories:
+      source: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-e43lb6"
+      binary: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-e43lb6"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "D:/meeting/third_party/libsrtp-src/cmake"
+    buildResult:
+      variable: "HAVE_MACHINE_TYPES_H"
+      cached: true
+      stdout: |
+        Change Dir: 'D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-e43lb6'
+        
+        Run Build Command(s): D:/QT/Tools/Ninja/ninja.exe -v cmTC_8ce05
+        [1/2] C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo   /DWIN32 /D_WINDOWS  /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_8ce05.dir\\CheckIncludeFile.c.obj /FdCMakeFiles\\cmTC_8ce05.dir\\ /FS -c D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-e43lb6\\CheckIncludeFile.c
+        FAILED: CMakeFiles/cmTC_8ce05.dir/CheckIncludeFile.c.obj 
+        C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo   /DWIN32 /D_WINDOWS  /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_8ce05.dir\\CheckIncludeFile.c.obj /FdCMakeFiles\\cmTC_8ce05.dir\\ /FS -c D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-e43lb6\\CheckIncludeFile.c
+        D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-e43lb6\\CheckIncludeFile.c(1): fatal error C1083: 鏃犳硶鎵撳紑鍖呮嫭鏂囦欢: 鈥渕achine/types.h鈥? No such file or directory
+        ninja: build stopped: subcommand failed.
+        
+      exitCode: 1
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CheckIncludeFile.cmake:90 (try_compile)"
+      - "CMakeLists.txt:53 (check_include_file)"
+    checks:
+      - "Looking for netinet/in.h"
+    directories:
+      source: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-332mwj"
+      binary: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-332mwj"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "D:/meeting/third_party/libsrtp-src/cmake"
+    buildResult:
+      variable: "HAVE_NETINET_IN_H"
+      cached: true
+      stdout: |
+        Change Dir: 'D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-332mwj'
+        
+        Run Build Command(s): D:/QT/Tools/Ninja/ninja.exe -v cmTC_febbf
+        [1/2] C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo   /DWIN32 /D_WINDOWS  /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_febbf.dir\\CheckIncludeFile.c.obj /FdCMakeFiles\\cmTC_febbf.dir\\ /FS -c D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-332mwj\\CheckIncludeFile.c
+        FAILED: CMakeFiles/cmTC_febbf.dir/CheckIncludeFile.c.obj 
+        C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo   /DWIN32 /D_WINDOWS  /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_febbf.dir\\CheckIncludeFile.c.obj /FdCMakeFiles\\cmTC_febbf.dir\\ /FS -c D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-332mwj\\CheckIncludeFile.c
+        D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-332mwj\\CheckIncludeFile.c(1): fatal error C1083: 鏃犳硶鎵撳紑鍖呮嫭鏂囦欢: 鈥渘etinet/in.h鈥? No such file or directory
+        ninja: build stopped: subcommand failed.
+        
+      exitCode: 1
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CheckIncludeFile.cmake:90 (try_compile)"
+      - "CMakeLists.txt:54 (check_include_file)"
+    checks:
+      - "Looking for stdint.h"
+    directories:
+      source: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-jl6omd"
+      binary: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-jl6omd"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "D:/meeting/third_party/libsrtp-src/cmake"
+    buildResult:
+      variable: "HAVE_STDINT_H"
+      cached: true
+      stdout: |
+        Change Dir: 'D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-jl6omd'
+        
+        Run Build Command(s): D:/QT/Tools/Ninja/ninja.exe -v cmTC_c5455
+        [1/2] C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo   /DWIN32 /D_WINDOWS  /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_c5455.dir\\CheckIncludeFile.c.obj /FdCMakeFiles\\cmTC_c5455.dir\\ /FS -c D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-jl6omd\\CheckIncludeFile.c
+        娉ㄦ剰: 鍖呭惈鏂囦欢:  C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\stdint.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\vcruntime.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\sal.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\concurrencysal.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\vadefs.h
+        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && D:\\QT\\Tools\\CMake_64\\bin\\cmake.exe -E vs_link_exe --intdir=CMakeFiles\\cmTC_c5455.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_c5455.dir\\CheckIncludeFile.c.obj  /out:cmTC_c5455.exe /implib:cmTC_c5455.lib /pdb:cmTC_c5455.pdb /version:0.0 /machine:x64  /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CheckIncludeFile.cmake:90 (try_compile)"
+      - "CMakeLists.txt:55 (check_include_file)"
+    checks:
+      - "Looking for stdlib.h"
+    directories:
+      source: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-k1s2me"
+      binary: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-k1s2me"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "D:/meeting/third_party/libsrtp-src/cmake"
+    buildResult:
+      variable: "HAVE_STDLIB_H"
+      cached: true
+      stdout: |
+        Change Dir: 'D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-k1s2me'
+        
+        Run Build Command(s): D:/QT/Tools/Ninja/ninja.exe -v cmTC_fe964
+        [1/2] C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo   /DWIN32 /D_WINDOWS  /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_fe964.dir\\CheckIncludeFile.c.obj /FdCMakeFiles\\cmTC_fe964.dir\\ /FS -c D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-k1s2me\\CheckIncludeFile.c
+        娉ㄦ剰: 鍖呭惈鏂囦欢:  C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\stdlib.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\corecrt.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\vcruntime.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\sal.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\concurrencysal.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\vadefs.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\corecrt_malloc.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\corecrt_search.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\stddef.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\corecrt_wstdlib.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\limits.h
+        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && D:\\QT\\Tools\\CMake_64\\bin\\cmake.exe -E vs_link_exe --intdir=CMakeFiles\\cmTC_fe964.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_fe964.dir\\CheckIncludeFile.c.obj  /out:cmTC_fe964.exe /implib:cmTC_fe964.lib /pdb:cmTC_fe964.pdb /version:0.0 /machine:x64  /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CheckIncludeFile.cmake:90 (try_compile)"
+      - "CMakeLists.txt:56 (check_include_file)"
+    checks:
+      - "Looking for sys/int_types.h"
+    directories:
+      source: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-l3ufv3"
+      binary: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-l3ufv3"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "D:/meeting/third_party/libsrtp-src/cmake"
+    buildResult:
+      variable: "HAVE_SYS_INT_TYPES_H"
+      cached: true
+      stdout: |
+        Change Dir: 'D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-l3ufv3'
+        
+        Run Build Command(s): D:/QT/Tools/Ninja/ninja.exe -v cmTC_81bfd
+        [1/2] C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo   /DWIN32 /D_WINDOWS  /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_81bfd.dir\\CheckIncludeFile.c.obj /FdCMakeFiles\\cmTC_81bfd.dir\\ /FS -c D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-l3ufv3\\CheckIncludeFile.c
+        FAILED: CMakeFiles/cmTC_81bfd.dir/CheckIncludeFile.c.obj 
+        C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo   /DWIN32 /D_WINDOWS  /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_81bfd.dir\\CheckIncludeFile.c.obj /FdCMakeFiles\\cmTC_81bfd.dir\\ /FS -c D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-l3ufv3\\CheckIncludeFile.c
+        D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-l3ufv3\\CheckIncludeFile.c(1): fatal error C1083: 鏃犳硶鎵撳紑鍖呮嫭鏂囦欢: 鈥渟ys/int_types.h鈥? No such file or directory
+        ninja: build stopped: subcommand failed.
+        
+      exitCode: 1
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CheckIncludeFile.cmake:90 (try_compile)"
+      - "CMakeLists.txt:57 (check_include_file)"
+    checks:
+      - "Looking for sys/socket.h"
+    directories:
+      source: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-pu7jdc"
+      binary: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-pu7jdc"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "D:/meeting/third_party/libsrtp-src/cmake"
+    buildResult:
+      variable: "HAVE_SYS_SOCKET_H"
+      cached: true
+      stdout: |
+        Change Dir: 'D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-pu7jdc'
+        
+        Run Build Command(s): D:/QT/Tools/Ninja/ninja.exe -v cmTC_d3b87
+        [1/2] C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo   /DWIN32 /D_WINDOWS  /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_d3b87.dir\\CheckIncludeFile.c.obj /FdCMakeFiles\\cmTC_d3b87.dir\\ /FS -c D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-pu7jdc\\CheckIncludeFile.c
+        FAILED: CMakeFiles/cmTC_d3b87.dir/CheckIncludeFile.c.obj 
+        C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo   /DWIN32 /D_WINDOWS  /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_d3b87.dir\\CheckIncludeFile.c.obj /FdCMakeFiles\\cmTC_d3b87.dir\\ /FS -c D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-pu7jdc\\CheckIncludeFile.c
+        D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-pu7jdc\\CheckIncludeFile.c(1): fatal error C1083: 鏃犳硶鎵撳紑鍖呮嫭鏂囦欢: 鈥渟ys/socket.h鈥? No such file or directory
+        ninja: build stopped: subcommand failed.
+        
+      exitCode: 1
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CheckIncludeFile.cmake:90 (try_compile)"
+      - "CMakeLists.txt:58 (check_include_file)"
+    checks:
+      - "Looking for sys/types.h"
+    directories:
+      source: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-tszd7j"
+      binary: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-tszd7j"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "D:/meeting/third_party/libsrtp-src/cmake"
+    buildResult:
+      variable: "HAVE_SYS_TYPES_H"
+      cached: true
+      stdout: |
+        Change Dir: 'D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-tszd7j'
+        
+        Run Build Command(s): D:/QT/Tools/Ninja/ninja.exe -v cmTC_4736a
+        [1/2] C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo   /DWIN32 /D_WINDOWS  /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_4736a.dir\\CheckIncludeFile.c.obj /FdCMakeFiles\\cmTC_4736a.dir\\ /FS -c D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-tszd7j\\CheckIncludeFile.c
+        娉ㄦ剰: 鍖呭惈鏂囦欢:  C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\sys/types.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\corecrt.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\vcruntime.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\sal.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\concurrencysal.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\vadefs.h
+        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && D:\\QT\\Tools\\CMake_64\\bin\\cmake.exe -E vs_link_exe --intdir=CMakeFiles\\cmTC_4736a.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_4736a.dir\\CheckIncludeFile.c.obj  /out:cmTC_4736a.exe /implib:cmTC_4736a.lib /pdb:cmTC_4736a.pdb /version:0.0 /machine:x64  /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CheckIncludeFile.cmake:90 (try_compile)"
+      - "CMakeLists.txt:59 (check_include_file)"
+    checks:
+      - "Looking for unistd.h"
+    directories:
+      source: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-w3vp36"
+      binary: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-w3vp36"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "D:/meeting/third_party/libsrtp-src/cmake"
+    buildResult:
+      variable: "HAVE_UNISTD_H"
+      cached: true
+      stdout: |
+        Change Dir: 'D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-w3vp36'
+        
+        Run Build Command(s): D:/QT/Tools/Ninja/ninja.exe -v cmTC_cad31
+        [1/2] C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo   /DWIN32 /D_WINDOWS  /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_cad31.dir\\CheckIncludeFile.c.obj /FdCMakeFiles\\cmTC_cad31.dir\\ /FS -c D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-w3vp36\\CheckIncludeFile.c
+        FAILED: CMakeFiles/cmTC_cad31.dir/CheckIncludeFile.c.obj 
+        C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo   /DWIN32 /D_WINDOWS  /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_cad31.dir\\CheckIncludeFile.c.obj /FdCMakeFiles\\cmTC_cad31.dir\\ /FS -c D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-w3vp36\\CheckIncludeFile.c
+        D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-w3vp36\\CheckIncludeFile.c(1): fatal error C1083: 鏃犳硶鎵撳紑鍖呮嫭鏂囦欢: 鈥渦nistd.h鈥? No such file or directory
+        ninja: build stopped: subcommand failed.
+        
+      exitCode: 1
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CheckIncludeFile.cmake:90 (try_compile)"
+      - "CMakeLists.txt:60 (check_include_file)"
+    checks:
+      - "Looking for windows.h"
+    directories:
+      source: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-221h5k"
+      binary: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-221h5k"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "D:/meeting/third_party/libsrtp-src/cmake"
+    buildResult:
+      variable: "HAVE_WINDOWS_H"
+      cached: true
+      stdout: |
+        Change Dir: 'D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-221h5k'
+        
+        Run Build Command(s): D:/QT/Tools/Ninja/ninja.exe -v cmTC_f7e1e
+        [1/2] C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo   /DWIN32 /D_WINDOWS  /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_f7e1e.dir\\CheckIncludeFile.c.obj /FdCMakeFiles\\cmTC_f7e1e.dir\\ /FS -c D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-221h5k\\CheckIncludeFile.c
+        娉ㄦ剰: 鍖呭惈鏂囦欢:  C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\windows.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\winapifamily.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\winpackagefamily.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\sdkddkver.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\excpt.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\vcruntime.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\sal.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\concurrencysal.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\vadefs.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\stdarg.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\windef.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\minwindef.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\specstrings.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\specstrings_strict.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\specstrings_undef.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\driverspecs.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\sdv_driverspecs.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\winnt.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\ctype.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\corecrt.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\corecrt_wctype.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\kernelspecs.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\basetsd.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\guiddef.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\string.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:        C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\corecrt_memory.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:         C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\corecrt_memcpy_s.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:          C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\errno.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:          C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\vcruntime_string.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:        C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\corecrt_wstring.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack4.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack4.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack4.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack2.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack2.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack2.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack8.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack1.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack1.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\apiset.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\ktmtypes.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\winbase.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\apisetcconv.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\minwinbase.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\apiquery2.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\processenv.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\fileapifromapp.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\fileapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\debugapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\utilapiset.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\handleapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\errhandlingapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\fibersapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\namedpipeapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\profileapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\heapapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\ioapiset.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\synchapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\interlockedapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\processthreadsapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\sysinfoapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\memoryapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\enclaveapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\threadpoollegacyapiset.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\threadpoolapiset.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\jobapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\jobapi2.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\wow64apiset.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\libloaderapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\securitybaseapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\namespaceapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\systemtopologyapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\processtopologyapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\securityappcontainer.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\realtimeapiset.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\winerror.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\timezoneapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\wingdi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack1.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack2.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack2.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack4.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack4.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\winuser.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack2.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\tvout.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\winnls.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\datetimeapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\stringapiset.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\winnls.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\wincon.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\wincontypes.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\consoleapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\consoleapi2.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\consoleapi3.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\winver.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\verrsrc.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\winreg.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\reason.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\winnetwk.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\wnnc.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\cderr.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\dde.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\ddeml.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\dlgs.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\lzexpand.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\mmsystem.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\mmsyscom.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack1.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack1.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\mciapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\mmsyscom.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\mmiscapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\mmsyscom.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\mmiscapi2.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\mmsyscom.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\playsoundapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\mmsyscom.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\mmeapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\mmsyscom.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\timeapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\mmsyscom.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\joystickapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\mmsyscom.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\nb30.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\rpc.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack8.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\rpcdce.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\rpcdcep.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\rpcnsi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\rpcnterr.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\rpcasync.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack8.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\shellapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\winperf.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack8.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\winsock.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\inaddr.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\wincrypt.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\bcrypt.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\ncrypt.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\dpapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\winefs.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\winscard.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\wtypes.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\rpcndr.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack8.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\rpcnsip.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\rpcsal.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\wtypesbase.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\guiddef.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\winioctl.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack1.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack1.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack1.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack1.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack1.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack1.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack1.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\winsmcrd.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\winspool.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\prsht.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack8.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\ole2.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack8.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\objbase.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack8.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\combaseapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack8.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\stdlib.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\corecrt_malloc.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\corecrt_search.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:        C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\stddef.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\corecrt_wstdlib.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\limits.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\unknwnbase.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\objidlbase.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\guiddef.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\cguid.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\coml2api.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\objidl.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\unknwn.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\propidlbase.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\oaidl.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\urlmon.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\oleidl.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\servprov.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\msxml.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\propidl.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\oleauto.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack8.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\commdlg.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\prsht.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\stralign.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\winsvc.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\mcx.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\imm.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\ime_cmodes.h
+        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && D:\\QT\\Tools\\CMake_64\\bin\\cmake.exe -E vs_link_exe --intdir=CMakeFiles\\cmTC_f7e1e.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_f7e1e.dir\\CheckIncludeFile.c.obj  /out:cmTC_f7e1e.exe /implib:cmTC_f7e1e.lib /pdb:cmTC_f7e1e.pdb /version:0.0 /machine:x64  /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CheckIncludeFile.cmake:90 (try_compile)"
+      - "CMakeLists.txt:61 (check_include_file)"
+    checks:
+      - "Looking for winsock2.h"
+    directories:
+      source: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-8ae8z9"
+      binary: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-8ae8z9"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "D:/meeting/third_party/libsrtp-src/cmake"
+    buildResult:
+      variable: "HAVE_WINSOCK2_H"
+      cached: true
+      stdout: |
+        Change Dir: 'D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-8ae8z9'
+        
+        Run Build Command(s): D:/QT/Tools/Ninja/ninja.exe -v cmTC_de689
+        [1/2] C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo   /DWIN32 /D_WINDOWS  /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_de689.dir\\CheckIncludeFile.c.obj /FdCMakeFiles\\cmTC_de689.dir\\ /FS -c D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-8ae8z9\\CheckIncludeFile.c
+        娉ㄦ剰: 鍖呭惈鏂囦欢:  C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\winsock2.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\winapifamily.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\winpackagefamily.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\windows.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\sdkddkver.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\excpt.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\vcruntime.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\sal.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\concurrencysal.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\vadefs.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\stdarg.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\windef.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\minwindef.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\specstrings.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\specstrings_strict.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:        C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\specstrings_undef.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\driverspecs.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:        C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\sdv_driverspecs.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\winnt.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\ctype.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:        C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\corecrt.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:        C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\corecrt_wctype.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\kernelspecs.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\basetsd.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\guiddef.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:        C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\string.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:         C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\corecrt_memory.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:          C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\corecrt_memcpy_s.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:           C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\errno.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:           C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\vcruntime_string.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:         C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\corecrt_wstring.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack4.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack4.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack4.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack2.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack2.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack2.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack8.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack1.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack1.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\apiset.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\ktmtypes.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\winbase.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\apisetcconv.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\minwinbase.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\apiquery2.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\processenv.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\fileapifromapp.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\fileapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\debugapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\utilapiset.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\handleapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\errhandlingapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\fibersapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\namedpipeapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\profileapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\heapapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\ioapiset.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\synchapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\interlockedapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\processthreadsapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\sysinfoapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\memoryapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\enclaveapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\threadpoollegacyapiset.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\threadpoolapiset.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\jobapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\jobapi2.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\wow64apiset.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\libloaderapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\securitybaseapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\namespaceapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\systemtopologyapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\processtopologyapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\securityappcontainer.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\realtimeapiset.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\winerror.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\timezoneapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\wingdi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack1.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack2.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack2.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack4.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack4.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\winuser.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack2.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\tvout.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\winnls.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\datetimeapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\stringapiset.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\winnls.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\wincon.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\wincontypes.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\consoleapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\consoleapi2.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\consoleapi3.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\winver.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\verrsrc.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\winreg.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\reason.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\winnetwk.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\wnnc.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\cderr.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\dde.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\ddeml.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\dlgs.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\lzexpand.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\mmsystem.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\mmsyscom.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack1.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack1.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\mciapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\mmsyscom.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\mmiscapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\mmsyscom.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\mmiscapi2.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\mmsyscom.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\playsoundapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\mmsyscom.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\mmeapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\mmsyscom.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\timeapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\mmsyscom.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\joystickapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\mmsyscom.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\nb30.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\rpc.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack8.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\rpcdce.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\rpcdcep.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\rpcnsi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\rpcnterr.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\rpcasync.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack8.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\shellapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\winperf.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack8.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\winsock.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\wincrypt.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\bcrypt.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\ncrypt.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\dpapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\winefs.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\winscard.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\wtypes.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\rpcndr.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack8.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\rpcnsip.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\rpcsal.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\wtypesbase.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\guiddef.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\winioctl.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack1.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack1.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack1.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack1.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack1.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack1.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack1.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\winsmcrd.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\winspool.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\prsht.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack8.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\ole2.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack8.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\objbase.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack8.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\combaseapi.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack8.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\stdlib.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:        C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\corecrt_malloc.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:        C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\corecrt_search.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:         C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\stddef.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:        C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\corecrt_wstdlib.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:        C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\limits.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\unknwnbase.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\objidlbase.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\guiddef.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\cguid.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\coml2api.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\objidl.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:        C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\unknwn.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\propidlbase.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:        C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\oaidl.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\urlmon.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\oleidl.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\servprov.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:       C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\msxml.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\propidl.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\oleauto.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\pshpack8.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\poppack.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\commdlg.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\prsht.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\stralign.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\winsvc.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\mcx.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\imm.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um\\ime_cmodes.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\ws2def.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\inaddr.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared\\qos.h
+        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && D:\\QT\\Tools\\CMake_64\\bin\\cmake.exe -E vs_link_exe --intdir=CMakeFiles\\cmTC_de689.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_de689.dir\\CheckIncludeFile.c.obj  /out:cmTC_de689.exe /implib:cmTC_de689.lib /pdb:cmTC_de689.pdb /version:0.0 /machine:x64  /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CheckFunctionExists.cmake:86 (try_compile)"
+      - "CMakeLists.txt:63 (check_function_exists)"
+    checks:
+      - "Looking for sigaction"
+    directories:
+      source: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-rvrnwi"
+      binary: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-rvrnwi"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "D:/meeting/third_party/libsrtp-src/cmake"
+    buildResult:
+      variable: "HAVE_SIGACTION"
+      cached: true
+      stdout: |
+        Change Dir: 'D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-rvrnwi'
+        
+        Run Build Command(s): D:/QT/Tools/Ninja/ninja.exe -v cmTC_2d0b6
+        [1/2] C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo   /DWIN32 /D_WINDOWS -DCHECK_FUNCTION_EXISTS=sigaction /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_2d0b6.dir\\CheckFunctionExists.c.obj /FdCMakeFiles\\cmTC_2d0b6.dir\\ /FS -c D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-rvrnwi\\CheckFunctionExists.c
+        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && D:\\QT\\Tools\\CMake_64\\bin\\cmake.exe -E vs_link_exe --intdir=CMakeFiles\\cmTC_2d0b6.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_2d0b6.dir\\CheckFunctionExists.c.obj  /out:cmTC_2d0b6.exe /implib:cmTC_2d0b6.lib /pdb:cmTC_2d0b6.pdb /version:0.0 /machine:x64  /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+        FAILED: cmTC_2d0b6.exe 
+        C:\\WINDOWS\\system32\\cmd.exe /C "cd . && D:\\QT\\Tools\\CMake_64\\bin\\cmake.exe -E vs_link_exe --intdir=CMakeFiles\\cmTC_2d0b6.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_2d0b6.dir\\CheckFunctionExists.c.obj  /out:cmTC_2d0b6.exe /implib:cmTC_2d0b6.lib /pdb:cmTC_2d0b6.pdb /version:0.0 /machine:x64  /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+        LINK Pass 1: command "C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_2d0b6.dir\\CheckFunctionExists.c.obj /out:cmTC_2d0b6.exe /implib:cmTC_2d0b6.lib /pdb:cmTC_2d0b6.pdb /version:0.0 /machine:x64 /debug /INCREMENTAL /subsystem:console kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTFILE:CMakeFiles\\cmTC_2d0b6.dir/intermediate.manifest CMakeFiles\\cmTC_2d0b6.dir/manifest.res" failed (exit code 1120) with the following output:
+        CheckFunctionExists.c.obj : error LNK2019: 鏃犳硶瑙ｆ瀽鐨勫閮ㄧ鍙?sigaction锛屽嚱鏁?main 涓紩鐢ㄤ簡璇ョ鍙?
+        cmTC_2d0b6.exe : fatal error LNK1120: 1 涓棤娉曡В鏋愮殑澶栭儴鍛戒护\x0d
+        ninja: build stopped: subcommand failed.
+        
+      exitCode: 1
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CheckFunctionExists.cmake:86 (try_compile)"
+      - "CMakeLists.txt:64 (check_function_exists)"
+    checks:
+      - "Looking for inet_aton"
+    directories:
+      source: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-npyaw0"
+      binary: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-npyaw0"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "D:/meeting/third_party/libsrtp-src/cmake"
+    buildResult:
+      variable: "HAVE_INET_ATON"
+      cached: true
+      stdout: |
+        Change Dir: 'D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-npyaw0'
+        
+        Run Build Command(s): D:/QT/Tools/Ninja/ninja.exe -v cmTC_9e4f9
+        [1/2] C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo   /DWIN32 /D_WINDOWS -DCHECK_FUNCTION_EXISTS=inet_aton /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_9e4f9.dir\\CheckFunctionExists.c.obj /FdCMakeFiles\\cmTC_9e4f9.dir\\ /FS -c D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-npyaw0\\CheckFunctionExists.c
+        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && D:\\QT\\Tools\\CMake_64\\bin\\cmake.exe -E vs_link_exe --intdir=CMakeFiles\\cmTC_9e4f9.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_9e4f9.dir\\CheckFunctionExists.c.obj  /out:cmTC_9e4f9.exe /implib:cmTC_9e4f9.lib /pdb:cmTC_9e4f9.pdb /version:0.0 /machine:x64  /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+        FAILED: cmTC_9e4f9.exe 
+        C:\\WINDOWS\\system32\\cmd.exe /C "cd . && D:\\QT\\Tools\\CMake_64\\bin\\cmake.exe -E vs_link_exe --intdir=CMakeFiles\\cmTC_9e4f9.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_9e4f9.dir\\CheckFunctionExists.c.obj  /out:cmTC_9e4f9.exe /implib:cmTC_9e4f9.lib /pdb:cmTC_9e4f9.pdb /version:0.0 /machine:x64  /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+        LINK Pass 1: command "C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_9e4f9.dir\\CheckFunctionExists.c.obj /out:cmTC_9e4f9.exe /implib:cmTC_9e4f9.lib /pdb:cmTC_9e4f9.pdb /version:0.0 /machine:x64 /debug /INCREMENTAL /subsystem:console kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTFILE:CMakeFiles\\cmTC_9e4f9.dir/intermediate.manifest CMakeFiles\\cmTC_9e4f9.dir/manifest.res" failed (exit code 1120) with the following output:
+        CheckFunctionExists.c.obj : error LNK2019: 鏃犳硶瑙ｆ瀽鐨勫閮ㄧ鍙?inet_aton锛屽嚱鏁?main 涓紩鐢ㄤ簡璇ョ鍙?
+        cmTC_9e4f9.exe : fatal error LNK1120: 1 涓棤娉曡В鏋愮殑澶栭儴鍛戒护\x0d
+        ninja: build stopped: subcommand failed.
+        
+      exitCode: 1
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CheckFunctionExists.cmake:86 (try_compile)"
+      - "CMakeLists.txt:65 (check_function_exists)"
+    checks:
+      - "Looking for inet_pton"
+    directories:
+      source: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-9poc1p"
+      binary: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-9poc1p"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "D:/meeting/third_party/libsrtp-src/cmake"
+    buildResult:
+      variable: "HAVE_INET_PTON"
+      cached: true
+      stdout: |
+        Change Dir: 'D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-9poc1p'
+        
+        Run Build Command(s): D:/QT/Tools/Ninja/ninja.exe -v cmTC_b0cb2
+        [1/2] C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo   /DWIN32 /D_WINDOWS -DCHECK_FUNCTION_EXISTS=inet_pton /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_b0cb2.dir\\CheckFunctionExists.c.obj /FdCMakeFiles\\cmTC_b0cb2.dir\\ /FS -c D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-9poc1p\\CheckFunctionExists.c
+        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && D:\\QT\\Tools\\CMake_64\\bin\\cmake.exe -E vs_link_exe --intdir=CMakeFiles\\cmTC_b0cb2.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_b0cb2.dir\\CheckFunctionExists.c.obj  /out:cmTC_b0cb2.exe /implib:cmTC_b0cb2.lib /pdb:cmTC_b0cb2.pdb /version:0.0 /machine:x64  /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+        FAILED: cmTC_b0cb2.exe 
+        C:\\WINDOWS\\system32\\cmd.exe /C "cd . && D:\\QT\\Tools\\CMake_64\\bin\\cmake.exe -E vs_link_exe --intdir=CMakeFiles\\cmTC_b0cb2.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_b0cb2.dir\\CheckFunctionExists.c.obj  /out:cmTC_b0cb2.exe /implib:cmTC_b0cb2.lib /pdb:cmTC_b0cb2.pdb /version:0.0 /machine:x64  /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+        LINK Pass 1: command "C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_b0cb2.dir\\CheckFunctionExists.c.obj /out:cmTC_b0cb2.exe /implib:cmTC_b0cb2.lib /pdb:cmTC_b0cb2.pdb /version:0.0 /machine:x64 /debug /INCREMENTAL /subsystem:console kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTFILE:CMakeFiles\\cmTC_b0cb2.dir/intermediate.manifest CMakeFiles\\cmTC_b0cb2.dir/manifest.res" failed (exit code 1120) with the following output:
+        CheckFunctionExists.c.obj : error LNK2019: 鏃犳硶瑙ｆ瀽鐨勫閮ㄧ鍙?inet_pton锛屽嚱鏁?main 涓紩鐢ㄤ簡璇ョ鍙?
+        cmTC_b0cb2.exe : fatal error LNK1120: 1 涓棤娉曡В鏋愮殑澶栭儴鍛戒护\x0d
+        ninja: build stopped: subcommand failed.
+        
+      exitCode: 1
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CheckFunctionExists.cmake:86 (try_compile)"
+      - "CMakeLists.txt:66 (check_function_exists)"
+    checks:
+      - "Looking for usleep"
+    directories:
+      source: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-okjvmk"
+      binary: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-okjvmk"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "D:/meeting/third_party/libsrtp-src/cmake"
+    buildResult:
+      variable: "HAVE_USLEEP"
+      cached: true
+      stdout: |
+        Change Dir: 'D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-okjvmk'
+        
+        Run Build Command(s): D:/QT/Tools/Ninja/ninja.exe -v cmTC_6d888
+        [1/2] C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo   /DWIN32 /D_WINDOWS -DCHECK_FUNCTION_EXISTS=usleep /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_6d888.dir\\CheckFunctionExists.c.obj /FdCMakeFiles\\cmTC_6d888.dir\\ /FS -c D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-okjvmk\\CheckFunctionExists.c
+        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && D:\\QT\\Tools\\CMake_64\\bin\\cmake.exe -E vs_link_exe --intdir=CMakeFiles\\cmTC_6d888.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_6d888.dir\\CheckFunctionExists.c.obj  /out:cmTC_6d888.exe /implib:cmTC_6d888.lib /pdb:cmTC_6d888.pdb /version:0.0 /machine:x64  /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+        FAILED: cmTC_6d888.exe 
+        C:\\WINDOWS\\system32\\cmd.exe /C "cd . && D:\\QT\\Tools\\CMake_64\\bin\\cmake.exe -E vs_link_exe --intdir=CMakeFiles\\cmTC_6d888.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_6d888.dir\\CheckFunctionExists.c.obj  /out:cmTC_6d888.exe /implib:cmTC_6d888.lib /pdb:cmTC_6d888.pdb /version:0.0 /machine:x64  /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+        LINK Pass 1: command "C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_6d888.dir\\CheckFunctionExists.c.obj /out:cmTC_6d888.exe /implib:cmTC_6d888.lib /pdb:cmTC_6d888.pdb /version:0.0 /machine:x64 /debug /INCREMENTAL /subsystem:console kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTFILE:CMakeFiles\\cmTC_6d888.dir/intermediate.manifest CMakeFiles\\cmTC_6d888.dir/manifest.res" failed (exit code 1120) with the following output:
+        CheckFunctionExists.c.obj : error LNK2019: 鏃犳硶瑙ｆ瀽鐨勫閮ㄧ鍙?usleep锛屽嚱鏁?main 涓紩鐢ㄤ簡璇ョ鍙?
+        cmTC_6d888.exe : fatal error LNK1120: 1 涓棤娉曡В鏋愮殑澶栭儴鍛戒护\x0d
+        ninja: build stopped: subcommand failed.
+        
+      exitCode: 1
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CheckIncludeFile.cmake:90 (try_compile)"
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CheckTypeSize.cmake:253 (check_include_file)"
+      - "CMakeLists.txt:68 (check_type_size)"
+    checks:
+      - "Looking for stddef.h"
+    directories:
+      source: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-7d5lab"
+      binary: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-7d5lab"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "D:/meeting/third_party/libsrtp-src/cmake"
+    buildResult:
+      variable: "HAVE_STDDEF_H"
+      cached: true
+      stdout: |
+        Change Dir: 'D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-7d5lab'
+        
+        Run Build Command(s): D:/QT/Tools/Ninja/ninja.exe -v cmTC_80804
+        [1/2] C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo   /DWIN32 /D_WINDOWS  /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_80804.dir\\CheckIncludeFile.c.obj /FdCMakeFiles\\cmTC_80804.dir\\ /FS -c D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-7d5lab\\CheckIncludeFile.c
+        娉ㄦ剰: 鍖呭惈鏂囦欢:  C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\stddef.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\corecrt.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\vcruntime.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\sal.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\concurrencysal.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\vadefs.h
+        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && D:\\QT\\Tools\\CMake_64\\bin\\cmake.exe -E vs_link_exe --intdir=CMakeFiles\\cmTC_80804.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_80804.dir\\CheckIncludeFile.c.obj  /out:cmTC_80804.exe /implib:cmTC_80804.lib /pdb:cmTC_80804.pdb /version:0.0 /machine:x64  /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CheckTypeSize.cmake:147 (try_compile)"
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CheckTypeSize.cmake:272 (__check_type_size_impl)"
+      - "CMakeLists.txt:68 (check_type_size)"
+    checks:
+      - "Check size of uint8_t"
+    directories:
+      source: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-30xes3"
+      binary: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-30xes3"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "D:/meeting/third_party/libsrtp-src/cmake"
+    buildResult:
+      variable: "HAVE_UINT8_T"
+      cached: true
+      stdout: |
+        Change Dir: 'D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-30xes3'
+        
+        Run Build Command(s): D:/QT/Tools/Ninja/ninja.exe -v cmTC_a1cbb
+        [1/2] C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo   /DWIN32 /D_WINDOWS  /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_a1cbb.dir\\UINT8_T.c.obj /FdCMakeFiles\\cmTC_a1cbb.dir\\ /FS -c D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-30xes3\\UINT8_T.c
+        娉ㄦ剰: 鍖呭惈鏂囦欢:  C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\sys/types.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\corecrt.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\vcruntime.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\sal.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\concurrencysal.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\vadefs.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:  C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\stdint.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:  C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\stddef.h
+        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && D:\\QT\\Tools\\CMake_64\\bin\\cmake.exe -E vs_link_exe --intdir=CMakeFiles\\cmTC_a1cbb.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_a1cbb.dir\\UINT8_T.c.obj  /out:cmTC_a1cbb.exe /implib:cmTC_a1cbb.lib /pdb:cmTC_a1cbb.pdb /version:0.0 /machine:x64  /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CheckTypeSize.cmake:147 (try_compile)"
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CheckTypeSize.cmake:272 (__check_type_size_impl)"
+      - "CMakeLists.txt:69 (check_type_size)"
+    checks:
+      - "Check size of uint16_t"
+    directories:
+      source: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-h9gcgg"
+      binary: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-h9gcgg"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "D:/meeting/third_party/libsrtp-src/cmake"
+    buildResult:
+      variable: "HAVE_UINT16_T"
+      cached: true
+      stdout: |
+        Change Dir: 'D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-h9gcgg'
+        
+        Run Build Command(s): D:/QT/Tools/Ninja/ninja.exe -v cmTC_a8566
+        [1/2] C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo   /DWIN32 /D_WINDOWS  /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_a8566.dir\\UINT16_T.c.obj /FdCMakeFiles\\cmTC_a8566.dir\\ /FS -c D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-h9gcgg\\UINT16_T.c
+        娉ㄦ剰: 鍖呭惈鏂囦欢:  C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\sys/types.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\corecrt.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\vcruntime.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\sal.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\concurrencysal.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\vadefs.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:  C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\stdint.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:  C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\stddef.h
+        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && D:\\QT\\Tools\\CMake_64\\bin\\cmake.exe -E vs_link_exe --intdir=CMakeFiles\\cmTC_a8566.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_a8566.dir\\UINT16_T.c.obj  /out:cmTC_a8566.exe /implib:cmTC_a8566.lib /pdb:cmTC_a8566.pdb /version:0.0 /machine:x64  /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CheckTypeSize.cmake:147 (try_compile)"
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CheckTypeSize.cmake:272 (__check_type_size_impl)"
+      - "CMakeLists.txt:70 (check_type_size)"
+    checks:
+      - "Check size of uint32_t"
+    directories:
+      source: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-04dxwz"
+      binary: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-04dxwz"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "D:/meeting/third_party/libsrtp-src/cmake"
+    buildResult:
+      variable: "HAVE_UINT32_T"
+      cached: true
+      stdout: |
+        Change Dir: 'D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-04dxwz'
+        
+        Run Build Command(s): D:/QT/Tools/Ninja/ninja.exe -v cmTC_17bbb
+        [1/2] C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo   /DWIN32 /D_WINDOWS  /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_17bbb.dir\\UINT32_T.c.obj /FdCMakeFiles\\cmTC_17bbb.dir\\ /FS -c D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-04dxwz\\UINT32_T.c
+        娉ㄦ剰: 鍖呭惈鏂囦欢:  C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\sys/types.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\corecrt.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\vcruntime.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\sal.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\concurrencysal.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\vadefs.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:  C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\stdint.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:  C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\stddef.h
+        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && D:\\QT\\Tools\\CMake_64\\bin\\cmake.exe -E vs_link_exe --intdir=CMakeFiles\\cmTC_17bbb.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_17bbb.dir\\UINT32_T.c.obj  /out:cmTC_17bbb.exe /implib:cmTC_17bbb.lib /pdb:cmTC_17bbb.pdb /version:0.0 /machine:x64  /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CheckTypeSize.cmake:147 (try_compile)"
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CheckTypeSize.cmake:272 (__check_type_size_impl)"
+      - "CMakeLists.txt:71 (check_type_size)"
+    checks:
+      - "Check size of uint64_t"
+    directories:
+      source: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-nheqgu"
+      binary: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-nheqgu"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "D:/meeting/third_party/libsrtp-src/cmake"
+    buildResult:
+      variable: "HAVE_UINT64_T"
+      cached: true
+      stdout: |
+        Change Dir: 'D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-nheqgu'
+        
+        Run Build Command(s): D:/QT/Tools/Ninja/ninja.exe -v cmTC_77238
+        [1/2] C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo   /DWIN32 /D_WINDOWS  /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_77238.dir\\UINT64_T.c.obj /FdCMakeFiles\\cmTC_77238.dir\\ /FS -c D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-nheqgu\\UINT64_T.c
+        娉ㄦ剰: 鍖呭惈鏂囦欢:  C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\sys/types.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\corecrt.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\vcruntime.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\sal.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\concurrencysal.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\vadefs.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:  C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\stdint.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:  C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\stddef.h
+        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && D:\\QT\\Tools\\CMake_64\\bin\\cmake.exe -E vs_link_exe --intdir=CMakeFiles\\cmTC_77238.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_77238.dir\\UINT64_T.c.obj  /out:cmTC_77238.exe /implib:cmTC_77238.lib /pdb:cmTC_77238.pdb /version:0.0 /machine:x64  /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CheckTypeSize.cmake:147 (try_compile)"
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CheckTypeSize.cmake:272 (__check_type_size_impl)"
+      - "CMakeLists.txt:72 (check_type_size)"
+    checks:
+      - "Check size of int32_t"
+    directories:
+      source: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-6bc7ls"
+      binary: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-6bc7ls"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "D:/meeting/third_party/libsrtp-src/cmake"
+    buildResult:
+      variable: "HAVE_INT32_T"
+      cached: true
+      stdout: |
+        Change Dir: 'D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-6bc7ls'
+        
+        Run Build Command(s): D:/QT/Tools/Ninja/ninja.exe -v cmTC_fa11a
+        [1/2] C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo   /DWIN32 /D_WINDOWS  /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_fa11a.dir\\INT32_T.c.obj /FdCMakeFiles\\cmTC_fa11a.dir\\ /FS -c D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-6bc7ls\\INT32_T.c
+        娉ㄦ剰: 鍖呭惈鏂囦欢:  C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\sys/types.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\corecrt.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\vcruntime.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\sal.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\concurrencysal.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\vadefs.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:  C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\stdint.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:  C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\stddef.h
+        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && D:\\QT\\Tools\\CMake_64\\bin\\cmake.exe -E vs_link_exe --intdir=CMakeFiles\\cmTC_fa11a.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_fa11a.dir\\INT32_T.c.obj  /out:cmTC_fa11a.exe /implib:cmTC_fa11a.lib /pdb:cmTC_fa11a.pdb /version:0.0 /machine:x64  /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CheckTypeSize.cmake:147 (try_compile)"
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CheckTypeSize.cmake:272 (__check_type_size_impl)"
+      - "CMakeLists.txt:73 (check_type_size)"
+    checks:
+      - "Check size of unsigned long"
+    directories:
+      source: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-xld34z"
+      binary: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-xld34z"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "D:/meeting/third_party/libsrtp-src/cmake"
+    buildResult:
+      variable: "HAVE_SIZEOF_UNSIGNED_LONG"
+      cached: true
+      stdout: |
+        Change Dir: 'D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-xld34z'
+        
+        Run Build Command(s): D:/QT/Tools/Ninja/ninja.exe -v cmTC_51747
+        [1/2] C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo   /DWIN32 /D_WINDOWS  /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_51747.dir\\SIZEOF_UNSIGNED_LONG.c.obj /FdCMakeFiles\\cmTC_51747.dir\\ /FS -c D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-xld34z\\SIZEOF_UNSIGNED_LONG.c
+        娉ㄦ剰: 鍖呭惈鏂囦欢:  C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\sys/types.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\corecrt.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\vcruntime.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\sal.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\concurrencysal.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\vadefs.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:  C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\stdint.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:  C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\stddef.h
+        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && D:\\QT\\Tools\\CMake_64\\bin\\cmake.exe -E vs_link_exe --intdir=CMakeFiles\\cmTC_51747.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_51747.dir\\SIZEOF_UNSIGNED_LONG.c.obj  /out:cmTC_51747.exe /implib:cmTC_51747.lib /pdb:cmTC_51747.pdb /version:0.0 /machine:x64  /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CheckTypeSize.cmake:147 (try_compile)"
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CheckTypeSize.cmake:272 (__check_type_size_impl)"
+      - "CMakeLists.txt:74 (check_type_size)"
+    checks:
+      - "Check size of unsigned long long"
+    directories:
+      source: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-qt37fs"
+      binary: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-qt37fs"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "D:/meeting/third_party/libsrtp-src/cmake"
+    buildResult:
+      variable: "HAVE_SIZEOF_UNSIGNED_LONG_LONG"
+      cached: true
+      stdout: |
+        Change Dir: 'D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-qt37fs'
+        
+        Run Build Command(s): D:/QT/Tools/Ninja/ninja.exe -v cmTC_3dc21
+        [1/2] C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo   /DWIN32 /D_WINDOWS  /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_3dc21.dir\\SIZEOF_UNSIGNED_LONG_LONG.c.obj /FdCMakeFiles\\cmTC_3dc21.dir\\ /FS -c D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-qt37fs\\SIZEOF_UNSIGNED_LONG_LONG.c
+        娉ㄦ剰: 鍖呭惈鏂囦欢:  C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\sys/types.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:   C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\corecrt.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:    C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\vcruntime.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\sal.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:      C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\concurrencysal.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:     C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\vadefs.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:  C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\include\\stdint.h
+        娉ㄦ剰: 鍖呭惈鏂囦欢:  C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt\\stddef.h
+        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && D:\\QT\\Tools\\CMake_64\\bin\\cmake.exe -E vs_link_exe --intdir=CMakeFiles\\cmTC_3dc21.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_3dc21.dir\\SIZEOF_UNSIGNED_LONG_LONG.c.obj  /out:cmTC_3dc21.exe /implib:cmTC_3dc21.lib /pdb:cmTC_3dc21.pdb /version:0.0 /machine:x64  /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/Internal/CheckSourceCompiles.cmake:101 (try_compile)"
+      - "D:/QT/Tools/CMake_64/share/cmake-3.30/Modules/CheckCSourceCompiles.cmake:52 (cmake_check_source_compiles)"
+      - "CMakeLists.txt:76 (check_c_source_compiles)"
+    checks:
+      - "Performing Test HAVE_INLINE"
+    directories:
+      source: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-jlggah"
+      binary: "D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-jlggah"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "D:/meeting/third_party/libsrtp-src/cmake"
+    buildResult:
+      variable: "HAVE_INLINE"
+      cached: true
+      stdout: |
+        Change Dir: 'D:/meeting/third_party/libsrtp-build/CMakeFiles/CMakeScratch/TryCompile-jlggah'
+        
+        Run Build Command(s): D:/QT/Tools/Ninja/ninja.exe -v cmTC_a39e6
+        [1/2] C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo -DHAVE_INLINE  /DWIN32 /D_WINDOWS  /Zi /Ob0 /Od /RTC1 -MDd /showIncludes /FoCMakeFiles\\cmTC_a39e6.dir\\src.c.obj /FdCMakeFiles\\cmTC_a39e6.dir\\ /FS -c D:\\meeting\\third_party\\libsrtp-build\\CMakeFiles\\CMakeScratch\\TryCompile-jlggah\\src.c
+        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && D:\\QT\\Tools\\CMake_64\\bin\\cmake.exe -E vs_link_exe --intdir=CMakeFiles\\cmTC_a39e6.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100261~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MICROS~4\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_a39e6.dir\\src.c.obj  /out:cmTC_a39e6.exe /implib:cmTC_a39e6.lib /pdb:cmTC_a39e6.pdb /version:0.0 /machine:x64  /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+        
+      exitCode: 0
+...

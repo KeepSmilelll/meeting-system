@@ -14,6 +14,11 @@ enum class RpcMethod : uint16_t {
     kGetNodeStatus = 5,
     kReportNodeStatus = 6,
     kQualityReport = 7,
+    kSetupTransport = 8,
+    kTrickleIceCandidate = 9,
+    kCloseTransport = 10,
+    kAddSubscriber = 11,
+    kRemoveSubscriber = 12,
 };
 
 enum class RpcFrameKind : uint8_t {

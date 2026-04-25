@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QElapsedTimer>
 #include <QString>
+#include <QStringList>
 
 class MeetingController;
 
@@ -16,11 +17,18 @@ public:
     void start();
 
 private:
+    bool isHostRole() const;
+    bool isJoinerRole() const;
     QString currentStageTag() const;
     QString videoPipelineSummary() const;
     QString audioPipelineSummary() const;
+    QString transportPipelineSummary() const;
     QString avSyncSummary() const;
+    void applyLocalAudioPolicy();
+    void applyLocalVideoPolicy();
     QString withStageTag(const QString& reason) const;
+    bool audioTransportReady() const;
+    bool videoTransportReady() const;
     void handleInfoMessage(const QString& message);
     void handleLoggedInChanged();
     void handleInMeetingChanged();
@@ -40,7 +48,8 @@ private:
     bool writeMeetingId(const QString& meetingId);
     void writeResult(const QString& status, const QString& reason) const;
     QString readMeetingId() const;
-    QString readPeerResult() const;
+    QStringList readPeerResults() const;
+    QObject* observedRemoteVideoFrameSource() const;
 
     MeetingController* m_controller{nullptr};
     QString m_role;
@@ -53,23 +62,30 @@ private:
     QString m_title;
     QString m_meetingIdPath;
     QString m_resultPath;
-    QString m_peerResultPath;
+    QStringList m_peerResultPaths;
     QString m_pendingSuccessReason;
     QString m_videoEncodeDetail;
     QString m_videoCameraDetail;
+    QString m_remoteVideoUserId;
+    QStringList m_recentInfoMessages;
     bool m_enabled{false};
     bool m_startedLogin{false};
     bool m_startedCreate{false};
     bool m_startedJoin{false};
+    bool m_appliedLocalAudioPolicy{false};
     bool m_appliedLocalVideoPolicy{false};
     bool m_reportedResult{false};
     bool m_waitingPeerSuccess{false};
     bool m_peerSuccessObserved{false};
     bool m_exitRequested{false};
+    bool m_enableLocalAudio{false};
+    bool m_enableLocalVideo{false};
     bool m_requireVideoEvidence{false};
     bool m_requireAudioEvidence{false};
     bool m_requireAvSyncEvidence{false};
+    bool m_disableLocalAudio{false};
     bool m_disableLocalVideo{false};
+    int m_meetingCapacity{2};
     int m_avSyncMaxSkewMs{40};
     int m_avSyncMinSamples{10};
     int m_avSyncMaxAbsSkewMs{40};

@@ -100,6 +100,9 @@ func TestRedisRoomStoreHydratesParticipantMediaState(t *testing.T) {
 	if err := roomStore.SetParticipantSharing(ctx, "m2001", "u1002", true); err != nil {
 		t.Fatalf("set sharing failed: %v", err)
 	}
+	if err := roomStore.SetParticipantMediaSsrc(ctx, "m2001", "u1002", 1111, 2222); err != nil {
+		t.Fatalf("set participant SSRCs failed: %v", err)
+	}
 
 	hydrated := roomStore.HydrateParticipants(ctx, "m2001", []*protocol.Participant{participant})
 	if len(hydrated) != 1 || hydrated[0] == nil {
@@ -108,8 +111,14 @@ func TestRedisRoomStoreHydratesParticipantMediaState(t *testing.T) {
 	if hydrated[0].IsAudioOn || hydrated[0].IsVideoOn || !hydrated[0].IsSharing {
 		t.Fatalf("unexpected hydrated participant state: %+v", hydrated[0])
 	}
+	if hydrated[0].AudioSsrc != 1111 || hydrated[0].VideoSsrc != 2222 {
+		t.Fatalf("unexpected hydrated participant SSRCs: %+v", hydrated[0])
+	}
 	if !participant.IsAudioOn || !participant.IsVideoOn || participant.IsSharing {
 		t.Fatalf("expected source participant to remain unchanged, got %+v", participant)
+	}
+	if participant.AudioSsrc != 0 || participant.VideoSsrc != 0 {
+		t.Fatalf("expected source participant SSRCs to remain unchanged, got %+v", participant)
 	}
 }
 

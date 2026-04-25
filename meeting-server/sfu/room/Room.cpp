@@ -111,9 +111,17 @@ bool Room::AddSubscriber(SubscriberPtr subscriber) {
         return false;
     }
 
+    const auto userId = subscriber->UserId();
+
     std::unique_lock lock(mutex_);
-    const auto [it, inserted] = subscribers_.emplace(subscriber->UserId(), std::move(subscriber));
-    return inserted && it->second != nullptr;
+    const auto it = subscribers_.find(userId);
+    if (it != subscribers_.end()) {
+        it->second = std::move(subscriber);
+        return true;
+    }
+
+    const auto [insertedIt, inserted] = subscribers_.emplace(userId, std::move(subscriber));
+    return inserted && insertedIt->second != nullptr;
 }
 
 bool Room::RemoveSubscriber(const std::string& userId) {

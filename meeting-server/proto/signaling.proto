@@ -75,6 +75,8 @@ message Participant {
   bool is_audio_on = 5;
   bool is_video_on = 6;
   bool is_sharing = 7;
+  uint32 audio_ssrc = 8;
+  uint32 video_ssrc = 9;
 }
 
 message MeetJoinRsp {
@@ -132,24 +134,31 @@ message MeetHostChangedNotify {
 }
 
 message MediaOffer {
-  string target_user_id = 1;
-  string sdp = 2;
-  uint32 audio_ssrc = 3;
-  uint32 video_ssrc = 4;
+  string meeting_id = 1;
+  bool publish_audio = 2;
+  bool publish_video = 3;
+  string client_ice_ufrag = 4;
+  string client_ice_pwd = 5;
+  string client_dtls_fingerprint = 6;
+  repeated string client_candidates = 7;
 }
 
 message MediaAnswer {
-  string target_user_id = 1;
-  string sdp = 2;
-  uint32 audio_ssrc = 3;
-  uint32 video_ssrc = 4;
+  string meeting_id = 1;
+  string server_ice_ufrag = 2;
+  string server_ice_pwd = 3;
+  string server_dtls_fingerprint = 4;
+  repeated string server_candidates = 5;
+  uint32 assigned_audio_ssrc = 6;
+  uint32 assigned_video_ssrc = 7;
 }
 
 message MediaIceCandidate {
-  string target_user_id = 1;
+  string meeting_id = 1;
   string candidate = 2;
   string sdp_mid = 3;
   int32 sdp_mline_index = 4;
+  bool end_of_candidates = 5;
 }
 
 message MediaMuteToggle {

@@ -44,41 +44,13 @@ public slots:
     void setVideoNegotiationEnabled(bool enabled);
     void reset();
 
-    QString buildOffer(const QString& peerUserId) const;
-    QString buildAnswer(const QString& peerUserId) const;
-    bool inspectDescription(const QString& sdp, QString* remoteUserId, bool* hasAudio, bool* hasVideo) const;
-    bool handleRemoteOffer(const QString& peerUserId, const QString& sdp);
-    bool handleRemoteAnswer(const QString& peerUserId, const QString& sdp);
-
 signals:
     void localUserIdChanged();
     void meetingIdChanged();
     void endpointChanged();
     void negotiationStateChanged();
-    void remoteEndpointReady(const QString& peerUserId,
-                             const QString& host,
-                             quint16 port,
-                             int payloadType,
-                             bool offer);
-    void remoteVideoEndpointReady(const QString& peerUserId,
-                                  const QString& host,
-                                  quint16 port,
-                                  int payloadType,
-                                  bool offer);
 
 private:
-    QString buildDescription(const QString& kind, const QString& peerUserId) const;
-    bool parseDescription(const QString& sdp,
-                          QString& audioHost,
-                          quint16& audioPort,
-                          int& audioPayloadType,
-                          QString& videoHost,
-                          quint16& videoPort,
-                          int& videoPayloadType,
-                          QString& localUserId,
-                          QString& targetUserId,
-                          QString& error) const;
-
     QString m_localUserId;
     QString m_meetingId;
     QString m_localHost{QStringLiteral("127.0.0.1")};

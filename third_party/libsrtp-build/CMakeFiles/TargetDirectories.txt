@@ -1,0 +1,6 @@
+D:/meeting/third_party/libsrtp-build/CMakeFiles/srtp2.dir
+D:/meeting/third_party/libsrtp-build/CMakeFiles/edit_cache.dir
+D:/meeting/third_party/libsrtp-build/CMakeFiles/rebuild_cache.dir
+D:/meeting/third_party/libsrtp-build/CMakeFiles/list_install_components.dir
+D:/meeting/third_party/libsrtp-build/CMakeFiles/install.dir
+D:/meeting/third_party/libsrtp-build/CMakeFiles/install/local.dir

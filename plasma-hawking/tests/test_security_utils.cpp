@@ -1,6 +1,7 @@
 #include <cassert>
 
 #include <QCoreApplication>
+#include <QDebug>
 #include <QTemporaryDir>
 
 #include "security/CryptoUtils.h"
@@ -43,13 +44,50 @@ int main(int argc, char* argv[]) {
     assert(loaded.issuedAtMs() == 100);
     assert(loaded.expiresAtMs() == 1100);
 
-    security::SRTPContext srtp;
-    assert(!srtp.configured());
-    assert(srtp.configure("master-key", "master-salt"));
-    assert(srtp.configured());
-    assert(!srtp.keyFingerprint().isEmpty());
-    srtp.clear();
-    assert(!srtp.configured());
+    const QByteArray masterKey(
+        security::SRTPContext::masterKeyLength(security::SRTPContext::Profile::Aes128CmSha1_80),
+        'K');
+    const QByteArray masterSalt(
+        security::SRTPContext::masterSaltLength(security::SRTPContext::Profile::Aes128CmSha1_80),
+        'S');
+
+    security::SRTPContext sender;
+    security::SRTPContext receiver;
+    assert(!sender.configured());
+    assert(sender.configure(masterKey,
+                            masterSalt,
+                            security::SRTPContext::Direction::Outbound,
+                            0x11223344U));
+    assert(receiver.configure(masterKey,
+                              masterSalt,
+                              security::SRTPContext::Direction::Inbound,
+                              0x11223344U));
+    assert(sender.configured());
+    assert(receiver.configured());
+    assert(!sender.keyFingerprint().isEmpty());
+
+    QByteArray rtpPacket = QByteArray::fromHex("806F0001000000641122334401020304");
+    const QByteArray plainRtp = rtpPacket;
+    assert(sender.protectRtp(&rtpPacket));
+    assert(rtpPacket.size() > plainRtp.size());
+    assert(receiver.unprotectRtp(&rtpPacket));
+    assert(rtpPacket == plainRtp);
+
+    QByteArray rtcpPacket = QByteArray::fromHex("80C80006112233440000000200000003000000040000000500000006");
+    const QByteArray plainRtcp = rtcpPacket;
+    const bool protectedRtcp = sender.protectRtcp(&rtcpPacket);
+    if (!protectedRtcp) {
+        qCritical().noquote() << "protectRtcp failed:" << sender.lastError();
+    }
+    assert(protectedRtcp);
+    assert(rtcpPacket.size() > plainRtcp.size());
+    assert(receiver.unprotectRtcp(&rtcpPacket));
+    assert(rtcpPacket == plainRtcp);
+
+    sender.clear();
+    receiver.clear();
+    assert(!sender.configured());
+    assert(!receiver.configured());
 
     return 0;
 }

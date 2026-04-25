@@ -10,6 +10,12 @@ include(CTest)
 # Optional FFmpeg smoke target for the Opus audio pipeline.
 option(MEETING_BUILD_AUDIO_CODEC_SMOKE "Build the audio codec smoke test target" ON)
 set(FFMPEG_ROOT_HINT "D:/Setup/ffmpeg-7.1-full_build-shared" CACHE PATH "Local FFmpeg root hint")
+set(OPENSSL_ROOT_HINT "D:/LOL/英雄联盟(26)/Cross/coach/agent/lol_ai_coach/Python311/Library" CACHE PATH "Local OpenSSL 3 root hint")
+set(LIBSRTP_ROOT_DEFAULT "D:/meeting/third_party/libsrtp2")
+set(LIBSRTP_ROOT_HINT "${LIBSRTP_ROOT_DEFAULT}" CACHE PATH "Local libsrtp2 root hint")
+if(LIBSRTP_ROOT_HINT STREQUAL "" AND EXISTS "${LIBSRTP_ROOT_DEFAULT}")
+    set(LIBSRTP_ROOT_HINT "${LIBSRTP_ROOT_DEFAULT}" CACHE PATH "Local libsrtp2 root hint" FORCE)
+endif()
 
 # Keep protobuf runtime/toolchain aligned with locally provisioned OpenCV libs.
 set(PROTOBUF_INCLUDE_DIR_HINT "D:/openCV/opencv-4.12.0/sources/3rdparty/protobuf/src" CACHE PATH "Local protobuf include dir hint")
@@ -40,6 +46,18 @@ unset(FFMPEG_AVFORMAT_LIBRARY CACHE)
 unset(FFMPEG_AVUTIL_LIBRARY CACHE)
 unset(FFMPEG_SWRESAMPLE_LIBRARY CACHE)
 unset(FFMPEG_SWSCALE_LIBRARY CACHE)
+find_path(OPENSSL_INCLUDE_DIR
+    NAMES openssl/ssl.h
+    HINTS "${OPENSSL_ROOT_HINT}/include"
+)
+find_library(OPENSSL_SSL_LIBRARY
+    NAMES libssl ssl
+    HINTS "${OPENSSL_ROOT_HINT}/lib"
+)
+find_library(OPENSSL_CRYPTO_LIBRARY
+    NAMES libcrypto crypto
+    HINTS "${OPENSSL_ROOT_HINT}/lib"
+)
 if(EXISTS "${FFMPEG_ROOT_HINT}")
     find_path(FFMPEG_INCLUDE_DIR
         NAMES libavcodec/avcodec.h
@@ -85,12 +103,41 @@ if(NOT (FFMPEG_INCLUDE_DIR AND FFMPEG_AVCODEC_LIBRARY AND FFMPEG_AVDEVICE_LIBRAR
     message(FATAL_ERROR "meeting_client requires FFmpeg 7.1 headers/libs under ${FFMPEG_ROOT_HINT}")
 endif()
 
+unset(LIBSRTP_INCLUDE_DIR CACHE)
+unset(LIBSRTP_LIBRARY CACHE)
+find_path(LIBSRTP_INCLUDE_DIR
+    NAMES srtp2/srtp.h srtp.h
+    HINTS "${LIBSRTP_ROOT_HINT}/include" "${LIBSRTP_ROOT_HINT}/include/srtp2"
+)
+find_library(LIBSRTP_LIBRARY
+    NAMES srtp2 libsrtp2 srtp libsrtp
+    HINTS "${LIBSRTP_ROOT_HINT}/lib" "${LIBSRTP_ROOT_HINT}/lib64"
+)
+if(LIBSRTP_INCLUDE_DIR AND LIBSRTP_LIBRARY)
+    message(STATUS "meeting_client found libsrtp2: ${LIBSRTP_LIBRARY}")
+    if(NOT (OPENSSL_INCLUDE_DIR AND OPENSSL_SSL_LIBRARY AND OPENSSL_CRYPTO_LIBRARY))
+        message(FATAL_ERROR "meeting_client requires OpenSSL 3 headers/libs when libsrtp2 is enabled. Set OPENSSL_ROOT_HINT.")
+    endif()
+else()
+    message(WARNING "meeting_client did not find libsrtp2. PLAN.md requires libsrtp2 before DTLS-SRTP transport can be completed.")
+endif()
+
 set(FFMPEG_RUNTIME_DLLS)
 if(WIN32 AND EXISTS "${FFMPEG_ROOT_HINT}/bin")
     foreach(ffmpeg_dll_name IN ITEMS avcodec-61.dll avdevice-61.dll avformat-61.dll avutil-59.dll swresample-5.dll swscale-8.dll)
         set(ffmpeg_dll_path "${FFMPEG_ROOT_HINT}/bin/${ffmpeg_dll_name}")
         if(EXISTS "${ffmpeg_dll_path}")
             list(APPEND FFMPEG_RUNTIME_DLLS "${ffmpeg_dll_path}")
+        endif()
+    endforeach()
+endif()
+
+set(OPENSSL_RUNTIME_DLLS)
+if(WIN32 AND EXISTS "${OPENSSL_ROOT_HINT}/bin")
+    foreach(openssl_dll_name IN ITEMS libssl-3-x64.dll libcrypto-3-x64.dll)
+        set(openssl_dll_path "${OPENSSL_ROOT_HINT}/bin/${openssl_dll_name}")
+        if(EXISTS "${openssl_dll_path}")
+            list(APPEND OPENSSL_RUNTIME_DLLS "${openssl_dll_path}")
         endif()
     endforeach()
 endif()
@@ -106,6 +153,43 @@ function(copy_ffmpeg_runtime target_name)
                 $<TARGET_FILE_DIR:${target_name}>
         )
     endforeach()
+endfunction()
+
+function(copy_openssl_runtime target_name)
+    if(NOT WIN32)
+        return()
+    endif()
+    foreach(openssl_dll IN LISTS OPENSSL_RUNTIME_DLLS)
+        add_custom_command(TARGET ${target_name} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${openssl_dll}"
+                $<TARGET_FILE_DIR:${target_name}>
+        )
+    endforeach()
+endfunction()
+
+set(MEETING_DTLS_SRTP_SOURCES
+    src/net/media/DtlsTransportClient.cpp
+    src/security/SRTPContext.cpp
+)
+
+function(target_enable_dtls_srtp target_name)
+    target_sources(${target_name} PRIVATE ${MEETING_DTLS_SRTP_SOURCES})
+    if(LIBSRTP_INCLUDE_DIR)
+        target_include_directories(${target_name} PRIVATE ${LIBSRTP_INCLUDE_DIR})
+    endif()
+    if(OPENSSL_INCLUDE_DIR)
+        target_include_directories(${target_name} PRIVATE ${OPENSSL_INCLUDE_DIR})
+    endif()
+    if(LIBSRTP_LIBRARY)
+        target_link_libraries(${target_name} PRIVATE
+            ${LIBSRTP_LIBRARY}
+            ${OPENSSL_SSL_LIBRARY}
+            ${OPENSSL_CRYPTO_LIBRARY}
+        )
+        target_compile_definitions(${target_name} PRIVATE HAVE_LIBSRTP2=1)
+    endif()
+    copy_openssl_runtime(${target_name})
 endfunction()
 qt_add_executable(meeting_client
     src/main.cpp
@@ -168,6 +252,7 @@ qt_add_executable(meeting_client
     src/net/signaling/SignalProtocol.cpp
     src/net/signaling/SignalingClient.cpp
     src/net/signaling/Reconnector.cpp
+    src/net/media/DtlsTransportClient.cpp
     src/net/media/RTPSender.cpp
     src/net/media/RTPReceiver.cpp
     src/net/media/H264RtpPayload.cpp
@@ -181,6 +266,12 @@ target_include_directories(meeting_client PRIVATE
     proto/pb
     ${FFMPEG_INCLUDE_DIR}
 )
+if(LIBSRTP_INCLUDE_DIR)
+    target_include_directories(meeting_client PRIVATE ${LIBSRTP_INCLUDE_DIR})
+endif()
+if(OPENSSL_INCLUDE_DIR)
+    target_include_directories(meeting_client PRIVATE ${OPENSSL_INCLUDE_DIR})
+endif()
 
 target_link_libraries(meeting_client PRIVATE
     Qt6::Core
@@ -198,7 +289,16 @@ target_link_libraries(meeting_client PRIVATE
     ${FFMPEG_SWRESAMPLE_LIBRARY}
     ${FFMPEG_SWSCALE_LIBRARY}
 )
+if(LIBSRTP_LIBRARY)
+    target_link_libraries(meeting_client PRIVATE
+        ${LIBSRTP_LIBRARY}
+        ${OPENSSL_SSL_LIBRARY}
+        ${OPENSSL_CRYPTO_LIBRARY}
+    )
+    target_compile_definitions(meeting_client PRIVATE HAVE_LIBSRTP2=1)
+endif()
 copy_ffmpeg_runtime(meeting_client)
+copy_openssl_runtime(meeting_client)
 
 if(WIN32)
     target_link_libraries(meeting_client PRIVATE ws2_32 bcrypt opengl32)
@@ -258,6 +358,7 @@ add_test(NAME test_media_session_manager COMMAND test_media_session_manager)
 
 add_executable(test_screen_share_session
     tests/test_screen_share_session.cpp
+    src/security/CryptoUtils.cpp
     src/av/capture/ScreenCapture.cpp
     src/av/capture/CameraCapture.cpp
     src/av/codec/VideoDecoder.cpp
@@ -307,6 +408,7 @@ target_link_libraries(test_screen_share_session PRIVATE
     ${FFMPEG_AVUTIL_LIBRARY}
     ${FFMPEG_SWSCALE_LIBRARY}
 )
+target_enable_dtls_srtp(test_screen_share_session)
 copy_ffmpeg_runtime(test_screen_share_session)
 
 if(WIN32)
@@ -317,6 +419,7 @@ add_test(NAME test_screen_share_session COMMAND test_screen_share_session)
 
 add_executable(test_screen_share_session_camera_smoke
     tests/test_screen_share_session_camera_smoke.cpp
+    src/security/CryptoUtils.cpp
     src/av/capture/CameraCapture.cpp
     src/av/capture/ScreenCapture.cpp
     src/av/codec/VideoDecoder.cpp
@@ -367,6 +470,7 @@ target_link_libraries(test_screen_share_session_camera_smoke PRIVATE
     ${FFMPEG_AVUTIL_LIBRARY}
     ${FFMPEG_SWSCALE_LIBRARY}
 )
+target_enable_dtls_srtp(test_screen_share_session_camera_smoke)
 copy_ffmpeg_runtime(test_screen_share_session_camera_smoke)
 
 if(WIN32)
@@ -376,6 +480,7 @@ endif()
 add_test(NAME test_screen_share_session_camera_smoke COMMAND test_screen_share_session_camera_smoke)
 set_tests_properties(test_screen_share_session_camera_smoke PROPERTIES
     SKIP_RETURN_CODE 77
+    RUN_SERIAL TRUE
 )
 
 add_executable(test_signaling_client_ssrc
@@ -526,13 +631,58 @@ add_executable(test_security_utils
 target_include_directories(test_security_utils PRIVATE
     src
 )
+if(LIBSRTP_INCLUDE_DIR)
+    target_include_directories(test_security_utils PRIVATE ${LIBSRTP_INCLUDE_DIR})
+endif()
+if(OPENSSL_INCLUDE_DIR)
+    target_include_directories(test_security_utils PRIVATE ${OPENSSL_INCLUDE_DIR})
+endif()
 
 target_link_libraries(test_security_utils PRIVATE
     Qt6::Core
     Qt6::Sql
 )
+if(LIBSRTP_LIBRARY)
+    target_link_libraries(test_security_utils PRIVATE
+        ${LIBSRTP_LIBRARY}
+        ${OPENSSL_SSL_LIBRARY}
+        ${OPENSSL_CRYPTO_LIBRARY}
+    )
+    target_compile_definitions(test_security_utils PRIVATE HAVE_LIBSRTP2=1)
+endif()
+if(WIN32)
+    target_link_libraries(test_security_utils PRIVATE ws2_32)
+endif()
+copy_openssl_runtime(test_security_utils)
 
 add_test(NAME test_security_utils COMMAND test_security_utils)
+
+add_executable(test_dtls_transport_client
+    tests/test_dtls_transport_client.cpp
+    src/net/media/DtlsTransportClient.cpp
+    ../meeting-server/sfu/server/DtlsContext.cpp
+    ../meeting-server/sfu/server/DtlsTransport.cpp
+)
+
+target_include_directories(test_dtls_transport_client PRIVATE
+    src
+    ../meeting-server/sfu
+)
+if(OPENSSL_INCLUDE_DIR)
+    target_include_directories(test_dtls_transport_client PRIVATE ${OPENSSL_INCLUDE_DIR})
+endif()
+
+target_link_libraries(test_dtls_transport_client PRIVATE
+    Qt6::Core
+    ${OPENSSL_SSL_LIBRARY}
+    ${OPENSSL_CRYPTO_LIBRARY}
+)
+if(WIN32)
+    target_link_libraries(test_dtls_transport_client PRIVATE ws2_32)
+endif()
+copy_openssl_runtime(test_dtls_transport_client)
+
+add_test(NAME test_dtls_transport_client COMMAND test_dtls_transport_client)
 
 add_executable(test_event_bus
     tests/test_event_bus.cpp
@@ -629,6 +779,7 @@ target_link_libraries(test_meeting_controller_mute_all PRIVATE
     ${FFMPEG_SWRESAMPLE_LIBRARY}
     ${FFMPEG_SWSCALE_LIBRARY}
 )
+target_enable_dtls_srtp(test_meeting_controller_mute_all)
 copy_ffmpeg_runtime(test_meeting_controller_mute_all)
 
 if(WIN32)
@@ -717,6 +868,7 @@ target_link_libraries(test_meeting_runtime_smoke PRIVATE
     ${FFMPEG_SWRESAMPLE_LIBRARY}
     ${FFMPEG_SWSCALE_LIBRARY}
 )
+target_enable_dtls_srtp(test_meeting_runtime_smoke)
 copy_ffmpeg_runtime(test_meeting_runtime_smoke)
 
 if(WIN32)
@@ -749,6 +901,7 @@ copy_ffmpeg_runtime(test_camera_capture_smoke)
 add_test(NAME test_camera_capture_smoke COMMAND test_camera_capture_smoke)
 set_tests_properties(test_camera_capture_smoke PROPERTIES
     SKIP_RETURN_CODE 77
+    RUN_SERIAL TRUE
 )
 
 add_executable(test_audio_process
@@ -811,22 +964,57 @@ copy_ffmpeg_runtime(test_meeting_client_process_smoke)
 add_dependencies(test_meeting_client_process_smoke meeting_client)
 
 add_test(NAME test_meeting_client_process_smoke COMMAND test_meeting_client_process_smoke)
+set_tests_properties(test_meeting_client_process_smoke PROPERTIES
+    TIMEOUT 180
+    RUN_SERIAL TRUE
+)
+
+add_executable(test_meeting_client_fanout_process_smoke
+    tests/test_meeting_client_fanout_process_smoke.cpp
+    src/av/codec/VideoEncoder.cpp
+)
+
+target_include_directories(test_meeting_client_fanout_process_smoke PRIVATE
+    src
+    ${FFMPEG_INCLUDE_DIR}
+)
+
+target_link_libraries(test_meeting_client_fanout_process_smoke PRIVATE
+    Qt6::Core
+    Qt6::Network
+    ${FFMPEG_AVCODEC_LIBRARY}
+    ${FFMPEG_AVUTIL_LIBRARY}
+)
+copy_ffmpeg_runtime(test_meeting_client_fanout_process_smoke)
+
+add_dependencies(test_meeting_client_fanout_process_smoke meeting_client)
+
+add_test(NAME test_meeting_client_fanout_process_smoke COMMAND test_meeting_client_fanout_process_smoke)
+set_tests_properties(test_meeting_client_fanout_process_smoke PROPERTIES
+    TIMEOUT 180
+    RUN_SERIAL TRUE
+)
+
 add_test(NAME test_meeting_client_real_audio_smoke COMMAND test_meeting_client_process_smoke)
 set_tests_properties(test_meeting_client_real_audio_smoke PROPERTIES
-    ENVIRONMENT "MEETING_PROCESS_SMOKE_SYNTHETIC_AUDIO=0;MEETING_PROCESS_SMOKE_REQUIRE_AUDIO=1"
+    ENVIRONMENT "MEETING_PROCESS_SMOKE_SYNTHETIC_AUDIO=0;MEETING_PROCESS_SMOKE_REQUIRE_AUDIO=1;MEETING_PROCESS_SMOKE_SINGLE_REAL_AUDIO=1"
     SKIP_RETURN_CODE 77
+    TIMEOUT 180
+    RUN_SERIAL TRUE
 )
 
 add_test(NAME test_meeting_runtime_real_audio_smoke COMMAND test_meeting_runtime_smoke)
 set_tests_properties(test_meeting_runtime_real_audio_smoke PROPERTIES
     ENVIRONMENT "MEETING_RUNTIME_SMOKE_SYNTHETIC_AUDIO=0"
     SKIP_RETURN_CODE 77
+    RUN_SERIAL TRUE
 )
 
 if(MEETING_BUILD_AUDIO_CODEC_SMOKE)
     if(FFMPEG_INCLUDE_DIR AND FFMPEG_AVCODEC_LIBRARY AND FFMPEG_AVUTIL_LIBRARY AND FFMPEG_SWRESAMPLE_LIBRARY AND FFMPEG_SWSCALE_LIBRARY)
         add_executable(audio_codec_smoke
             tests/AudioCodecSmoke.cpp
+            src/security/CryptoUtils.cpp
             src/av/capture/AudioCapture.cpp
             src/av/codec/AudioEncoder.cpp
             src/av/codec/AudioDecoder.cpp
@@ -854,6 +1042,7 @@ if(MEETING_BUILD_AUDIO_CODEC_SMOKE)
             ${FFMPEG_SWRESAMPLE_LIBRARY}
             ${FFMPEG_SWSCALE_LIBRARY}
         )
+        target_enable_dtls_srtp(audio_codec_smoke)
         copy_ffmpeg_runtime(audio_codec_smoke)
 
         if(WIN32)

@@ -85,6 +85,29 @@ func TestMeetingLifecycle(t *testing.T) {
 	}
 }
 
+func TestMemoryStoreParticipantMediaSsrcSnapshot(t *testing.T) {
+	s := NewMemoryStore()
+
+	meeting, host, err := s.CreateMeeting("ssrc-snapshot", "", "u1001", 4)
+	if err != nil {
+		t.Fatalf("CreateMeeting failed: %v", err)
+	}
+	if err := s.SetParticipantMediaSsrc(meeting.ID, host.UserId, 1111, 2222); err != nil {
+		t.Fatalf("SetParticipantMediaSsrc failed: %v", err)
+	}
+
+	_, participants, err := s.SnapshotMeeting(meeting.ID)
+	if err != nil {
+		t.Fatalf("SnapshotMeeting failed: %v", err)
+	}
+	if len(participants) != 1 || participants[0] == nil {
+		t.Fatalf("expected one participant snapshot, got %+v", participants)
+	}
+	if participants[0].AudioSsrc != 1111 || participants[0].VideoSsrc != 2222 {
+		t.Fatalf("unexpected participant SSRC snapshot: %+v", participants[0])
+	}
+}
+
 func TestMemoryStoreDefaultUserUsesArgon2idHash(t *testing.T) {
 	s := NewMemoryStore()
 

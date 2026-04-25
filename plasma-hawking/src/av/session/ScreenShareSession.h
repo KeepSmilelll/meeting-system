@@ -12,9 +12,12 @@
 #include "av/codec/VideoEncoder.h"
 #include "net/media/RTPReceiver.h"
 #include "net/media/RTPSender.h"
+#include "net/media/DtlsTransportClient.h"
 #include "net/media/UdpPeerSocket.h"
+#include "security/SRTPContext.h"
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -23,6 +26,7 @@
 #include <vector>
 
 #include <QMutex>
+#include <QByteArray>
 #include <QWaitCondition>
 
 namespace av::capture {
@@ -65,9 +69,17 @@ public:
     uint32_t expectedRemoteVideoSsrc() const;
 
     void setPeer(const std::string& address, uint16_t port);
+    void setVideoSsrc(uint32_t ssrc);
+    QString prepareDtlsFingerprint();
+    bool startDtlsSrtp(const QString& serverFingerprint);
+    bool iceConnected() const;
+    bool dtlsConnected() const;
+    bool srtpReady() const;
+    bool sendTransportProbe(const std::vector<uint8_t>& packet);
     void setDecodedFrameCallback(std::function<void(av::codec::DecodedVideoFrame)> callback);
     void setDecodedFrameWithSsrcCallback(
         std::function<void(av::codec::DecodedVideoFrame, uint32_t)> callback);
+    void setLocalCameraPreviewCallback(std::function<void(av::codec::DecodedVideoFrame)> callback);
     void setErrorCallback(std::function<void(std::string)> callback);
     void setCameraSourceCallback(std::function<void(bool syntheticFallback)> callback);
     void setStatusCallback(std::function<void(std::string)> callback);
@@ -98,6 +110,13 @@ private:
     void sendLoop();
     void recvLoop();
     bool applyRtcpDispatchPlanLocked(const VideoRtcpFeedbackDispatchPlan& dispatchPlan);
+    bool handleDtlsPacketLocked(const uint8_t* data, std::size_t len, const media::UdpEndpoint& from);
+    bool sendCachedDtlsHandshakeLocked(const media::UdpEndpoint& peer);
+    bool configureSrtpLocked();
+    bool protectRtpLocked(std::vector<uint8_t>* packet);
+    bool protectRtcpLocked(std::vector<uint8_t>* packet);
+    bool unprotectRtpLocked(std::vector<uint8_t>* packet);
+    bool unprotectRtcpLocked(std::vector<uint8_t>* packet);
 
     ScreenShareSessionConfig m_config;
     mutable QMutex m_mutex;
@@ -106,6 +125,7 @@ private:
     std::string m_lastError;
     std::function<void(av::codec::DecodedVideoFrame)> m_decodedFrameCallback;
     std::function<void(av::codec::DecodedVideoFrame, uint32_t)> m_decodedFrameWithSsrcCallback;
+    std::function<void(av::codec::DecodedVideoFrame)> m_localCameraPreviewCallback;
     std::function<void(std::string)> m_errorCallback;
     std::function<void(bool)> m_cameraSourceCallback;
     std::function<void(std::string)> m_statusCallback;
@@ -124,6 +144,11 @@ private:
     std::atomic<uint64_t> m_targetBitrateUpdatedAtMs{0};
     std::atomic<bool> m_forceKeyFramePending{false};
     std::atomic<uint32_t> m_expectedRemoteVideoSsrc{0};
+    std::atomic<uint32_t> m_configuredVideoSsrc{0};
+    std::atomic<bool> m_dtlsStarted{false};
+    std::atomic<bool> m_iceConnected{false};
+    std::atomic<bool> m_dtlsConnected{false};
+    std::atomic<bool> m_srtpReady{false};
     std::shared_ptr<av::capture::ScreenCapture> m_capture;
     std::unique_ptr<av::capture::CameraCapture> m_cameraCapture;
     std::shared_ptr<av::capture::ScreenCapture> m_cameraFallbackCapture;
@@ -136,6 +161,11 @@ private:
     VideoSendFrameRingBuffer m_sendFrameRingBuffer{4U};
 
     media::UdpPeerSocket m_mediaSocket;
+    media::DtlsTransportClient m_dtlsTransport;
+    std::vector<QByteArray> m_dtlsHandshakePackets;
+    std::chrono::steady_clock::time_point m_lastDtlsHandshakeSendAt{};
+    security::SRTPContext m_inboundSrtp;
+    security::SRTPContext m_outboundSrtp;
 };
 
 }  // namespace av::session

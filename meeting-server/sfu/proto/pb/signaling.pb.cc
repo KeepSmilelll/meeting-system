@@ -185,7 +185,9 @@ constexpr Participant::Participant(
   , role_(0)
   , is_audio_on_(false)
   , is_video_on_(false)
-  , is_sharing_(false){}
+  , is_sharing_(false)
+  , audio_ssrc_(0u)
+  , video_ssrc_(0u){}
 struct ParticipantDefaultTypeInternal {
   constexpr ParticipantDefaultTypeInternal()
     : _instance(::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized{}) {}
@@ -340,10 +342,13 @@ struct MeetHostChangedNotifyDefaultTypeInternal {
 PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT MeetHostChangedNotifyDefaultTypeInternal _MeetHostChangedNotify_default_instance_;
 constexpr MediaOffer::MediaOffer(
   ::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized)
-  : target_user_id_(&::PROTOBUF_NAMESPACE_ID::internal::fixed_address_empty_string)
-  , sdp_(&::PROTOBUF_NAMESPACE_ID::internal::fixed_address_empty_string)
-  , audio_ssrc_(0u)
-  , video_ssrc_(0u){}
+  : client_candidates_()
+  , meeting_id_(&::PROTOBUF_NAMESPACE_ID::internal::fixed_address_empty_string)
+  , client_ice_ufrag_(&::PROTOBUF_NAMESPACE_ID::internal::fixed_address_empty_string)
+  , client_ice_pwd_(&::PROTOBUF_NAMESPACE_ID::internal::fixed_address_empty_string)
+  , client_dtls_fingerprint_(&::PROTOBUF_NAMESPACE_ID::internal::fixed_address_empty_string)
+  , publish_audio_(false)
+  , publish_video_(false){}
 struct MediaOfferDefaultTypeInternal {
   constexpr MediaOfferDefaultTypeInternal()
     : _instance(::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized{}) {}
@@ -355,10 +360,13 @@ struct MediaOfferDefaultTypeInternal {
 PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT MediaOfferDefaultTypeInternal _MediaOffer_default_instance_;
 constexpr MediaAnswer::MediaAnswer(
   ::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized)
-  : target_user_id_(&::PROTOBUF_NAMESPACE_ID::internal::fixed_address_empty_string)
-  , sdp_(&::PROTOBUF_NAMESPACE_ID::internal::fixed_address_empty_string)
-  , audio_ssrc_(0u)
-  , video_ssrc_(0u){}
+  : server_candidates_()
+  , meeting_id_(&::PROTOBUF_NAMESPACE_ID::internal::fixed_address_empty_string)
+  , server_ice_ufrag_(&::PROTOBUF_NAMESPACE_ID::internal::fixed_address_empty_string)
+  , server_ice_pwd_(&::PROTOBUF_NAMESPACE_ID::internal::fixed_address_empty_string)
+  , server_dtls_fingerprint_(&::PROTOBUF_NAMESPACE_ID::internal::fixed_address_empty_string)
+  , assigned_audio_ssrc_(0u)
+  , assigned_video_ssrc_(0u){}
 struct MediaAnswerDefaultTypeInternal {
   constexpr MediaAnswerDefaultTypeInternal()
     : _instance(::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized{}) {}
@@ -370,10 +378,11 @@ struct MediaAnswerDefaultTypeInternal {
 PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT MediaAnswerDefaultTypeInternal _MediaAnswer_default_instance_;
 constexpr MediaIceCandidate::MediaIceCandidate(
   ::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized)
-  : target_user_id_(&::PROTOBUF_NAMESPACE_ID::internal::fixed_address_empty_string)
+  : meeting_id_(&::PROTOBUF_NAMESPACE_ID::internal::fixed_address_empty_string)
   , candidate_(&::PROTOBUF_NAMESPACE_ID::internal::fixed_address_empty_string)
   , sdp_mid_(&::PROTOBUF_NAMESPACE_ID::internal::fixed_address_empty_string)
-  , sdp_mline_index_(0){}
+  , sdp_mline_index_(0)
+  , end_of_candidates_(false){}
 struct MediaIceCandidateDefaultTypeInternal {
   constexpr MediaIceCandidateDefaultTypeInternal()
     : _instance(::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized{}) {}
@@ -643,6 +652,8 @@ const uint32_t TableStruct_signaling_2eproto::offsets[] PROTOBUF_SECTION_VARIABL
   PROTOBUF_FIELD_OFFSET(::meeting::Participant, is_audio_on_),
   PROTOBUF_FIELD_OFFSET(::meeting::Participant, is_video_on_),
   PROTOBUF_FIELD_OFFSET(::meeting::Participant, is_sharing_),
+  PROTOBUF_FIELD_OFFSET(::meeting::Participant, audio_ssrc_),
+  PROTOBUF_FIELD_OFFSET(::meeting::Participant, video_ssrc_),
   ~0u,  // no _has_bits_
   PROTOBUF_FIELD_OFFSET(::meeting::MeetJoinRsp, _internal_metadata_),
   ~0u,  // no _extensions_
@@ -737,30 +748,37 @@ const uint32_t TableStruct_signaling_2eproto::offsets[] PROTOBUF_SECTION_VARIABL
   ~0u,  // no _oneof_case_
   ~0u,  // no _weak_field_map_
   ~0u,  // no _inlined_string_donated_
-  PROTOBUF_FIELD_OFFSET(::meeting::MediaOffer, target_user_id_),
-  PROTOBUF_FIELD_OFFSET(::meeting::MediaOffer, sdp_),
-  PROTOBUF_FIELD_OFFSET(::meeting::MediaOffer, audio_ssrc_),
-  PROTOBUF_FIELD_OFFSET(::meeting::MediaOffer, video_ssrc_),
+  PROTOBUF_FIELD_OFFSET(::meeting::MediaOffer, meeting_id_),
+  PROTOBUF_FIELD_OFFSET(::meeting::MediaOffer, publish_audio_),
+  PROTOBUF_FIELD_OFFSET(::meeting::MediaOffer, publish_video_),
+  PROTOBUF_FIELD_OFFSET(::meeting::MediaOffer, client_ice_ufrag_),
+  PROTOBUF_FIELD_OFFSET(::meeting::MediaOffer, client_ice_pwd_),
+  PROTOBUF_FIELD_OFFSET(::meeting::MediaOffer, client_dtls_fingerprint_),
+  PROTOBUF_FIELD_OFFSET(::meeting::MediaOffer, client_candidates_),
   ~0u,  // no _has_bits_
   PROTOBUF_FIELD_OFFSET(::meeting::MediaAnswer, _internal_metadata_),
   ~0u,  // no _extensions_
   ~0u,  // no _oneof_case_
   ~0u,  // no _weak_field_map_
   ~0u,  // no _inlined_string_donated_
-  PROTOBUF_FIELD_OFFSET(::meeting::MediaAnswer, target_user_id_),
-  PROTOBUF_FIELD_OFFSET(::meeting::MediaAnswer, sdp_),
-  PROTOBUF_FIELD_OFFSET(::meeting::MediaAnswer, audio_ssrc_),
-  PROTOBUF_FIELD_OFFSET(::meeting::MediaAnswer, video_ssrc_),
+  PROTOBUF_FIELD_OFFSET(::meeting::MediaAnswer, meeting_id_),
+  PROTOBUF_FIELD_OFFSET(::meeting::MediaAnswer, server_ice_ufrag_),
+  PROTOBUF_FIELD_OFFSET(::meeting::MediaAnswer, server_ice_pwd_),
+  PROTOBUF_FIELD_OFFSET(::meeting::MediaAnswer, server_dtls_fingerprint_),
+  PROTOBUF_FIELD_OFFSET(::meeting::MediaAnswer, server_candidates_),
+  PROTOBUF_FIELD_OFFSET(::meeting::MediaAnswer, assigned_audio_ssrc_),
+  PROTOBUF_FIELD_OFFSET(::meeting::MediaAnswer, assigned_video_ssrc_),
   ~0u,  // no _has_bits_
   PROTOBUF_FIELD_OFFSET(::meeting::MediaIceCandidate, _internal_metadata_),
   ~0u,  // no _extensions_
   ~0u,  // no _oneof_case_
   ~0u,  // no _weak_field_map_
   ~0u,  // no _inlined_string_donated_
-  PROTOBUF_FIELD_OFFSET(::meeting::MediaIceCandidate, target_user_id_),
+  PROTOBUF_FIELD_OFFSET(::meeting::MediaIceCandidate, meeting_id_),
   PROTOBUF_FIELD_OFFSET(::meeting::MediaIceCandidate, candidate_),
   PROTOBUF_FIELD_OFFSET(::meeting::MediaIceCandidate, sdp_mid_),
   PROTOBUF_FIELD_OFFSET(::meeting::MediaIceCandidate, sdp_mline_index_),
+  PROTOBUF_FIELD_OFFSET(::meeting::MediaIceCandidate, end_of_candidates_),
   ~0u,  // no _has_bits_
   PROTOBUF_FIELD_OFFSET(::meeting::MediaMuteToggle, _internal_metadata_),
   ~0u,  // no _extensions_
@@ -867,30 +885,30 @@ static const ::PROTOBUF_NAMESPACE_ID::internal::MigrationSchema schemas[] PROTOB
   { 83, -1, -1, sizeof(::meeting::MeetJoinReq)},
   { 91, -1, -1, sizeof(::meeting::IceServer)},
   { 100, -1, -1, sizeof(::meeting::Participant)},
-  { 113, -1, -1, sizeof(::meeting::MeetJoinRsp)},
-  { 126, -1, -1, sizeof(::meeting::MeetLeaveReq)},
-  { 132, -1, -1, sizeof(::meeting::MeetLeaveRsp)},
-  { 139, -1, -1, sizeof(::meeting::MeetKickReq)},
-  { 146, -1, -1, sizeof(::meeting::MeetKickRsp)},
-  { 154, -1, -1, sizeof(::meeting::MeetMuteAllReq)},
-  { 161, -1, -1, sizeof(::meeting::MeetMuteAllRsp)},
-  { 168, -1, -1, sizeof(::meeting::MeetStateSyncNotify)},
-  { 178, -1, -1, sizeof(::meeting::MeetParticipantJoinNotify)},
-  { 185, -1, -1, sizeof(::meeting::MeetParticipantLeaveNotify)},
-  { 193, -1, -1, sizeof(::meeting::MeetHostChangedNotify)},
-  { 201, -1, -1, sizeof(::meeting::MediaOffer)},
-  { 211, -1, -1, sizeof(::meeting::MediaAnswer)},
-  { 221, -1, -1, sizeof(::meeting::MediaIceCandidate)},
-  { 231, -1, -1, sizeof(::meeting::MediaMuteToggle)},
-  { 239, -1, -1, sizeof(::meeting::MediaScreenShare)},
-  { 246, -1, -1, sizeof(::meeting::ChatSendReq)},
-  { 255, -1, -1, sizeof(::meeting::ChatSendRsp)},
-  { 265, -1, -1, sizeof(::meeting::ChatRecvNotify)},
-  { 278, -1, -1, sizeof(::meeting::FileOfferReq)},
-  { 287, -1, -1, sizeof(::meeting::FileOfferRsp)},
-  { 296, -1, -1, sizeof(::meeting::FileAcceptReq)},
-  { 304, -1, -1, sizeof(::meeting::FileChunkData)},
-  { 313, -1, -1, sizeof(::meeting::FileCompleteNotify)},
+  { 115, -1, -1, sizeof(::meeting::MeetJoinRsp)},
+  { 128, -1, -1, sizeof(::meeting::MeetLeaveReq)},
+  { 134, -1, -1, sizeof(::meeting::MeetLeaveRsp)},
+  { 141, -1, -1, sizeof(::meeting::MeetKickReq)},
+  { 148, -1, -1, sizeof(::meeting::MeetKickRsp)},
+  { 156, -1, -1, sizeof(::meeting::MeetMuteAllReq)},
+  { 163, -1, -1, sizeof(::meeting::MeetMuteAllRsp)},
+  { 170, -1, -1, sizeof(::meeting::MeetStateSyncNotify)},
+  { 180, -1, -1, sizeof(::meeting::MeetParticipantJoinNotify)},
+  { 187, -1, -1, sizeof(::meeting::MeetParticipantLeaveNotify)},
+  { 195, -1, -1, sizeof(::meeting::MeetHostChangedNotify)},
+  { 203, -1, -1, sizeof(::meeting::MediaOffer)},
+  { 216, -1, -1, sizeof(::meeting::MediaAnswer)},
+  { 229, -1, -1, sizeof(::meeting::MediaIceCandidate)},
+  { 240, -1, -1, sizeof(::meeting::MediaMuteToggle)},
+  { 248, -1, -1, sizeof(::meeting::MediaScreenShare)},
+  { 255, -1, -1, sizeof(::meeting::ChatSendReq)},
+  { 264, -1, -1, sizeof(::meeting::ChatSendRsp)},
+  { 274, -1, -1, sizeof(::meeting::ChatRecvNotify)},
+  { 287, -1, -1, sizeof(::meeting::FileOfferReq)},
+  { 296, -1, -1, sizeof(::meeting::FileOfferRsp)},
+  { 305, -1, -1, sizeof(::meeting::FileAcceptReq)},
+  { 313, -1, -1, sizeof(::meeting::FileChunkData)},
+  { 322, -1, -1, sizeof(::meeting::FileCompleteNotify)},
 };
 
 static ::PROTOBUF_NAMESPACE_ID::Message const * const file_default_instances[] = {
@@ -953,11 +971,12 @@ const char descriptor_table_protodef_signaling_2eproto[] PROTOBUF_SECTION_VARIAB
   "g.ErrorInfo\022\022\n\nmeeting_id\030\003 \001(\t\"3\n\013MeetJ"
   "oinReq\022\022\n\nmeeting_id\030\001 \001(\t\022\020\n\010password\030\002"
   " \001(\t\"\?\n\tIceServer\022\014\n\004urls\030\001 \001(\t\022\020\n\010usern"
-  "ame\030\002 \001(\t\022\022\n\ncredential\030\003 \001(\t\"\224\001\n\013Partic"
+  "ame\030\002 \001(\t\022\022\n\ncredential\030\003 \001(\t\"\274\001\n\013Partic"
   "ipant\022\017\n\007user_id\030\001 \001(\t\022\024\n\014display_name\030\002"
   " \001(\t\022\022\n\navatar_url\030\003 \001(\t\022\014\n\004role\030\004 \001(\005\022\023"
   "\n\013is_audio_on\030\005 \001(\010\022\023\n\013is_video_on\030\006 \001(\010"
-  "\022\022\n\nis_sharing\030\007 \001(\010\"\316\001\n\013MeetJoinRsp\022\017\n\007"
+  "\022\022\n\nis_sharing\030\007 \001(\010\022\022\n\naudio_ssrc\030\010 \001(\r"
+  "\022\022\n\nvideo_ssrc\030\t \001(\r\"\316\001\n\013MeetJoinRsp\022\017\n\007"
   "success\030\001 \001(\010\022!\n\005error\030\002 \001(\0132\022.meeting.E"
   "rrorInfo\022\022\n\nmeeting_id\030\003 \001(\t\022\r\n\005title\030\004 "
   "\001(\t\022\023\n\013sfu_address\030\005 \001(\t\022\'\n\013ice_servers\030"
@@ -976,39 +995,45 @@ const char descriptor_table_protodef_signaling_2eproto[] PROTOBUF_SECTION_VARIAB
   "nt\"=\n\032MeetParticipantLeaveNotify\022\017\n\007user"
   "_id\030\001 \001(\t\022\016\n\006reason\030\002 \001(\t\"C\n\025MeetHostCha"
   "ngedNotify\022\023\n\013new_host_id\030\001 \001(\t\022\025\n\rnew_h"
-  "ost_name\030\002 \001(\t\"Y\n\nMediaOffer\022\026\n\016target_u"
-  "ser_id\030\001 \001(\t\022\013\n\003sdp\030\002 \001(\t\022\022\n\naudio_ssrc\030"
-  "\003 \001(\r\022\022\n\nvideo_ssrc\030\004 \001(\r\"Z\n\013MediaAnswer"
-  "\022\026\n\016target_user_id\030\001 \001(\t\022\013\n\003sdp\030\002 \001(\t\022\022\n"
-  "\naudio_ssrc\030\003 \001(\r\022\022\n\nvideo_ssrc\030\004 \001(\r\"h\n"
-  "\021MediaIceCandidate\022\026\n\016target_user_id\030\001 \001"
-  "(\t\022\021\n\tcandidate\030\002 \001(\t\022\017\n\007sdp_mid\030\003 \001(\t\022\027"
-  "\n\017sdp_mline_index\030\004 \001(\005\"4\n\017MediaMuteTogg"
-  "le\022\022\n\nmedia_type\030\001 \001(\005\022\r\n\005muted\030\002 \001(\010\"#\n"
-  "\020MediaScreenShare\022\017\n\007sharing\030\001 \001(\010\"A\n\013Ch"
-  "atSendReq\022\014\n\004type\030\001 \001(\005\022\017\n\007content\030\002 \001(\t"
-  "\022\023\n\013reply_to_id\030\003 \001(\t\"h\n\013ChatSendRsp\022\017\n\007"
-  "success\030\001 \001(\010\022!\n\005error\030\002 \001(\0132\022.meeting.E"
-  "rrorInfo\022\022\n\nmessage_id\030\003 \001(\t\022\021\n\ttimestam"
-  "p\030\004 \001(\003\"\223\001\n\016ChatRecvNotify\022\022\n\nmessage_id"
-  "\030\001 \001(\t\022\021\n\tsender_id\030\002 \001(\t\022\023\n\013sender_name"
-  "\030\003 \001(\t\022\014\n\004type\030\004 \001(\005\022\017\n\007content\030\005 \001(\t\022\023\n"
-  "\013reply_to_id\030\006 \001(\t\022\021\n\ttimestamp\030\007 \001(\003\"G\n"
-  "\014FileOfferReq\022\021\n\tfile_name\030\001 \001(\t\022\021\n\tfile"
-  "_size\030\002 \001(\003\022\021\n\tfile_hash\030\003 \001(\t\"W\n\014FileOf"
-  "ferRsp\022\017\n\007success\030\001 \001(\010\022!\n\005error\030\002 \001(\0132\022"
-  ".meeting.ErrorInfo\022\023\n\013transfer_id\030\003 \001(\t\""
-  "6\n\rFileAcceptReq\022\023\n\013transfer_id\030\001 \001(\t\022\020\n"
-  "\010accepted\030\002 \001(\010\"B\n\rFileChunkData\022\023\n\013tran"
-  "sfer_id\030\001 \001(\t\022\016\n\006offset\030\002 \001(\003\022\014\n\004data\030\003 "
-  "\001(\014\"M\n\022FileCompleteNotify\022\023\n\013transfer_id"
-  "\030\001 \001(\t\022\017\n\007success\030\002 \001(\010\022\021\n\tfile_hash\030\003 \001"
-  "(\tB)Z\'meeting-server/signaling/protocol/"
-  "pb;pbb\006proto3"
+  "ost_name\030\002 \001(\t\"\274\001\n\nMediaOffer\022\022\n\nmeeting"
+  "_id\030\001 \001(\t\022\025\n\rpublish_audio\030\002 \001(\010\022\025\n\rpubl"
+  "ish_video\030\003 \001(\010\022\030\n\020client_ice_ufrag\030\004 \001("
+  "\t\022\026\n\016client_ice_pwd\030\005 \001(\t\022\037\n\027client_dtls"
+  "_fingerprint\030\006 \001(\t\022\031\n\021client_candidates\030"
+  "\007 \003(\t\"\311\001\n\013MediaAnswer\022\022\n\nmeeting_id\030\001 \001("
+  "\t\022\030\n\020server_ice_ufrag\030\002 \001(\t\022\026\n\016server_ic"
+  "e_pwd\030\003 \001(\t\022\037\n\027server_dtls_fingerprint\030\004"
+  " \001(\t\022\031\n\021server_candidates\030\005 \003(\t\022\033\n\023assig"
+  "ned_audio_ssrc\030\006 \001(\r\022\033\n\023assigned_video_s"
+  "src\030\007 \001(\r\"\177\n\021MediaIceCandidate\022\022\n\nmeetin"
+  "g_id\030\001 \001(\t\022\021\n\tcandidate\030\002 \001(\t\022\017\n\007sdp_mid"
+  "\030\003 \001(\t\022\027\n\017sdp_mline_index\030\004 \001(\005\022\031\n\021end_o"
+  "f_candidates\030\005 \001(\010\"4\n\017MediaMuteToggle\022\022\n"
+  "\nmedia_type\030\001 \001(\005\022\r\n\005muted\030\002 \001(\010\"#\n\020Medi"
+  "aScreenShare\022\017\n\007sharing\030\001 \001(\010\"A\n\013ChatSen"
+  "dReq\022\014\n\004type\030\001 \001(\005\022\017\n\007content\030\002 \001(\t\022\023\n\013r"
+  "eply_to_id\030\003 \001(\t\"h\n\013ChatSendRsp\022\017\n\007succe"
+  "ss\030\001 \001(\010\022!\n\005error\030\002 \001(\0132\022.meeting.ErrorI"
+  "nfo\022\022\n\nmessage_id\030\003 \001(\t\022\021\n\ttimestamp\030\004 \001"
+  "(\003\"\223\001\n\016ChatRecvNotify\022\022\n\nmessage_id\030\001 \001("
+  "\t\022\021\n\tsender_id\030\002 \001(\t\022\023\n\013sender_name\030\003 \001("
+  "\t\022\014\n\004type\030\004 \001(\005\022\017\n\007content\030\005 \001(\t\022\023\n\013repl"
+  "y_to_id\030\006 \001(\t\022\021\n\ttimestamp\030\007 \001(\003\"G\n\014File"
+  "OfferReq\022\021\n\tfile_name\030\001 \001(\t\022\021\n\tfile_size"
+  "\030\002 \001(\003\022\021\n\tfile_hash\030\003 \001(\t\"W\n\014FileOfferRs"
+  "p\022\017\n\007success\030\001 \001(\010\022!\n\005error\030\002 \001(\0132\022.meet"
+  "ing.ErrorInfo\022\023\n\013transfer_id\030\003 \001(\t\"6\n\rFi"
+  "leAcceptReq\022\023\n\013transfer_id\030\001 \001(\t\022\020\n\010acce"
+  "pted\030\002 \001(\010\"B\n\rFileChunkData\022\023\n\013transfer_"
+  "id\030\001 \001(\t\022\016\n\006offset\030\002 \001(\003\022\014\n\004data\030\003 \001(\014\"M"
+  "\n\022FileCompleteNotify\022\023\n\013transfer_id\030\001 \001("
+  "\t\022\017\n\007success\030\002 \001(\010\022\021\n\tfile_hash\030\003 \001(\tB)Z"
+  "\'meeting-server/signaling/protocol/pb;pb"
+  "b\006proto3"
   ;
 static ::PROTOBUF_NAMESPACE_ID::internal::once_flag descriptor_table_signaling_2eproto_once;
 const ::PROTOBUF_NAMESPACE_ID::internal::DescriptorTable descriptor_table_signaling_2eproto = {
-  false, false, 2813, descriptor_table_protodef_signaling_2eproto, "signaling.proto", 
+  false, false, 3088, descriptor_table_protodef_signaling_2eproto, "signaling.proto", 
   &descriptor_table_signaling_2eproto_once, nullptr, 0, 37,
   schemas, file_default_instances, TableStruct_signaling_2eproto::offsets,
   file_level_metadata_signaling_2eproto, file_level_enum_descriptors_signaling_2eproto, file_level_service_descriptors_signaling_2eproto,
@@ -4002,8 +4027,8 @@ Participant::Participant(const Participant& from)
       GetArenaForAllocation());
   }
   ::memcpy(&role_, &from.role_,
-    static_cast<size_t>(reinterpret_cast<char*>(&is_sharing_) -
-    reinterpret_cast<char*>(&role_)) + sizeof(is_sharing_));
+    static_cast<size_t>(reinterpret_cast<char*>(&video_ssrc_) -
+    reinterpret_cast<char*>(&role_)) + sizeof(video_ssrc_));
   // @@protoc_insertion_point(copy_constructor:meeting.Participant)
 }
 
@@ -4022,8 +4047,8 @@ avatar_url_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringA
 #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
 ::memset(reinterpret_cast<char*>(this) + static_cast<size_t>(
     reinterpret_cast<char*>(&role_) - reinterpret_cast<char*>(this)),
-    0, static_cast<size_t>(reinterpret_cast<char*>(&is_sharing_) -
-    reinterpret_cast<char*>(&role_)) + sizeof(is_sharing_));
+    0, static_cast<size_t>(reinterpret_cast<char*>(&video_ssrc_) -
+    reinterpret_cast<char*>(&role_)) + sizeof(video_ssrc_));
 }
 
 Participant::~Participant() {
@@ -4060,8 +4085,8 @@ void Participant::Clear() {
   display_name_.ClearToEmpty();
   avatar_url_.ClearToEmpty();
   ::memset(&role_, 0, static_cast<size_t>(
-      reinterpret_cast<char*>(&is_sharing_) -
-      reinterpret_cast<char*>(&role_)) + sizeof(is_sharing_));
+      reinterpret_cast<char*>(&video_ssrc_) -
+      reinterpret_cast<char*>(&role_)) + sizeof(video_ssrc_));
   _internal_metadata_.Clear<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
 }
 
@@ -4129,6 +4154,22 @@ const char* Participant::_InternalParse(const char* ptr, ::PROTOBUF_NAMESPACE_ID
       case 7:
         if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 56)) {
           is_sharing_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint64(&ptr);
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      // uint32 audio_ssrc = 8;
+      case 8:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 64)) {
+          audio_ssrc_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint32(&ptr);
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      // uint32 video_ssrc = 9;
+      case 9:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 72)) {
+          video_ssrc_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint32(&ptr);
           CHK_(ptr);
         } else
           goto handle_unusual;
@@ -4216,6 +4257,18 @@ uint8_t* Participant::_InternalSerialize(
     target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::WriteBoolToArray(7, this->_internal_is_sharing(), target);
   }
 
+  // uint32 audio_ssrc = 8;
+  if (this->_internal_audio_ssrc() != 0) {
+    target = stream->EnsureSpace(target);
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::WriteUInt32ToArray(8, this->_internal_audio_ssrc(), target);
+  }
+
+  // uint32 video_ssrc = 9;
+  if (this->_internal_video_ssrc() != 0) {
+    target = stream->EnsureSpace(target);
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::WriteUInt32ToArray(9, this->_internal_video_ssrc(), target);
+  }
+
   if (PROTOBUF_PREDICT_FALSE(_internal_metadata_.have_unknown_fields())) {
     target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormat::InternalSerializeUnknownFieldsToArray(
         _internal_metadata_.unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(::PROTOBUF_NAMESPACE_ID::UnknownFieldSet::default_instance), target, stream);
@@ -4273,6 +4326,16 @@ size_t Participant::ByteSizeLong() const {
     total_size += 1 + 1;
   }
 
+  // uint32 audio_ssrc = 8;
+  if (this->_internal_audio_ssrc() != 0) {
+    total_size += ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::UInt32SizePlusOne(this->_internal_audio_ssrc());
+  }
+
+  // uint32 video_ssrc = 9;
+  if (this->_internal_video_ssrc() != 0) {
+    total_size += ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::UInt32SizePlusOne(this->_internal_video_ssrc());
+  }
+
   return MaybeComputeUnknownFieldsSize(total_size, &_cached_size_);
 }
 
@@ -4316,6 +4379,12 @@ void Participant::MergeFrom(const Participant& from) {
   if (from._internal_is_sharing() != 0) {
     _internal_set_is_sharing(from._internal_is_sharing());
   }
+  if (from._internal_audio_ssrc() != 0) {
+    _internal_set_audio_ssrc(from._internal_audio_ssrc());
+  }
+  if (from._internal_video_ssrc() != 0) {
+    _internal_set_video_ssrc(from._internal_video_ssrc());
+  }
   _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
 }
 
@@ -4351,8 +4420,8 @@ void Participant::InternalSwap(Participant* other) {
       &other->avatar_url_, rhs_arena
   );
   ::PROTOBUF_NAMESPACE_ID::internal::memswap<
-      PROTOBUF_FIELD_OFFSET(Participant, is_sharing_)
-      + sizeof(Participant::is_sharing_)
+      PROTOBUF_FIELD_OFFSET(Participant, video_ssrc_)
+      + sizeof(Participant::video_ssrc_)
       - PROTOBUF_FIELD_OFFSET(Participant, role_)>(
           reinterpret_cast<char*>(&role_),
           reinterpret_cast<char*>(&other->role_));
@@ -6850,7 +6919,8 @@ class MediaOffer::_Internal {
 
 MediaOffer::MediaOffer(::PROTOBUF_NAMESPACE_ID::Arena* arena,
                          bool is_message_owned)
-  : ::PROTOBUF_NAMESPACE_ID::Message(arena, is_message_owned) {
+  : ::PROTOBUF_NAMESPACE_ID::Message(arena, is_message_owned),
+  client_candidates_(arena) {
   SharedCtor();
   if (!is_message_owned) {
     RegisterArenaDtor(arena);
@@ -6858,43 +6928,68 @@ MediaOffer::MediaOffer(::PROTOBUF_NAMESPACE_ID::Arena* arena,
   // @@protoc_insertion_point(arena_constructor:meeting.MediaOffer)
 }
 MediaOffer::MediaOffer(const MediaOffer& from)
-  : ::PROTOBUF_NAMESPACE_ID::Message() {
+  : ::PROTOBUF_NAMESPACE_ID::Message(),
+      client_candidates_(from.client_candidates_) {
   _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
-  target_user_id_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  meeting_id_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
   #ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
-    target_user_id_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+    meeting_id_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
   #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
-  if (!from._internal_target_user_id().empty()) {
-    target_user_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, from._internal_target_user_id(), 
+  if (!from._internal_meeting_id().empty()) {
+    meeting_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, from._internal_meeting_id(), 
       GetArenaForAllocation());
   }
-  sdp_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  client_ice_ufrag_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
   #ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
-    sdp_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+    client_ice_ufrag_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
   #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
-  if (!from._internal_sdp().empty()) {
-    sdp_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, from._internal_sdp(), 
+  if (!from._internal_client_ice_ufrag().empty()) {
+    client_ice_ufrag_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, from._internal_client_ice_ufrag(), 
       GetArenaForAllocation());
   }
-  ::memcpy(&audio_ssrc_, &from.audio_ssrc_,
-    static_cast<size_t>(reinterpret_cast<char*>(&video_ssrc_) -
-    reinterpret_cast<char*>(&audio_ssrc_)) + sizeof(video_ssrc_));
+  client_ice_pwd_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  #ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+    client_ice_pwd_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+  #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  if (!from._internal_client_ice_pwd().empty()) {
+    client_ice_pwd_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, from._internal_client_ice_pwd(), 
+      GetArenaForAllocation());
+  }
+  client_dtls_fingerprint_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  #ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+    client_dtls_fingerprint_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+  #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  if (!from._internal_client_dtls_fingerprint().empty()) {
+    client_dtls_fingerprint_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, from._internal_client_dtls_fingerprint(), 
+      GetArenaForAllocation());
+  }
+  ::memcpy(&publish_audio_, &from.publish_audio_,
+    static_cast<size_t>(reinterpret_cast<char*>(&publish_video_) -
+    reinterpret_cast<char*>(&publish_audio_)) + sizeof(publish_video_));
   // @@protoc_insertion_point(copy_constructor:meeting.MediaOffer)
 }
 
 inline void MediaOffer::SharedCtor() {
-target_user_id_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+meeting_id_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
 #ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
-  target_user_id_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+  meeting_id_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
 #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
-sdp_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+client_ice_ufrag_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
 #ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
-  sdp_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+  client_ice_ufrag_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+#endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+client_ice_pwd_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+#ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  client_ice_pwd_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+#endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+client_dtls_fingerprint_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+#ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  client_dtls_fingerprint_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
 #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
 ::memset(reinterpret_cast<char*>(this) + static_cast<size_t>(
-    reinterpret_cast<char*>(&audio_ssrc_) - reinterpret_cast<char*>(this)),
-    0, static_cast<size_t>(reinterpret_cast<char*>(&video_ssrc_) -
-    reinterpret_cast<char*>(&audio_ssrc_)) + sizeof(video_ssrc_));
+    reinterpret_cast<char*>(&publish_audio_) - reinterpret_cast<char*>(this)),
+    0, static_cast<size_t>(reinterpret_cast<char*>(&publish_video_) -
+    reinterpret_cast<char*>(&publish_audio_)) + sizeof(publish_video_));
 }
 
 MediaOffer::~MediaOffer() {
@@ -6906,8 +7001,10 @@ MediaOffer::~MediaOffer() {
 
 inline void MediaOffer::SharedDtor() {
   GOOGLE_DCHECK(GetArenaForAllocation() == nullptr);
-  target_user_id_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
-  sdp_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  meeting_id_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  client_ice_ufrag_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  client_ice_pwd_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  client_dtls_fingerprint_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
 }
 
 void MediaOffer::ArenaDtor(void* object) {
@@ -6926,11 +7023,14 @@ void MediaOffer::Clear() {
   // Prevent compiler warnings about cached_has_bits being unused
   (void) cached_has_bits;
 
-  target_user_id_.ClearToEmpty();
-  sdp_.ClearToEmpty();
-  ::memset(&audio_ssrc_, 0, static_cast<size_t>(
-      reinterpret_cast<char*>(&video_ssrc_) -
-      reinterpret_cast<char*>(&audio_ssrc_)) + sizeof(video_ssrc_));
+  client_candidates_.Clear();
+  meeting_id_.ClearToEmpty();
+  client_ice_ufrag_.ClearToEmpty();
+  client_ice_pwd_.ClearToEmpty();
+  client_dtls_fingerprint_.ClearToEmpty();
+  ::memset(&publish_audio_, 0, static_cast<size_t>(
+      reinterpret_cast<char*>(&publish_video_) -
+      reinterpret_cast<char*>(&publish_audio_)) + sizeof(publish_video_));
   _internal_metadata_.Clear<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
 }
 
@@ -6940,39 +7040,74 @@ const char* MediaOffer::_InternalParse(const char* ptr, ::PROTOBUF_NAMESPACE_ID:
     uint32_t tag;
     ptr = ::PROTOBUF_NAMESPACE_ID::internal::ReadTag(ptr, &tag);
     switch (tag >> 3) {
-      // string target_user_id = 1;
+      // string meeting_id = 1;
       case 1:
         if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 10)) {
-          auto str = _internal_mutable_target_user_id();
+          auto str = _internal_mutable_meeting_id();
           ptr = ::PROTOBUF_NAMESPACE_ID::internal::InlineGreedyStringParser(str, ptr, ctx);
-          CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "meeting.MediaOffer.target_user_id"));
+          CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "meeting.MediaOffer.meeting_id"));
           CHK_(ptr);
         } else
           goto handle_unusual;
         continue;
-      // string sdp = 2;
+      // bool publish_audio = 2;
       case 2:
-        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 18)) {
-          auto str = _internal_mutable_sdp();
-          ptr = ::PROTOBUF_NAMESPACE_ID::internal::InlineGreedyStringParser(str, ptr, ctx);
-          CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "meeting.MediaOffer.sdp"));
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 16)) {
+          publish_audio_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint64(&ptr);
           CHK_(ptr);
         } else
           goto handle_unusual;
         continue;
-      // uint32 audio_ssrc = 3;
+      // bool publish_video = 3;
       case 3:
         if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 24)) {
-          audio_ssrc_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint32(&ptr);
+          publish_video_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint64(&ptr);
           CHK_(ptr);
         } else
           goto handle_unusual;
         continue;
-      // uint32 video_ssrc = 4;
+      // string client_ice_ufrag = 4;
       case 4:
-        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 32)) {
-          video_ssrc_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint32(&ptr);
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 34)) {
+          auto str = _internal_mutable_client_ice_ufrag();
+          ptr = ::PROTOBUF_NAMESPACE_ID::internal::InlineGreedyStringParser(str, ptr, ctx);
+          CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "meeting.MediaOffer.client_ice_ufrag"));
           CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      // string client_ice_pwd = 5;
+      case 5:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 42)) {
+          auto str = _internal_mutable_client_ice_pwd();
+          ptr = ::PROTOBUF_NAMESPACE_ID::internal::InlineGreedyStringParser(str, ptr, ctx);
+          CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "meeting.MediaOffer.client_ice_pwd"));
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      // string client_dtls_fingerprint = 6;
+      case 6:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 50)) {
+          auto str = _internal_mutable_client_dtls_fingerprint();
+          ptr = ::PROTOBUF_NAMESPACE_ID::internal::InlineGreedyStringParser(str, ptr, ctx);
+          CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "meeting.MediaOffer.client_dtls_fingerprint"));
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      // repeated string client_candidates = 7;
+      case 7:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 58)) {
+          ptr -= 1;
+          do {
+            ptr += 1;
+            auto str = _internal_add_client_candidates();
+            ptr = ::PROTOBUF_NAMESPACE_ID::internal::InlineGreedyStringParser(str, ptr, ctx);
+            CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "meeting.MediaOffer.client_candidates"));
+            CHK_(ptr);
+            if (!ctx->DataAvailable(ptr)) break;
+          } while (::PROTOBUF_NAMESPACE_ID::internal::ExpectTag<58>(ptr));
         } else
           goto handle_unusual;
         continue;
@@ -7005,36 +7140,66 @@ uint8_t* MediaOffer::_InternalSerialize(
   uint32_t cached_has_bits = 0;
   (void) cached_has_bits;
 
-  // string target_user_id = 1;
-  if (!this->_internal_target_user_id().empty()) {
+  // string meeting_id = 1;
+  if (!this->_internal_meeting_id().empty()) {
     ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::VerifyUtf8String(
-      this->_internal_target_user_id().data(), static_cast<int>(this->_internal_target_user_id().length()),
+      this->_internal_meeting_id().data(), static_cast<int>(this->_internal_meeting_id().length()),
       ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::SERIALIZE,
-      "meeting.MediaOffer.target_user_id");
+      "meeting.MediaOffer.meeting_id");
     target = stream->WriteStringMaybeAliased(
-        1, this->_internal_target_user_id(), target);
+        1, this->_internal_meeting_id(), target);
   }
 
-  // string sdp = 2;
-  if (!this->_internal_sdp().empty()) {
+  // bool publish_audio = 2;
+  if (this->_internal_publish_audio() != 0) {
+    target = stream->EnsureSpace(target);
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::WriteBoolToArray(2, this->_internal_publish_audio(), target);
+  }
+
+  // bool publish_video = 3;
+  if (this->_internal_publish_video() != 0) {
+    target = stream->EnsureSpace(target);
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::WriteBoolToArray(3, this->_internal_publish_video(), target);
+  }
+
+  // string client_ice_ufrag = 4;
+  if (!this->_internal_client_ice_ufrag().empty()) {
     ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::VerifyUtf8String(
-      this->_internal_sdp().data(), static_cast<int>(this->_internal_sdp().length()),
+      this->_internal_client_ice_ufrag().data(), static_cast<int>(this->_internal_client_ice_ufrag().length()),
       ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::SERIALIZE,
-      "meeting.MediaOffer.sdp");
+      "meeting.MediaOffer.client_ice_ufrag");
     target = stream->WriteStringMaybeAliased(
-        2, this->_internal_sdp(), target);
+        4, this->_internal_client_ice_ufrag(), target);
   }
 
-  // uint32 audio_ssrc = 3;
-  if (this->_internal_audio_ssrc() != 0) {
-    target = stream->EnsureSpace(target);
-    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::WriteUInt32ToArray(3, this->_internal_audio_ssrc(), target);
+  // string client_ice_pwd = 5;
+  if (!this->_internal_client_ice_pwd().empty()) {
+    ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::VerifyUtf8String(
+      this->_internal_client_ice_pwd().data(), static_cast<int>(this->_internal_client_ice_pwd().length()),
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::SERIALIZE,
+      "meeting.MediaOffer.client_ice_pwd");
+    target = stream->WriteStringMaybeAliased(
+        5, this->_internal_client_ice_pwd(), target);
   }
 
-  // uint32 video_ssrc = 4;
-  if (this->_internal_video_ssrc() != 0) {
-    target = stream->EnsureSpace(target);
-    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::WriteUInt32ToArray(4, this->_internal_video_ssrc(), target);
+  // string client_dtls_fingerprint = 6;
+  if (!this->_internal_client_dtls_fingerprint().empty()) {
+    ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::VerifyUtf8String(
+      this->_internal_client_dtls_fingerprint().data(), static_cast<int>(this->_internal_client_dtls_fingerprint().length()),
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::SERIALIZE,
+      "meeting.MediaOffer.client_dtls_fingerprint");
+    target = stream->WriteStringMaybeAliased(
+        6, this->_internal_client_dtls_fingerprint(), target);
+  }
+
+  // repeated string client_candidates = 7;
+  for (int i = 0, n = this->_internal_client_candidates_size(); i < n; i++) {
+    const auto& s = this->_internal_client_candidates(i);
+    ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::VerifyUtf8String(
+      s.data(), static_cast<int>(s.length()),
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::SERIALIZE,
+      "meeting.MediaOffer.client_candidates");
+    target = stream->WriteString(7, s, target);
   }
 
   if (PROTOBUF_PREDICT_FALSE(_internal_metadata_.have_unknown_fields())) {
@@ -7053,28 +7218,50 @@ size_t MediaOffer::ByteSizeLong() const {
   // Prevent compiler warnings about cached_has_bits being unused
   (void) cached_has_bits;
 
-  // string target_user_id = 1;
-  if (!this->_internal_target_user_id().empty()) {
+  // repeated string client_candidates = 7;
+  total_size += 1 *
+      ::PROTOBUF_NAMESPACE_ID::internal::FromIntSize(client_candidates_.size());
+  for (int i = 0, n = client_candidates_.size(); i < n; i++) {
+    total_size += ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::StringSize(
+      client_candidates_.Get(i));
+  }
+
+  // string meeting_id = 1;
+  if (!this->_internal_meeting_id().empty()) {
     total_size += 1 +
       ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::StringSize(
-        this->_internal_target_user_id());
+        this->_internal_meeting_id());
   }
 
-  // string sdp = 2;
-  if (!this->_internal_sdp().empty()) {
+  // string client_ice_ufrag = 4;
+  if (!this->_internal_client_ice_ufrag().empty()) {
     total_size += 1 +
       ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::StringSize(
-        this->_internal_sdp());
+        this->_internal_client_ice_ufrag());
   }
 
-  // uint32 audio_ssrc = 3;
-  if (this->_internal_audio_ssrc() != 0) {
-    total_size += ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::UInt32SizePlusOne(this->_internal_audio_ssrc());
+  // string client_ice_pwd = 5;
+  if (!this->_internal_client_ice_pwd().empty()) {
+    total_size += 1 +
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::StringSize(
+        this->_internal_client_ice_pwd());
   }
 
-  // uint32 video_ssrc = 4;
-  if (this->_internal_video_ssrc() != 0) {
-    total_size += ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::UInt32SizePlusOne(this->_internal_video_ssrc());
+  // string client_dtls_fingerprint = 6;
+  if (!this->_internal_client_dtls_fingerprint().empty()) {
+    total_size += 1 +
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::StringSize(
+        this->_internal_client_dtls_fingerprint());
+  }
+
+  // bool publish_audio = 2;
+  if (this->_internal_publish_audio() != 0) {
+    total_size += 1 + 1;
+  }
+
+  // bool publish_video = 3;
+  if (this->_internal_publish_video() != 0) {
+    total_size += 1 + 1;
   }
 
   return MaybeComputeUnknownFieldsSize(total_size, &_cached_size_);
@@ -7099,17 +7286,24 @@ void MediaOffer::MergeFrom(const MediaOffer& from) {
   uint32_t cached_has_bits = 0;
   (void) cached_has_bits;
 
-  if (!from._internal_target_user_id().empty()) {
-    _internal_set_target_user_id(from._internal_target_user_id());
+  client_candidates_.MergeFrom(from.client_candidates_);
+  if (!from._internal_meeting_id().empty()) {
+    _internal_set_meeting_id(from._internal_meeting_id());
   }
-  if (!from._internal_sdp().empty()) {
-    _internal_set_sdp(from._internal_sdp());
+  if (!from._internal_client_ice_ufrag().empty()) {
+    _internal_set_client_ice_ufrag(from._internal_client_ice_ufrag());
   }
-  if (from._internal_audio_ssrc() != 0) {
-    _internal_set_audio_ssrc(from._internal_audio_ssrc());
+  if (!from._internal_client_ice_pwd().empty()) {
+    _internal_set_client_ice_pwd(from._internal_client_ice_pwd());
   }
-  if (from._internal_video_ssrc() != 0) {
-    _internal_set_video_ssrc(from._internal_video_ssrc());
+  if (!from._internal_client_dtls_fingerprint().empty()) {
+    _internal_set_client_dtls_fingerprint(from._internal_client_dtls_fingerprint());
+  }
+  if (from._internal_publish_audio() != 0) {
+    _internal_set_publish_audio(from._internal_publish_audio());
+  }
+  if (from._internal_publish_video() != 0) {
+    _internal_set_publish_video(from._internal_publish_video());
   }
   _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
 }
@@ -7130,22 +7324,33 @@ void MediaOffer::InternalSwap(MediaOffer* other) {
   auto* lhs_arena = GetArenaForAllocation();
   auto* rhs_arena = other->GetArenaForAllocation();
   _internal_metadata_.InternalSwap(&other->_internal_metadata_);
+  client_candidates_.InternalSwap(&other->client_candidates_);
   ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::InternalSwap(
       &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
-      &target_user_id_, lhs_arena,
-      &other->target_user_id_, rhs_arena
+      &meeting_id_, lhs_arena,
+      &other->meeting_id_, rhs_arena
   );
   ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::InternalSwap(
       &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
-      &sdp_, lhs_arena,
-      &other->sdp_, rhs_arena
+      &client_ice_ufrag_, lhs_arena,
+      &other->client_ice_ufrag_, rhs_arena
+  );
+  ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::InternalSwap(
+      &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
+      &client_ice_pwd_, lhs_arena,
+      &other->client_ice_pwd_, rhs_arena
+  );
+  ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::InternalSwap(
+      &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
+      &client_dtls_fingerprint_, lhs_arena,
+      &other->client_dtls_fingerprint_, rhs_arena
   );
   ::PROTOBUF_NAMESPACE_ID::internal::memswap<
-      PROTOBUF_FIELD_OFFSET(MediaOffer, video_ssrc_)
-      + sizeof(MediaOffer::video_ssrc_)
-      - PROTOBUF_FIELD_OFFSET(MediaOffer, audio_ssrc_)>(
-          reinterpret_cast<char*>(&audio_ssrc_),
-          reinterpret_cast<char*>(&other->audio_ssrc_));
+      PROTOBUF_FIELD_OFFSET(MediaOffer, publish_video_)
+      + sizeof(MediaOffer::publish_video_)
+      - PROTOBUF_FIELD_OFFSET(MediaOffer, publish_audio_)>(
+          reinterpret_cast<char*>(&publish_audio_),
+          reinterpret_cast<char*>(&other->publish_audio_));
 }
 
 ::PROTOBUF_NAMESPACE_ID::Metadata MediaOffer::GetMetadata() const {
@@ -7162,7 +7367,8 @@ class MediaAnswer::_Internal {
 
 MediaAnswer::MediaAnswer(::PROTOBUF_NAMESPACE_ID::Arena* arena,
                          bool is_message_owned)
-  : ::PROTOBUF_NAMESPACE_ID::Message(arena, is_message_owned) {
+  : ::PROTOBUF_NAMESPACE_ID::Message(arena, is_message_owned),
+  server_candidates_(arena) {
   SharedCtor();
   if (!is_message_owned) {
     RegisterArenaDtor(arena);
@@ -7170,43 +7376,68 @@ MediaAnswer::MediaAnswer(::PROTOBUF_NAMESPACE_ID::Arena* arena,
   // @@protoc_insertion_point(arena_constructor:meeting.MediaAnswer)
 }
 MediaAnswer::MediaAnswer(const MediaAnswer& from)
-  : ::PROTOBUF_NAMESPACE_ID::Message() {
+  : ::PROTOBUF_NAMESPACE_ID::Message(),
+      server_candidates_(from.server_candidates_) {
   _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
-  target_user_id_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  meeting_id_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
   #ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
-    target_user_id_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+    meeting_id_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
   #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
-  if (!from._internal_target_user_id().empty()) {
-    target_user_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, from._internal_target_user_id(), 
+  if (!from._internal_meeting_id().empty()) {
+    meeting_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, from._internal_meeting_id(), 
       GetArenaForAllocation());
   }
-  sdp_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  server_ice_ufrag_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
   #ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
-    sdp_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+    server_ice_ufrag_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
   #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
-  if (!from._internal_sdp().empty()) {
-    sdp_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, from._internal_sdp(), 
+  if (!from._internal_server_ice_ufrag().empty()) {
+    server_ice_ufrag_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, from._internal_server_ice_ufrag(), 
       GetArenaForAllocation());
   }
-  ::memcpy(&audio_ssrc_, &from.audio_ssrc_,
-    static_cast<size_t>(reinterpret_cast<char*>(&video_ssrc_) -
-    reinterpret_cast<char*>(&audio_ssrc_)) + sizeof(video_ssrc_));
+  server_ice_pwd_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  #ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+    server_ice_pwd_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+  #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  if (!from._internal_server_ice_pwd().empty()) {
+    server_ice_pwd_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, from._internal_server_ice_pwd(), 
+      GetArenaForAllocation());
+  }
+  server_dtls_fingerprint_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  #ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+    server_dtls_fingerprint_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+  #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  if (!from._internal_server_dtls_fingerprint().empty()) {
+    server_dtls_fingerprint_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, from._internal_server_dtls_fingerprint(), 
+      GetArenaForAllocation());
+  }
+  ::memcpy(&assigned_audio_ssrc_, &from.assigned_audio_ssrc_,
+    static_cast<size_t>(reinterpret_cast<char*>(&assigned_video_ssrc_) -
+    reinterpret_cast<char*>(&assigned_audio_ssrc_)) + sizeof(assigned_video_ssrc_));
   // @@protoc_insertion_point(copy_constructor:meeting.MediaAnswer)
 }
 
 inline void MediaAnswer::SharedCtor() {
-target_user_id_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+meeting_id_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
 #ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
-  target_user_id_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+  meeting_id_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
 #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
-sdp_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+server_ice_ufrag_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
 #ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
-  sdp_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+  server_ice_ufrag_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+#endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+server_ice_pwd_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+#ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  server_ice_pwd_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+#endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
+server_dtls_fingerprint_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+#ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
+  server_dtls_fingerprint_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
 #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
 ::memset(reinterpret_cast<char*>(this) + static_cast<size_t>(
-    reinterpret_cast<char*>(&audio_ssrc_) - reinterpret_cast<char*>(this)),
-    0, static_cast<size_t>(reinterpret_cast<char*>(&video_ssrc_) -
-    reinterpret_cast<char*>(&audio_ssrc_)) + sizeof(video_ssrc_));
+    reinterpret_cast<char*>(&assigned_audio_ssrc_) - reinterpret_cast<char*>(this)),
+    0, static_cast<size_t>(reinterpret_cast<char*>(&assigned_video_ssrc_) -
+    reinterpret_cast<char*>(&assigned_audio_ssrc_)) + sizeof(assigned_video_ssrc_));
 }
 
 MediaAnswer::~MediaAnswer() {
@@ -7218,8 +7449,10 @@ MediaAnswer::~MediaAnswer() {
 
 inline void MediaAnswer::SharedDtor() {
   GOOGLE_DCHECK(GetArenaForAllocation() == nullptr);
-  target_user_id_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
-  sdp_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  meeting_id_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  server_ice_ufrag_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  server_ice_pwd_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  server_dtls_fingerprint_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
 }
 
 void MediaAnswer::ArenaDtor(void* object) {
@@ -7238,11 +7471,14 @@ void MediaAnswer::Clear() {
   // Prevent compiler warnings about cached_has_bits being unused
   (void) cached_has_bits;
 
-  target_user_id_.ClearToEmpty();
-  sdp_.ClearToEmpty();
-  ::memset(&audio_ssrc_, 0, static_cast<size_t>(
-      reinterpret_cast<char*>(&video_ssrc_) -
-      reinterpret_cast<char*>(&audio_ssrc_)) + sizeof(video_ssrc_));
+  server_candidates_.Clear();
+  meeting_id_.ClearToEmpty();
+  server_ice_ufrag_.ClearToEmpty();
+  server_ice_pwd_.ClearToEmpty();
+  server_dtls_fingerprint_.ClearToEmpty();
+  ::memset(&assigned_audio_ssrc_, 0, static_cast<size_t>(
+      reinterpret_cast<char*>(&assigned_video_ssrc_) -
+      reinterpret_cast<char*>(&assigned_audio_ssrc_)) + sizeof(assigned_video_ssrc_));
   _internal_metadata_.Clear<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
 }
 
@@ -7252,38 +7488,73 @@ const char* MediaAnswer::_InternalParse(const char* ptr, ::PROTOBUF_NAMESPACE_ID
     uint32_t tag;
     ptr = ::PROTOBUF_NAMESPACE_ID::internal::ReadTag(ptr, &tag);
     switch (tag >> 3) {
-      // string target_user_id = 1;
+      // string meeting_id = 1;
       case 1:
         if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 10)) {
-          auto str = _internal_mutable_target_user_id();
+          auto str = _internal_mutable_meeting_id();
           ptr = ::PROTOBUF_NAMESPACE_ID::internal::InlineGreedyStringParser(str, ptr, ctx);
-          CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "meeting.MediaAnswer.target_user_id"));
+          CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "meeting.MediaAnswer.meeting_id"));
           CHK_(ptr);
         } else
           goto handle_unusual;
         continue;
-      // string sdp = 2;
+      // string server_ice_ufrag = 2;
       case 2:
         if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 18)) {
-          auto str = _internal_mutable_sdp();
+          auto str = _internal_mutable_server_ice_ufrag();
           ptr = ::PROTOBUF_NAMESPACE_ID::internal::InlineGreedyStringParser(str, ptr, ctx);
-          CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "meeting.MediaAnswer.sdp"));
+          CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "meeting.MediaAnswer.server_ice_ufrag"));
           CHK_(ptr);
         } else
           goto handle_unusual;
         continue;
-      // uint32 audio_ssrc = 3;
+      // string server_ice_pwd = 3;
       case 3:
-        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 24)) {
-          audio_ssrc_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint32(&ptr);
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 26)) {
+          auto str = _internal_mutable_server_ice_pwd();
+          ptr = ::PROTOBUF_NAMESPACE_ID::internal::InlineGreedyStringParser(str, ptr, ctx);
+          CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "meeting.MediaAnswer.server_ice_pwd"));
           CHK_(ptr);
         } else
           goto handle_unusual;
         continue;
-      // uint32 video_ssrc = 4;
+      // string server_dtls_fingerprint = 4;
       case 4:
-        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 32)) {
-          video_ssrc_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint32(&ptr);
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 34)) {
+          auto str = _internal_mutable_server_dtls_fingerprint();
+          ptr = ::PROTOBUF_NAMESPACE_ID::internal::InlineGreedyStringParser(str, ptr, ctx);
+          CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "meeting.MediaAnswer.server_dtls_fingerprint"));
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      // repeated string server_candidates = 5;
+      case 5:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 42)) {
+          ptr -= 1;
+          do {
+            ptr += 1;
+            auto str = _internal_add_server_candidates();
+            ptr = ::PROTOBUF_NAMESPACE_ID::internal::InlineGreedyStringParser(str, ptr, ctx);
+            CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "meeting.MediaAnswer.server_candidates"));
+            CHK_(ptr);
+            if (!ctx->DataAvailable(ptr)) break;
+          } while (::PROTOBUF_NAMESPACE_ID::internal::ExpectTag<42>(ptr));
+        } else
+          goto handle_unusual;
+        continue;
+      // uint32 assigned_audio_ssrc = 6;
+      case 6:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 48)) {
+          assigned_audio_ssrc_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint32(&ptr);
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      // uint32 assigned_video_ssrc = 7;
+      case 7:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 56)) {
+          assigned_video_ssrc_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint32(&ptr);
           CHK_(ptr);
         } else
           goto handle_unusual;
@@ -7317,36 +7588,66 @@ uint8_t* MediaAnswer::_InternalSerialize(
   uint32_t cached_has_bits = 0;
   (void) cached_has_bits;
 
-  // string target_user_id = 1;
-  if (!this->_internal_target_user_id().empty()) {
+  // string meeting_id = 1;
+  if (!this->_internal_meeting_id().empty()) {
     ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::VerifyUtf8String(
-      this->_internal_target_user_id().data(), static_cast<int>(this->_internal_target_user_id().length()),
+      this->_internal_meeting_id().data(), static_cast<int>(this->_internal_meeting_id().length()),
       ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::SERIALIZE,
-      "meeting.MediaAnswer.target_user_id");
+      "meeting.MediaAnswer.meeting_id");
     target = stream->WriteStringMaybeAliased(
-        1, this->_internal_target_user_id(), target);
+        1, this->_internal_meeting_id(), target);
   }
 
-  // string sdp = 2;
-  if (!this->_internal_sdp().empty()) {
+  // string server_ice_ufrag = 2;
+  if (!this->_internal_server_ice_ufrag().empty()) {
     ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::VerifyUtf8String(
-      this->_internal_sdp().data(), static_cast<int>(this->_internal_sdp().length()),
+      this->_internal_server_ice_ufrag().data(), static_cast<int>(this->_internal_server_ice_ufrag().length()),
       ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::SERIALIZE,
-      "meeting.MediaAnswer.sdp");
+      "meeting.MediaAnswer.server_ice_ufrag");
     target = stream->WriteStringMaybeAliased(
-        2, this->_internal_sdp(), target);
+        2, this->_internal_server_ice_ufrag(), target);
   }
 
-  // uint32 audio_ssrc = 3;
-  if (this->_internal_audio_ssrc() != 0) {
-    target = stream->EnsureSpace(target);
-    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::WriteUInt32ToArray(3, this->_internal_audio_ssrc(), target);
+  // string server_ice_pwd = 3;
+  if (!this->_internal_server_ice_pwd().empty()) {
+    ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::VerifyUtf8String(
+      this->_internal_server_ice_pwd().data(), static_cast<int>(this->_internal_server_ice_pwd().length()),
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::SERIALIZE,
+      "meeting.MediaAnswer.server_ice_pwd");
+    target = stream->WriteStringMaybeAliased(
+        3, this->_internal_server_ice_pwd(), target);
   }
 
-  // uint32 video_ssrc = 4;
-  if (this->_internal_video_ssrc() != 0) {
+  // string server_dtls_fingerprint = 4;
+  if (!this->_internal_server_dtls_fingerprint().empty()) {
+    ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::VerifyUtf8String(
+      this->_internal_server_dtls_fingerprint().data(), static_cast<int>(this->_internal_server_dtls_fingerprint().length()),
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::SERIALIZE,
+      "meeting.MediaAnswer.server_dtls_fingerprint");
+    target = stream->WriteStringMaybeAliased(
+        4, this->_internal_server_dtls_fingerprint(), target);
+  }
+
+  // repeated string server_candidates = 5;
+  for (int i = 0, n = this->_internal_server_candidates_size(); i < n; i++) {
+    const auto& s = this->_internal_server_candidates(i);
+    ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::VerifyUtf8String(
+      s.data(), static_cast<int>(s.length()),
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::SERIALIZE,
+      "meeting.MediaAnswer.server_candidates");
+    target = stream->WriteString(5, s, target);
+  }
+
+  // uint32 assigned_audio_ssrc = 6;
+  if (this->_internal_assigned_audio_ssrc() != 0) {
     target = stream->EnsureSpace(target);
-    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::WriteUInt32ToArray(4, this->_internal_video_ssrc(), target);
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::WriteUInt32ToArray(6, this->_internal_assigned_audio_ssrc(), target);
+  }
+
+  // uint32 assigned_video_ssrc = 7;
+  if (this->_internal_assigned_video_ssrc() != 0) {
+    target = stream->EnsureSpace(target);
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::WriteUInt32ToArray(7, this->_internal_assigned_video_ssrc(), target);
   }
 
   if (PROTOBUF_PREDICT_FALSE(_internal_metadata_.have_unknown_fields())) {
@@ -7365,28 +7666,50 @@ size_t MediaAnswer::ByteSizeLong() const {
   // Prevent compiler warnings about cached_has_bits being unused
   (void) cached_has_bits;
 
-  // string target_user_id = 1;
-  if (!this->_internal_target_user_id().empty()) {
+  // repeated string server_candidates = 5;
+  total_size += 1 *
+      ::PROTOBUF_NAMESPACE_ID::internal::FromIntSize(server_candidates_.size());
+  for (int i = 0, n = server_candidates_.size(); i < n; i++) {
+    total_size += ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::StringSize(
+      server_candidates_.Get(i));
+  }
+
+  // string meeting_id = 1;
+  if (!this->_internal_meeting_id().empty()) {
     total_size += 1 +
       ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::StringSize(
-        this->_internal_target_user_id());
+        this->_internal_meeting_id());
   }
 
-  // string sdp = 2;
-  if (!this->_internal_sdp().empty()) {
+  // string server_ice_ufrag = 2;
+  if (!this->_internal_server_ice_ufrag().empty()) {
     total_size += 1 +
       ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::StringSize(
-        this->_internal_sdp());
+        this->_internal_server_ice_ufrag());
   }
 
-  // uint32 audio_ssrc = 3;
-  if (this->_internal_audio_ssrc() != 0) {
-    total_size += ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::UInt32SizePlusOne(this->_internal_audio_ssrc());
+  // string server_ice_pwd = 3;
+  if (!this->_internal_server_ice_pwd().empty()) {
+    total_size += 1 +
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::StringSize(
+        this->_internal_server_ice_pwd());
   }
 
-  // uint32 video_ssrc = 4;
-  if (this->_internal_video_ssrc() != 0) {
-    total_size += ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::UInt32SizePlusOne(this->_internal_video_ssrc());
+  // string server_dtls_fingerprint = 4;
+  if (!this->_internal_server_dtls_fingerprint().empty()) {
+    total_size += 1 +
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::StringSize(
+        this->_internal_server_dtls_fingerprint());
+  }
+
+  // uint32 assigned_audio_ssrc = 6;
+  if (this->_internal_assigned_audio_ssrc() != 0) {
+    total_size += ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::UInt32SizePlusOne(this->_internal_assigned_audio_ssrc());
+  }
+
+  // uint32 assigned_video_ssrc = 7;
+  if (this->_internal_assigned_video_ssrc() != 0) {
+    total_size += ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::UInt32SizePlusOne(this->_internal_assigned_video_ssrc());
   }
 
   return MaybeComputeUnknownFieldsSize(total_size, &_cached_size_);
@@ -7411,17 +7734,24 @@ void MediaAnswer::MergeFrom(const MediaAnswer& from) {
   uint32_t cached_has_bits = 0;
   (void) cached_has_bits;
 
-  if (!from._internal_target_user_id().empty()) {
-    _internal_set_target_user_id(from._internal_target_user_id());
+  server_candidates_.MergeFrom(from.server_candidates_);
+  if (!from._internal_meeting_id().empty()) {
+    _internal_set_meeting_id(from._internal_meeting_id());
   }
-  if (!from._internal_sdp().empty()) {
-    _internal_set_sdp(from._internal_sdp());
+  if (!from._internal_server_ice_ufrag().empty()) {
+    _internal_set_server_ice_ufrag(from._internal_server_ice_ufrag());
   }
-  if (from._internal_audio_ssrc() != 0) {
-    _internal_set_audio_ssrc(from._internal_audio_ssrc());
+  if (!from._internal_server_ice_pwd().empty()) {
+    _internal_set_server_ice_pwd(from._internal_server_ice_pwd());
   }
-  if (from._internal_video_ssrc() != 0) {
-    _internal_set_video_ssrc(from._internal_video_ssrc());
+  if (!from._internal_server_dtls_fingerprint().empty()) {
+    _internal_set_server_dtls_fingerprint(from._internal_server_dtls_fingerprint());
+  }
+  if (from._internal_assigned_audio_ssrc() != 0) {
+    _internal_set_assigned_audio_ssrc(from._internal_assigned_audio_ssrc());
+  }
+  if (from._internal_assigned_video_ssrc() != 0) {
+    _internal_set_assigned_video_ssrc(from._internal_assigned_video_ssrc());
   }
   _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
 }
@@ -7442,22 +7772,33 @@ void MediaAnswer::InternalSwap(MediaAnswer* other) {
   auto* lhs_arena = GetArenaForAllocation();
   auto* rhs_arena = other->GetArenaForAllocation();
   _internal_metadata_.InternalSwap(&other->_internal_metadata_);
+  server_candidates_.InternalSwap(&other->server_candidates_);
   ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::InternalSwap(
       &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
-      &target_user_id_, lhs_arena,
-      &other->target_user_id_, rhs_arena
+      &meeting_id_, lhs_arena,
+      &other->meeting_id_, rhs_arena
   );
   ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::InternalSwap(
       &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
-      &sdp_, lhs_arena,
-      &other->sdp_, rhs_arena
+      &server_ice_ufrag_, lhs_arena,
+      &other->server_ice_ufrag_, rhs_arena
+  );
+  ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::InternalSwap(
+      &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
+      &server_ice_pwd_, lhs_arena,
+      &other->server_ice_pwd_, rhs_arena
+  );
+  ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::InternalSwap(
+      &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
+      &server_dtls_fingerprint_, lhs_arena,
+      &other->server_dtls_fingerprint_, rhs_arena
   );
   ::PROTOBUF_NAMESPACE_ID::internal::memswap<
-      PROTOBUF_FIELD_OFFSET(MediaAnswer, video_ssrc_)
-      + sizeof(MediaAnswer::video_ssrc_)
-      - PROTOBUF_FIELD_OFFSET(MediaAnswer, audio_ssrc_)>(
-          reinterpret_cast<char*>(&audio_ssrc_),
-          reinterpret_cast<char*>(&other->audio_ssrc_));
+      PROTOBUF_FIELD_OFFSET(MediaAnswer, assigned_video_ssrc_)
+      + sizeof(MediaAnswer::assigned_video_ssrc_)
+      - PROTOBUF_FIELD_OFFSET(MediaAnswer, assigned_audio_ssrc_)>(
+          reinterpret_cast<char*>(&assigned_audio_ssrc_),
+          reinterpret_cast<char*>(&other->assigned_audio_ssrc_));
 }
 
 ::PROTOBUF_NAMESPACE_ID::Metadata MediaAnswer::GetMetadata() const {
@@ -7484,12 +7825,12 @@ MediaIceCandidate::MediaIceCandidate(::PROTOBUF_NAMESPACE_ID::Arena* arena,
 MediaIceCandidate::MediaIceCandidate(const MediaIceCandidate& from)
   : ::PROTOBUF_NAMESPACE_ID::Message() {
   _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
-  target_user_id_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  meeting_id_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
   #ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
-    target_user_id_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+    meeting_id_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
   #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
-  if (!from._internal_target_user_id().empty()) {
-    target_user_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, from._internal_target_user_id(), 
+  if (!from._internal_meeting_id().empty()) {
+    meeting_id_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, from._internal_meeting_id(), 
       GetArenaForAllocation());
   }
   candidate_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
@@ -7508,14 +7849,16 @@ MediaIceCandidate::MediaIceCandidate(const MediaIceCandidate& from)
     sdp_mid_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, from._internal_sdp_mid(), 
       GetArenaForAllocation());
   }
-  sdp_mline_index_ = from.sdp_mline_index_;
+  ::memcpy(&sdp_mline_index_, &from.sdp_mline_index_,
+    static_cast<size_t>(reinterpret_cast<char*>(&end_of_candidates_) -
+    reinterpret_cast<char*>(&sdp_mline_index_)) + sizeof(end_of_candidates_));
   // @@protoc_insertion_point(copy_constructor:meeting.MediaIceCandidate)
 }
 
 inline void MediaIceCandidate::SharedCtor() {
-target_user_id_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+meeting_id_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
 #ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
-  target_user_id_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
+  meeting_id_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
 #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
 candidate_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
 #ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
@@ -7525,7 +7868,10 @@ sdp_mid_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlre
 #ifdef PROTOBUF_FORCE_COPY_DEFAULT_STRING
   sdp_mid_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), "", GetArenaForAllocation());
 #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
-sdp_mline_index_ = 0;
+::memset(reinterpret_cast<char*>(this) + static_cast<size_t>(
+    reinterpret_cast<char*>(&sdp_mline_index_) - reinterpret_cast<char*>(this)),
+    0, static_cast<size_t>(reinterpret_cast<char*>(&end_of_candidates_) -
+    reinterpret_cast<char*>(&sdp_mline_index_)) + sizeof(end_of_candidates_));
 }
 
 MediaIceCandidate::~MediaIceCandidate() {
@@ -7537,7 +7883,7 @@ MediaIceCandidate::~MediaIceCandidate() {
 
 inline void MediaIceCandidate::SharedDtor() {
   GOOGLE_DCHECK(GetArenaForAllocation() == nullptr);
-  target_user_id_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  meeting_id_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
   candidate_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
   sdp_mid_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
 }
@@ -7558,10 +7904,12 @@ void MediaIceCandidate::Clear() {
   // Prevent compiler warnings about cached_has_bits being unused
   (void) cached_has_bits;
 
-  target_user_id_.ClearToEmpty();
+  meeting_id_.ClearToEmpty();
   candidate_.ClearToEmpty();
   sdp_mid_.ClearToEmpty();
-  sdp_mline_index_ = 0;
+  ::memset(&sdp_mline_index_, 0, static_cast<size_t>(
+      reinterpret_cast<char*>(&end_of_candidates_) -
+      reinterpret_cast<char*>(&sdp_mline_index_)) + sizeof(end_of_candidates_));
   _internal_metadata_.Clear<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
 }
 
@@ -7571,12 +7919,12 @@ const char* MediaIceCandidate::_InternalParse(const char* ptr, ::PROTOBUF_NAMESP
     uint32_t tag;
     ptr = ::PROTOBUF_NAMESPACE_ID::internal::ReadTag(ptr, &tag);
     switch (tag >> 3) {
-      // string target_user_id = 1;
+      // string meeting_id = 1;
       case 1:
         if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 10)) {
-          auto str = _internal_mutable_target_user_id();
+          auto str = _internal_mutable_meeting_id();
           ptr = ::PROTOBUF_NAMESPACE_ID::internal::InlineGreedyStringParser(str, ptr, ctx);
-          CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "meeting.MediaIceCandidate.target_user_id"));
+          CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "meeting.MediaIceCandidate.meeting_id"));
           CHK_(ptr);
         } else
           goto handle_unusual;
@@ -7605,6 +7953,14 @@ const char* MediaIceCandidate::_InternalParse(const char* ptr, ::PROTOBUF_NAMESP
       case 4:
         if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 32)) {
           sdp_mline_index_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint32(&ptr);
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      // bool end_of_candidates = 5;
+      case 5:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 40)) {
+          end_of_candidates_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint64(&ptr);
           CHK_(ptr);
         } else
           goto handle_unusual;
@@ -7638,14 +7994,14 @@ uint8_t* MediaIceCandidate::_InternalSerialize(
   uint32_t cached_has_bits = 0;
   (void) cached_has_bits;
 
-  // string target_user_id = 1;
-  if (!this->_internal_target_user_id().empty()) {
+  // string meeting_id = 1;
+  if (!this->_internal_meeting_id().empty()) {
     ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::VerifyUtf8String(
-      this->_internal_target_user_id().data(), static_cast<int>(this->_internal_target_user_id().length()),
+      this->_internal_meeting_id().data(), static_cast<int>(this->_internal_meeting_id().length()),
       ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::SERIALIZE,
-      "meeting.MediaIceCandidate.target_user_id");
+      "meeting.MediaIceCandidate.meeting_id");
     target = stream->WriteStringMaybeAliased(
-        1, this->_internal_target_user_id(), target);
+        1, this->_internal_meeting_id(), target);
   }
 
   // string candidate = 2;
@@ -7674,6 +8030,12 @@ uint8_t* MediaIceCandidate::_InternalSerialize(
     target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::WriteInt32ToArray(4, this->_internal_sdp_mline_index(), target);
   }
 
+  // bool end_of_candidates = 5;
+  if (this->_internal_end_of_candidates() != 0) {
+    target = stream->EnsureSpace(target);
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::WriteBoolToArray(5, this->_internal_end_of_candidates(), target);
+  }
+
   if (PROTOBUF_PREDICT_FALSE(_internal_metadata_.have_unknown_fields())) {
     target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormat::InternalSerializeUnknownFieldsToArray(
         _internal_metadata_.unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(::PROTOBUF_NAMESPACE_ID::UnknownFieldSet::default_instance), target, stream);
@@ -7690,11 +8052,11 @@ size_t MediaIceCandidate::ByteSizeLong() const {
   // Prevent compiler warnings about cached_has_bits being unused
   (void) cached_has_bits;
 
-  // string target_user_id = 1;
-  if (!this->_internal_target_user_id().empty()) {
+  // string meeting_id = 1;
+  if (!this->_internal_meeting_id().empty()) {
     total_size += 1 +
       ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::StringSize(
-        this->_internal_target_user_id());
+        this->_internal_meeting_id());
   }
 
   // string candidate = 2;
@@ -7714,6 +8076,11 @@ size_t MediaIceCandidate::ByteSizeLong() const {
   // int32 sdp_mline_index = 4;
   if (this->_internal_sdp_mline_index() != 0) {
     total_size += ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::Int32SizePlusOne(this->_internal_sdp_mline_index());
+  }
+
+  // bool end_of_candidates = 5;
+  if (this->_internal_end_of_candidates() != 0) {
+    total_size += 1 + 1;
   }
 
   return MaybeComputeUnknownFieldsSize(total_size, &_cached_size_);
@@ -7738,8 +8105,8 @@ void MediaIceCandidate::MergeFrom(const MediaIceCandidate& from) {
   uint32_t cached_has_bits = 0;
   (void) cached_has_bits;
 
-  if (!from._internal_target_user_id().empty()) {
-    _internal_set_target_user_id(from._internal_target_user_id());
+  if (!from._internal_meeting_id().empty()) {
+    _internal_set_meeting_id(from._internal_meeting_id());
   }
   if (!from._internal_candidate().empty()) {
     _internal_set_candidate(from._internal_candidate());
@@ -7749,6 +8116,9 @@ void MediaIceCandidate::MergeFrom(const MediaIceCandidate& from) {
   }
   if (from._internal_sdp_mline_index() != 0) {
     _internal_set_sdp_mline_index(from._internal_sdp_mline_index());
+  }
+  if (from._internal_end_of_candidates() != 0) {
+    _internal_set_end_of_candidates(from._internal_end_of_candidates());
   }
   _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
 }
@@ -7771,8 +8141,8 @@ void MediaIceCandidate::InternalSwap(MediaIceCandidate* other) {
   _internal_metadata_.InternalSwap(&other->_internal_metadata_);
   ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::InternalSwap(
       &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
-      &target_user_id_, lhs_arena,
-      &other->target_user_id_, rhs_arena
+      &meeting_id_, lhs_arena,
+      &other->meeting_id_, rhs_arena
   );
   ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::InternalSwap(
       &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
@@ -7784,7 +8154,12 @@ void MediaIceCandidate::InternalSwap(MediaIceCandidate* other) {
       &sdp_mid_, lhs_arena,
       &other->sdp_mid_, rhs_arena
   );
-  swap(sdp_mline_index_, other->sdp_mline_index_);
+  ::PROTOBUF_NAMESPACE_ID::internal::memswap<
+      PROTOBUF_FIELD_OFFSET(MediaIceCandidate, end_of_candidates_)
+      + sizeof(MediaIceCandidate::end_of_candidates_)
+      - PROTOBUF_FIELD_OFFSET(MediaIceCandidate, sdp_mline_index_)>(
+          reinterpret_cast<char*>(&sdp_mline_index_),
+          reinterpret_cast<char*>(&other->sdp_mline_index_));
 }
 
 ::PROTOBUF_NAMESPACE_ID::Metadata MediaIceCandidate::GetMetadata() const {

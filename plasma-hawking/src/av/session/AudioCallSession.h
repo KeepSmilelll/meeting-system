@@ -8,11 +8,13 @@
 #include "av/process/NoiseSuppressor.h"
 #include "av/render/AudioPlayer.h"
 #include "net/media/BandwidthEstimator.h"
+#include "net/media/DtlsTransportClient.h"
 #include "net/media/JitterBuffer.h"
 #include "net/media/RTCPHandler.h"
 #include "net/media/RTPReceiver.h"
 #include "net/media/RTPSender.h"
 #include "net/media/UdpPeerSocket.h"
+#include "security/SRTPContext.h"
 
 #include <atomic>
 #include <chrono>
@@ -21,6 +23,8 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <vector>
+#include <QByteArray>
 #include <QString>
 #include <QMutex>
 #include <QWaitCondition>
@@ -60,6 +64,13 @@ public:
     QString preferredOutputDeviceName() const;
 
     void setPeer(const std::string& address, uint16_t port);
+    void setAudioSsrc(uint32_t ssrc);
+    QString prepareDtlsFingerprint();
+    bool startDtlsSrtp(const QString& serverFingerprint);
+    bool iceConnected() const;
+    bool dtlsConnected() const;
+    bool srtpReady() const;
+    bool sendTransportProbe(const std::vector<uint8_t>& packet);
     uint16_t localPort() const;
     uint32_t audioSsrc() const;
     uint32_t lastRttMs() const;
@@ -91,6 +102,13 @@ private:
     bool sendSenderReportLocked(const media::UdpEndpoint& peer, uint32_t rtpTimestamp);
     bool sendReceiverReportLocked(const media::UdpEndpoint& peer, uint32_t remoteSsrc, uint32_t lastSenderReport, uint32_t delaySinceLastSenderReport);
     bool handleRtcpPacketLocked(const uint8_t* data, std::size_t len, const media::UdpEndpoint& from);
+    bool handleDtlsPacketLocked(const uint8_t* data, std::size_t len, const media::UdpEndpoint& from);
+    bool sendCachedDtlsHandshakeLocked(const media::UdpEndpoint& peer);
+    bool configureSrtpLocked();
+    bool protectRtpLocked(std::vector<uint8_t>* packet);
+    bool protectRtcpLocked(std::vector<uint8_t>* packet);
+    bool unprotectRtpLocked(std::vector<uint8_t>* packet);
+    bool unprotectRtcpLocked(std::vector<uint8_t>* packet);
     static uint64_t currentNtpTimestamp();
     static uint32_t compactNtpFromTimestamp(uint64_t ntpTimestamp);
     static uint32_t compactNtpFromElapsed(std::chrono::steady_clock::duration elapsed);
@@ -125,8 +143,17 @@ private:
     std::atomic<uint32_t> m_receivedPacketCount{0};
     std::atomic<uint32_t> m_sentPacketCount{0};
     std::atomic<uint32_t> m_sentOctetCount{0};
+    std::atomic<bool> m_dtlsStarted{false};
+    std::atomic<bool> m_iceConnected{false};
+    std::atomic<bool> m_dtlsConnected{false};
+    std::atomic<bool> m_srtpReady{false};
 
     media::UdpPeerSocket m_mediaSocket;
+    media::DtlsTransportClient m_dtlsTransport;
+    std::vector<QByteArray> m_dtlsHandshakePackets;
+    std::chrono::steady_clock::time_point m_lastDtlsHandshakeSendAt{};
+    security::SRTPContext m_inboundSrtp;
+    security::SRTPContext m_outboundSrtp;
     SenderReportLedger m_localSenderReport{};
     SenderReportLedger m_remoteSenderReport{};
 };

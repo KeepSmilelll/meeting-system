@@ -12,6 +12,8 @@ Rectangle {
     required property bool audioOn
     required property bool videoOn
     required property bool sharing
+    property int audioSsrc: 0
+    property int videoSsrc: 0
 
     readonly property bool hasController: root.controller !== null && root.controller !== undefined
     readonly property bool localUser: root.hasController && userId === root.controller.userId
@@ -22,13 +24,22 @@ Rectangle {
                                                       && !root.controller.hasActiveShare
                                                       && remoteUser
                                                       && (userId === root.controller.activeVideoPeerUserId)
-    readonly property bool showLiveFrame: activeShareSelected || activeRemoteVideoSelected
+    readonly property bool activeLocalCameraPreview: localUser && videoOn && !sharing
+    readonly property bool remoteVideoAvailable: root.hasController
+                                                 && !root.controller.hasActiveShare
+                                                 && remoteUser
+                                                 && videoOn
+                                                 && root.remoteVideoSource() !== null
+    readonly property bool showLiveFrame: activeShareSelected || remoteVideoAvailable || activeLocalCameraPreview
     readonly property bool shareFocusable: remoteUser && sharing && !selected
     property int frameSourceRevision: 0
 
     Connections {
         target: root.hasController ? root.controller : null
         function onRemoteVideoFrameSourceChanged() {
+            root.frameSourceRevision += 1
+        }
+        function onLocalVideoFrameSourceChanged() {
             root.frameSourceRevision += 1
         }
     }
@@ -74,9 +85,11 @@ Rectangle {
             anchors.margins: 1
             frameSource: (!root.hasController || !root.showLiveFrame)
                         ? null
+                        : (root.activeLocalCameraPreview
+                        ? root.controller.localVideoFrameSource
                         : (root.activeShareSelected
                         ? root.controller.remoteScreenFrameSource
-                        : root.remoteVideoSource())
+                        : root.remoteVideoSource()))
             visible: root.showLiveFrame
         }
 

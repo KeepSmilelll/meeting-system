@@ -47,8 +47,13 @@ var (
 type Client interface {
 	CreateRoom(ctx context.Context, req *pb.CreateRoomReq) (*pb.CreateRoomRsp, error)
 	DestroyRoom(ctx context.Context, req *pb.DestroyRoomReq) (*pb.DestroyRoomRsp, error)
+	SetupTransport(ctx context.Context, req *pb.SetupTransportReq) (*pb.SetupTransportRsp, error)
+	TrickleIceCandidate(ctx context.Context, req *pb.TrickleIceCandidateReq) (*pb.TrickleIceCandidateRsp, error)
+	CloseTransport(ctx context.Context, req *pb.CloseTransportReq) (*pb.CloseTransportRsp, error)
 	AddPublisher(ctx context.Context, req *pb.AddPublisherReq) (*pb.AddPublisherRsp, error)
+	AddSubscriber(ctx context.Context, req *pb.AddSubscriberReq) (*pb.AddSubscriberRsp, error)
 	RemovePublisher(ctx context.Context, req *pb.RemovePublisherReq) (*pb.RemovePublisherRsp, error)
+	RemoveSubscriber(ctx context.Context, req *pb.RemoveSubscriberReq) (*pb.RemoveSubscriberRsp, error)
 	GetNodeStatus(ctx context.Context, req *pb.GetNodeStatusReq) (*pb.GetNodeStatusRsp, error)
 }
 
@@ -108,12 +113,32 @@ func (disabledClient) DestroyRoom(context.Context, *pb.DestroyRoomReq) (*pb.Dest
 	return &pb.DestroyRoomRsp{Success: false}, ErrDisabled
 }
 
+func (disabledClient) SetupTransport(context.Context, *pb.SetupTransportReq) (*pb.SetupTransportRsp, error) {
+	return &pb.SetupTransportRsp{Success: false}, ErrDisabled
+}
+
+func (disabledClient) TrickleIceCandidate(context.Context, *pb.TrickleIceCandidateReq) (*pb.TrickleIceCandidateRsp, error) {
+	return &pb.TrickleIceCandidateRsp{Success: false}, ErrDisabled
+}
+
+func (disabledClient) CloseTransport(context.Context, *pb.CloseTransportReq) (*pb.CloseTransportRsp, error) {
+	return &pb.CloseTransportRsp{Success: false}, ErrDisabled
+}
+
 func (disabledClient) AddPublisher(context.Context, *pb.AddPublisherReq) (*pb.AddPublisherRsp, error) {
 	return &pb.AddPublisherRsp{Success: false}, ErrDisabled
 }
 
+func (disabledClient) AddSubscriber(context.Context, *pb.AddSubscriberReq) (*pb.AddSubscriberRsp, error) {
+	return &pb.AddSubscriberRsp{Success: false}, ErrDisabled
+}
+
 func (disabledClient) RemovePublisher(context.Context, *pb.RemovePublisherReq) (*pb.RemovePublisherRsp, error) {
 	return &pb.RemovePublisherRsp{Success: false}, ErrDisabled
+}
+
+func (disabledClient) RemoveSubscriber(context.Context, *pb.RemoveSubscriberReq) (*pb.RemoveSubscriberRsp, error) {
+	return &pb.RemoveSubscriberRsp{Success: false}, ErrDisabled
 }
 
 func (disabledClient) GetNodeStatus(context.Context, *pb.GetNodeStatusReq) (*pb.GetNodeStatusRsp, error) {
@@ -135,6 +160,11 @@ const (
 	methodGetNodeStatus    rpcMethod = 5
 	methodReportNodeStatus rpcMethod = 6
 	methodQualityReport    rpcMethod = 7
+	methodSetupTransport   rpcMethod = 8
+	methodTrickleIce       rpcMethod = 9
+	methodCloseTransport   rpcMethod = 10
+	methodAddSubscriber    rpcMethod = 11
+	methodRemoveSubscriber rpcMethod = 12
 )
 
 type wireHeader struct {
@@ -160,6 +190,30 @@ func (c *tcpClient) DestroyRoom(ctx context.Context, req *pb.DestroyRoomReq) (*p
 	return rsp, nil
 }
 
+func (c *tcpClient) SetupTransport(ctx context.Context, req *pb.SetupTransportReq) (*pb.SetupTransportRsp, error) {
+	rsp := &pb.SetupTransportRsp{}
+	if err := c.call(ctx, methodSetupTransport, req, rsp); err != nil {
+		return rsp, err
+	}
+	return rsp, nil
+}
+
+func (c *tcpClient) TrickleIceCandidate(ctx context.Context, req *pb.TrickleIceCandidateReq) (*pb.TrickleIceCandidateRsp, error) {
+	rsp := &pb.TrickleIceCandidateRsp{}
+	if err := c.call(ctx, methodTrickleIce, req, rsp); err != nil {
+		return rsp, err
+	}
+	return rsp, nil
+}
+
+func (c *tcpClient) CloseTransport(ctx context.Context, req *pb.CloseTransportReq) (*pb.CloseTransportRsp, error) {
+	rsp := &pb.CloseTransportRsp{}
+	if err := c.call(ctx, methodCloseTransport, req, rsp); err != nil {
+		return rsp, err
+	}
+	return rsp, nil
+}
+
 func (c *tcpClient) AddPublisher(ctx context.Context, req *pb.AddPublisherReq) (*pb.AddPublisherRsp, error) {
 	rsp := &pb.AddPublisherRsp{}
 	if err := c.call(ctx, methodAddPublisher, req, rsp); err != nil {
@@ -168,9 +222,25 @@ func (c *tcpClient) AddPublisher(ctx context.Context, req *pb.AddPublisherReq) (
 	return rsp, nil
 }
 
+func (c *tcpClient) AddSubscriber(ctx context.Context, req *pb.AddSubscriberReq) (*pb.AddSubscriberRsp, error) {
+	rsp := &pb.AddSubscriberRsp{}
+	if err := c.call(ctx, methodAddSubscriber, req, rsp); err != nil {
+		return rsp, err
+	}
+	return rsp, nil
+}
+
 func (c *tcpClient) RemovePublisher(ctx context.Context, req *pb.RemovePublisherReq) (*pb.RemovePublisherRsp, error) {
 	rsp := &pb.RemovePublisherRsp{}
 	if err := c.call(ctx, methodRemovePublisher, req, rsp); err != nil {
+		return rsp, err
+	}
+	return rsp, nil
+}
+
+func (c *tcpClient) RemoveSubscriber(ctx context.Context, req *pb.RemoveSubscriberReq) (*pb.RemoveSubscriberRsp, error) {
+	rsp := &pb.RemoveSubscriberRsp{}
+	if err := c.call(ctx, methodRemoveSubscriber, req, rsp); err != nil {
 		return rsp, err
 	}
 	return rsp, nil

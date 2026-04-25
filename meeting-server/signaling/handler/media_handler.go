@@ -34,9 +34,8 @@ type MediaHandler struct {
 	routeStatusSweep time.Time
 }
 
-type mediaDescription struct {
-	AudioSSRC uint32 `json:"audio_ssrc"`
-	VideoSSRC uint32 `json:"video_ssrc"`
+type participantMediaSsrcStore interface {
+	SetParticipantMediaSsrc(meetingID, userID string, audioSsrc, videoSsrc uint32) error
 }
 
 type meetingRecoveryLock struct {
@@ -97,15 +96,24 @@ func NewMediaHandler(cfg config.Config, sessions *server.SessionManager, meeting
 }
 
 func (h *MediaHandler) HandleOffer(session *server.Session, payload []byte) {
-	h.forward(session, payload, protocol.MediaOffer)
+	var req protocol.MediaOfferBody
+	if decodeProto(payload, &req) && req.GetMeetingId() != "" {
+		h.handleTransportOffer(session, &req)
+	}
 }
 
 func (h *MediaHandler) HandleAnswer(session *server.Session, payload []byte) {
-	h.forward(session, payload, protocol.MediaAnswer)
+	var req protocol.MediaAnswerBody
+	if decodeProto(payload, &req) && req.GetMeetingId() != "" {
+		return
+	}
 }
 
 func (h *MediaHandler) HandleIceCandidate(session *server.Session, payload []byte) {
-	h.forward(session, payload, protocol.MediaIceCandidate)
+	var req protocol.MediaIceCandidateBody
+	if decodeProto(payload, &req) && req.GetMeetingId() != "" {
+		h.handleTransportIceCandidate(session, &req)
+	}
 }
 
 func (h *MediaHandler) HandleMuteToggle(session *server.Session, payload []byte) {
@@ -136,100 +144,79 @@ func (h *MediaHandler) HandleScreenShare(session *server.Session, payload []byte
 	h.broadcastMeetingStateSync(session.MeetingID())
 }
 
-func (h *MediaHandler) forward(session *server.Session, payload []byte, msgType protocol.SignalType) {
-	if h == nil || h.sessions == nil || session == nil {
+func (h *MediaHandler) handleTransportOffer(session *server.Session, req *protocol.MediaOfferBody) {
+	if h == nil || h.sfuClient == nil || session == nil || req == nil {
 		return
 	}
-	if session.MeetingID() == "" || session.UserID() == "" {
+	if session.MeetingID() == "" || session.UserID() == "" || req.GetMeetingId() != session.MeetingID() {
 		return
 	}
-
-	var (
-		targetUserID string
-		sdp          string
-		audioSsrc    uint32
-		videoSsrc    uint32
-	)
-
-	switch msgType {
-	case protocol.MediaOffer:
-		var req protocol.MediaOfferBody
-		if !decodeProto(payload, &req) || req.TargetUserId == "" {
-			return
-		}
-		targetUserID = req.TargetUserId
-		sdp = req.Sdp
-		audioSsrc = req.GetAudioSsrc()
-		videoSsrc = req.GetVideoSsrc()
-	case protocol.MediaAnswer:
-		var req protocol.MediaAnswerBody
-		if !decodeProto(payload, &req) || req.TargetUserId == "" {
-			return
-		}
-		targetUserID = req.TargetUserId
-		sdp = req.Sdp
-		audioSsrc = req.GetAudioSsrc()
-		videoSsrc = req.GetVideoSsrc()
-	case protocol.MediaIceCandidate:
-		var req protocol.MediaIceCandidateBody
-		if !decodeProto(payload, &req) || req.TargetUserId == "" {
-			return
-		}
-		targetUserID = req.TargetUserId
-	default:
+	if req.GetClientIceUfrag() == "" || req.GetClientIcePwd() == "" || req.GetClientDtlsFingerprint() == "" {
 		return
 	}
 
-	if targetUserID == session.UserID() {
+	rsp, err := h.sfuClient.SetupTransport(context.Background(), &pb.SetupTransportReq{
+		MeetingId:             session.MeetingID(),
+		UserId:                session.UserID(),
+		PublishAudio:          req.GetPublishAudio(),
+		PublishVideo:          req.GetPublishVideo(),
+		ClientIceUfrag:        req.GetClientIceUfrag(),
+		ClientIcePwd:          req.GetClientIcePwd(),
+		ClientDtlsFingerprint: req.GetClientDtlsFingerprint(),
+		ClientCandidates:      append([]string(nil), req.GetClientCandidates()...),
+	})
+	if errors.Is(err, signalingSfu.ErrDisabled) || err != nil || rsp == nil || !rsp.GetSuccess() {
 		return
 	}
 
-	frame := protocol.EncodeFrame(msgType, payload)
-	audioSsrc, videoSsrc = resolveMediaSsrcs(sdp, audioSsrc, videoSsrc)
-	h.registerPublisher(session, audioSsrc, videoSsrc)
-
-	if target, ok := h.sessions.GetByUser(targetUserID); ok && target != nil {
-		if target.MeetingID() != session.MeetingID() || target.State() != server.StateInMeeting {
-			return
-		}
-		_ = target.SendRaw(frame)
-		return
-	}
-
-	if h.sessionStore == nil || h.directBus == nil {
-		return
-	}
-
-	presence, err := h.sessionStore.Get(context.Background(), targetUserID)
-	if err != nil || presence == nil {
-		return
-	}
-	if presence.NodeID == "" || presence.NodeID == h.cfg.NodeID {
-		return
-	}
-	if presence.MeetingID != session.MeetingID() || presence.Status != int32(server.StateInMeeting) {
-		return
-	}
-
-	_ = h.directBus.PublishUserFrame(context.Background(), presence.NodeID, targetUserID, presence.SessionID, frame)
+	_ = session.Send(protocol.MediaAnswer, &protocol.MediaAnswerBody{
+		MeetingId:             session.MeetingID(),
+		ServerIceUfrag:        rsp.GetServerIceUfrag(),
+		ServerIcePwd:          rsp.GetServerIcePwd(),
+		ServerDtlsFingerprint: rsp.GetServerDtlsFingerprint(),
+		ServerCandidates:      append([]string(nil), rsp.GetServerCandidates()...),
+		AssignedAudioSsrc:     rsp.GetAssignedAudioSsrc(),
+		AssignedVideoSsrc:     rsp.GetAssignedVideoSsrc(),
+	})
+	h.recordParticipantMediaSsrc(context.Background(),
+		session.MeetingID(),
+		session.UserID(),
+		rsp.GetAssignedAudioSsrc(),
+		rsp.GetAssignedVideoSsrc())
+	h.broadcastMeetingStateSync(session.MeetingID())
 }
 
-func resolveMediaSsrcs(sdp string, audioSsrc, videoSsrc uint32) (uint32, uint32) {
-	if (audioSsrc != 0 || videoSsrc != 0) || sdp == "" {
-		return audioSsrc, videoSsrc
+func (h *MediaHandler) recordParticipantMediaSsrc(ctx context.Context, meetingID, userID string, audioSsrc, videoSsrc uint32) {
+	if h == nil || meetingID == "" || userID == "" || (audioSsrc == 0 && videoSsrc == 0) {
+		return
+	}
+	if h.roomState != nil {
+		_ = h.roomState.SetParticipantMediaSsrc(ctx, meetingID, userID, audioSsrc, videoSsrc)
+	}
+	if storeWithSsrc, ok := h.meetingStore.(participantMediaSsrcStore); ok {
+		_ = storeWithSsrc.SetParticipantMediaSsrc(meetingID, userID, audioSsrc, videoSsrc)
+	}
+}
+
+func (h *MediaHandler) handleTransportIceCandidate(session *server.Session, req *protocol.MediaIceCandidateBody) {
+	if h == nil || h.sfuClient == nil || session == nil || req == nil {
+		return
+	}
+	if session.MeetingID() == "" || session.UserID() == "" || req.GetMeetingId() != session.MeetingID() {
+		return
 	}
 
-	var desc mediaDescription
-	if err := json.Unmarshal([]byte(sdp), &desc); err != nil {
-		return audioSsrc, videoSsrc
+	_, err := h.sfuClient.TrickleIceCandidate(context.Background(), &pb.TrickleIceCandidateReq{
+		MeetingId:       session.MeetingID(),
+		UserId:          session.UserID(),
+		Candidate:       req.GetCandidate(),
+		SdpMid:          req.GetSdpMid(),
+		SdpMlineIndex:   req.GetSdpMlineIndex(),
+		EndOfCandidates: req.GetEndOfCandidates(),
+	})
+	if errors.Is(err, signalingSfu.ErrDisabled) {
+		return
 	}
-	if audioSsrc == 0 {
-		audioSsrc = desc.AudioSSRC
-	}
-	if videoSsrc == 0 {
-		videoSsrc = desc.VideoSSRC
-	}
-	return audioSsrc, videoSsrc
 }
 
 func (h *MediaHandler) registerPublisher(session *server.Session, audioSsrc, videoSsrc uint32) {
@@ -253,7 +240,6 @@ func (h *MediaHandler) registerPublisher(session *server.Session, audioSsrc, vid
 	}
 	if err != nil || rsp == nil || !rsp.GetSuccess() {
 		_ = h.recoverPublisherRoute(ctx, session, req)
-		return
 	}
 }
 
@@ -697,9 +683,9 @@ func (h *MediaHandler) broadcastMeetingStateSync(meetingID string) {
 	participants = h.roomState.HydrateParticipants(context.Background(), meetingID, participants)
 
 	h.sessions.BroadcastToRoom(meetingID, protocol.MeetStateSync, &protocol.MeetStateSyncNotifyBody{
-		MeetingId:    meeting.ID,
-		Title:        meeting.Title,
-		HostId:       meeting.HostUserID,
-		Participants: participants,
+		MeetingId:    validProtoString(meeting.ID),
+		Title:        validProtoString(meeting.Title),
+		HostId:       validProtoString(meeting.HostUserID),
+		Participants: cloneParticipants(participants),
 	}, "")
 }

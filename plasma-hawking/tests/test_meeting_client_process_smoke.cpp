@@ -2,6 +2,7 @@
 #include <algorithm>
 
 #include <functional>
+#include <vector>
 
 #include <QCoreApplication>
 #include <QDir>
@@ -19,15 +20,30 @@
 #include <QTemporaryDir>
 #include <QTcpServer>
 #include <QTcpSocket>
+#include <QUdpSocket>
 #include <QThread>
 #if defined(Q_OS_WIN)
 #include <windows.h>
 #include <psapi.h>
+#include <tlhelp32.h>
 #endif
 #include "av/capture/CameraCapture.h"
 #include "av/codec/VideoEncoder.h"
 
 namespace {
+
+int finishProcessSmoke(QTemporaryDir& tempDir, int exitCode) {
+    std::cout.flush();
+    std::cerr.flush();
+    tempDir.remove();
+#if defined(Q_OS_WIN)
+    // Qt Multimedia can leave process-global backend threads alive after this
+    // harness has already stopped its children. End the test process directly
+    // so CTest observes the real result instead of timing out in teardown.
+    ::ExitProcess(static_cast<UINT>(exitCode));
+#endif
+    return exitCode;
+}
 
 bool waitForCondition(QCoreApplication& app, const std::function<bool()>& condition, int timeoutMs) {
     QElapsedTimer timer;
@@ -58,6 +74,35 @@ quint16 reserveTcpPort() {
         return 0;
     }
     return server.serverPort();
+}
+
+quint16 reserveUdpPort() {
+    QUdpSocket socket;
+    if (!socket.bind(QHostAddress::LocalHost, 0)) {
+        return 0;
+    }
+    return socket.localPort();
+}
+
+QString resolveInternalSfuExecutable() {
+    const QString configured = qEnvironmentVariable("MEETING_PROCESS_SMOKE_SFU_EXE").trimmed();
+    const QStringList candidates = {
+        configured,
+        QStringLiteral("D:/meeting/meeting-server/sfu/build_sfu_check/Debug/meeting_sfu.exe"),
+        QStringLiteral("D:/meeting/meeting-server/sfu/build/Debug/meeting_sfu.exe"),
+        QStringLiteral("D:/meeting/meeting-server/sfu/build_sfu_check/Release/meeting_sfu.exe"),
+        QStringLiteral("D:/meeting/meeting-server/sfu/build/Release/meeting_sfu.exe"),
+    };
+
+    for (const QString& candidate : candidates) {
+        if (candidate.isEmpty()) {
+            continue;
+        }
+        if (QFileInfo::exists(candidate)) {
+            return candidate;
+        }
+    }
+    return QString();
 }
 
 bool useSyntheticAudio() {
@@ -91,6 +136,18 @@ bool hasDefaultAudioDevices() {
     const QString guestInput = qEnvironmentVariable("MEETING_PROCESS_SMOKE_GUEST_AUDIO_INPUT_DEVICE").trimmed();
     const QString guestOutput = qEnvironmentVariable("MEETING_PROCESS_SMOKE_GUEST_AUDIO_OUTPUT_DEVICE").trimmed();
     return !hostInput.isEmpty() || !hostOutput.isEmpty() || !guestInput.isEmpty() || !guestOutput.isEmpty();
+}
+
+QStringList availableAudioInputDevicesForSmoke() {
+    QStringList names;
+    const auto inputs = QMediaDevices::audioInputs();
+    names.reserve(inputs.size());
+    for (const auto& input : inputs) {
+        const QString description = input.description().trimmed();
+        names.push_back(description.isEmpty() ? QString::fromUtf8(input.id()).trimmed() : description);
+    }
+    names.removeDuplicates();
+    return names;
 }
 
 bool hasVideoInputDevices() {
@@ -397,6 +454,49 @@ bool exceedsCpuPeakBudget(const ProcessCpuTracker& tracker, double maxCpuPeakPer
     }
     return tracker.peakPercent > maxCpuPeakPercent;
 }
+
+#if defined(Q_OS_WIN)
+std::vector<DWORD> childProcessIds(DWORD parentPid) {
+    std::vector<DWORD> children;
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snapshot == INVALID_HANDLE_VALUE) {
+        return children;
+    }
+
+    PROCESSENTRY32W entry{};
+    entry.dwSize = sizeof(entry);
+    if (Process32FirstW(snapshot, &entry)) {
+        do {
+            if (entry.th32ParentProcessID == parentPid) {
+                children.push_back(entry.th32ProcessID);
+            }
+        } while (Process32NextW(snapshot, &entry));
+    }
+
+    CloseHandle(snapshot);
+    return children;
+}
+
+void terminateProcessTree(DWORD rootPid) {
+    if (rootPid == 0 || rootPid == GetCurrentProcessId()) {
+        return;
+    }
+
+    for (const DWORD childPid : childProcessIds(rootPid)) {
+        terminateProcessTree(childPid);
+    }
+
+    HANDLE process = OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, rootPid);
+    if (process == nullptr) {
+        return;
+    }
+
+    TerminateProcess(process, 1);
+    WaitForSingleObject(process, 5000);
+    CloseHandle(process);
+}
+#endif
+
 QString readAllOutput(QProcess& process) {
     return QStringLiteral("stdout:\n%1\nstderr:\n%2")
         .arg(QString::fromLocal8Bit(process.readAllStandardOutput()),
@@ -554,7 +654,7 @@ int main(int argc, char* argv[]) {
     if (!tempDir.isValid()) {
         printFailure(QStringLiteral("failed to create temp dir"));
         printStageHint(QStringLiteral("bootstrap_tempdir"), QStringLiteral("runtime-bootstrap"));
-        return 1;
+        return finishProcessSmoke(tempDir, 1);
     }
 
     const bool syntheticAudio = useSyntheticAudio();
@@ -585,12 +685,25 @@ int main(int argc, char* argv[]) {
     const int memoryBaselineDelayMs = (std::max)(0, envIntValue("MEETING_PROCESS_SMOKE_MEMORY_BASELINE_DELAY_MS", soakDurationMs > 0 ? 15000 : 0));
     if (!syntheticAudio && !hasDefaultAudioDevices()) {
         std::cout << "SKIP no default audio input/output available" << std::endl;
-        return 77;
+        return finishProcessSmoke(tempDir, 77);
+    }
+
+    if (!syntheticAudio &&
+        !singleRealAudioMode &&
+        hostAudioInputDevice.isEmpty() &&
+        guestAudioInputDevice.isEmpty()) {
+        const QStringList availableInputs = availableAudioInputDevicesForSmoke();
+        if (availableInputs.size() < 2) {
+            std::cout << "SKIP dual real-audio smoke requires two capture devices or single-real-audio mode; "
+                      << "available_inputs=" << availableInputs.join(QStringLiteral(", ")).toStdString()
+                      << std::endl;
+            return finishProcessSmoke(tempDir, 77);
+        }
     }
 
     if (!syntheticCamera && !hasVideoInputDevices()) {
         std::cout << "SKIP no camera device available for real-camera mode" << std::endl;
-        return 77;
+        return finishProcessSmoke(tempDir, 77);
     }
 
     const QString configuredSignalingHost = qEnvironmentVariable("MEETING_PROCESS_SMOKE_SIGNALING_HOST").trimmed();
@@ -608,18 +721,67 @@ int main(int argc, char* argv[]) {
         if (serverPort == 0) {
             printFailure(QStringLiteral("failed to reserve tcp port"));
             printStageHint(QStringLiteral("bootstrap_port_reserve"), QStringLiteral("runtime-bootstrap"));
-            return 1;
+            return finishProcessSmoke(tempDir, 1);
         }
     }
 
+    QProcess sfu;
+    qint64 sfuRootPid = 0;
+    bool internalSfuStarted = false;
+    quint16 sfuRpcPort = 0;
+    quint16 sfuMediaPort = 0;
     QProcess server;
+    qint64 serverRootPid = 0;
     bool internalSignalingServerStarted = false;
     if (!useExternalSignaling) {
+        const QString sfuExecutable = resolveInternalSfuExecutable();
+        if (sfuExecutable.isEmpty()) {
+            std::cout << "SKIP internal SFU binary not found" << std::endl;
+            return finishProcessSmoke(tempDir, 77);
+        }
+
+        sfuRpcPort = reserveTcpPort();
+        sfuMediaPort = reserveUdpPort();
+        if (sfuRpcPort == 0 || sfuMediaPort == 0) {
+            printFailure(QStringLiteral("failed to reserve SFU ports"));
+            printStageHint(QStringLiteral("sfu_port_reserve"), QStringLiteral("runtime-bootstrap"));
+            return finishProcessSmoke(tempDir, 1);
+        }
+
+        sfu.setProcessChannelMode(QProcess::ForwardedChannels);
+        QProcessEnvironment sfuEnv = QProcessEnvironment::systemEnvironment();
+        sfuEnv.insert(QStringLiteral("SFU_ADVERTISED_HOST"), signalingHost);
+        sfuEnv.insert(QStringLiteral("SFU_RPC_LISTEN_PORT"), QString::number(sfuRpcPort));
+        sfuEnv.insert(QStringLiteral("SFU_MEDIA_LISTEN_PORT"), QString::number(sfuMediaPort));
+        sfuEnv.insert(QStringLiteral("SFU_NODE_ID"), QStringLiteral("process-smoke-sfu"));
+        sfu.setProcessEnvironment(sfuEnv);
+        sfu.setWorkingDirectory(QFileInfo(sfuExecutable).absolutePath());
+        sfu.start(sfuExecutable);
+        if (!sfu.waitForStarted(10000)) {
+            const QString startMessage = QStringLiteral("failed to start internal SFU: %1").arg(sfu.errorString());
+            printFailure(startMessage);
+            printStageHint(QStringLiteral("sfu_server_start"), QStringLiteral("runtime-bootstrap"), startMessage);
+            return finishProcessSmoke(tempDir, 1);
+        }
+        sfuRootPid = sfu.processId();
+        internalSfuStarted = true;
+        if (!waitForCondition(app, [signalingHost, sfuRpcPort] {
+                return canConnect(signalingHost, sfuRpcPort);
+            }, 20000)) {
+            QString listenError = QStringLiteral("internal SFU RPC did not listen in time");
+            listenError += QStringLiteral("\n%1").arg(readAllOutput(sfu));
+            printFailure(listenError);
+            printStageHint(QStringLiteral("sfu_server_listen"), QStringLiteral("runtime-bootstrap"), listenError);
+            return finishProcessSmoke(tempDir, 1);
+        }
+
         server.setProcessChannelMode(QProcess::ForwardedChannels);
         QProcessEnvironment serverEnv = QProcessEnvironment::systemEnvironment();
         serverEnv.insert(QStringLiteral("SIGNALING_LISTEN_ADDR"), QStringLiteral("%1:%2").arg(signalingHost).arg(serverPort));
         serverEnv.insert(QStringLiteral("SIGNALING_ENABLE_REDIS"), QStringLiteral("false"));
         serverEnv.insert(QStringLiteral("SIGNALING_MYSQL_DSN"), QString());
+        serverEnv.insert(QStringLiteral("SIGNALING_DEFAULT_SFU"), QStringLiteral("%1:%2").arg(signalingHost).arg(sfuMediaPort));
+        serverEnv.insert(QStringLiteral("SIGNALING_SFU_RPC_ADDR"), QStringLiteral("%1:%2").arg(signalingHost).arg(sfuRpcPort));
         server.setProcessEnvironment(serverEnv);
         server.setWorkingDirectory(QStringLiteral("D:/meeting/meeting-server/signaling"));
         const QString resolvedGoExecutable = resolveGoExecutable();
@@ -637,6 +799,7 @@ int main(int argc, char* argv[]) {
             server.start(goExecutable, {QStringLiteral("run"), QStringLiteral(".")});
             if (server.waitForStarted(10000)) {
                 startedWith = goExecutable;
+                serverRootPid = server.processId();
                 internalSignalingServerStarted = true;
                 break;
             }
@@ -652,7 +815,7 @@ int main(int argc, char* argv[]) {
                                              .arg(startError.isEmpty() ? resolvedGoExecutable : startError);
             printFailure(startMessage);
             printStageHint(QStringLiteral("signaling_server_start"), QStringLiteral("signaling-or-negotiation"), startMessage);
-            return 1;
+            return finishProcessSmoke(tempDir, 1);
         }
         std::cout << "signaling_start_command=" << startedWith.toLocal8Bit().constData() << std::endl;
     } else {
@@ -664,20 +827,47 @@ int main(int argc, char* argv[]) {
                   << std::endl;
     }
 
-    const auto stopProcess = [](QProcess& process) {
-        if (process.state() == QProcess::NotRunning) {
-            return;
+    const auto stopProcess = [](QProcess& process, const QString& name, qint64 rootPid = 0) {
+        const qint64 processPid = process.processId() > 0 ? process.processId() : rootPid;
+        if (process.state() != QProcess::NotRunning) {
+            process.terminate();
+            if (!process.waitForFinished(5000)) {
+                process.kill();
+                process.waitForFinished(5000);
+            }
         }
-        process.terminate();
-        if (!process.waitForFinished(5000)) {
+
+#if defined(Q_OS_WIN)
+        if (processPid > 0) {
+            terminateProcessTree(static_cast<DWORD>(processPid));
+        }
+#endif
+
+        if (process.state() != QProcess::NotRunning) {
             process.kill();
             process.waitForFinished(5000);
         }
-    };
-    const auto stopInternalServer = [&]() {
-        if (internalSignalingServerStarted) {
-            stopProcess(server);
+
+        const bool stopped = process.state() == QProcess::NotRunning;
+        if (!stopped) {
+            printFailure(QStringLiteral("cleanup failed: process=%1 pid=%2 state=%3 error=%4")
+                             .arg(name)
+                             .arg(processPid)
+                             .arg(static_cast<int>(process.state()))
+                             .arg(process.errorString()));
         }
+        process.close();
+        return stopped;
+    };
+    const auto stopInternalServices = [&]() {
+        bool stopped = true;
+        if (internalSignalingServerStarted) {
+            stopped = stopProcess(server, QStringLiteral("signaling"), serverRootPid) && stopped;
+        }
+        if (internalSfuStarted) {
+            stopped = stopProcess(sfu, QStringLiteral("sfu"), sfuRootPid) && stopped;
+        }
+        return stopped;
     };
 
     if (!waitForCondition(app, [signalingHost, serverPort] {
@@ -689,8 +879,8 @@ int main(int argc, char* argv[]) {
         }
         printFailure(listenError);
         printStageHint(QStringLiteral("signaling_server_listen"), QStringLiteral("signaling-or-negotiation"), listenError);
-        stopInternalServer();
-        return 1;
+        stopInternalServices();
+        return finishProcessSmoke(tempDir, 1);
     }
 
     const QString appDir = QCoreApplication::applicationDirPath();
@@ -699,8 +889,8 @@ int main(int argc, char* argv[]) {
         const QString clientMissing = QStringLiteral("meeting_client.exe not found at %1").arg(clientExe);
         printFailure(clientMissing);
         printStageHint(QStringLiteral("client_binary_lookup"), QStringLiteral("runtime-bootstrap"), clientMissing);
-        stopInternalServer();
-        return 1;
+        stopInternalServices();
+        return finishProcessSmoke(tempDir, 1);
     }
 
     const QString meetingIdPath = tempDir.filePath(QStringLiteral("meeting_id.txt"));
@@ -761,6 +951,7 @@ int main(int argc, char* argv[]) {
         env.insert(QStringLiteral("MEETING_SMOKE_ROLE"), role);
         env.insert(QStringLiteral("MEETING_SMOKE_USERNAME"), username);
         env.insert(QStringLiteral("MEETING_SMOKE_PASSWORD"), password);
+        env.insert(QStringLiteral("MEETING_ADVERTISED_HOST"), signalingHost);
         env.insert(QStringLiteral("MEETING_SERVER_HOST"), signalingHost);
         env.insert(QStringLiteral("MEETING_SERVER_PORT"), QString::number(serverPort));
         env.insert(QStringLiteral("MEETING_DB_PATH"), tempDir.filePath(dbName));
@@ -768,6 +959,10 @@ int main(int argc, char* argv[]) {
         env.insert(QStringLiteral("MEETING_SMOKE_RESULT_PATH"), resultPath);
         env.insert(QStringLiteral("MEETING_SMOKE_PEER_RESULT_PATH"), peerResultPath);
         env.insert(QStringLiteral("MEETING_SMOKE_TIMEOUT_MS"), QString::number(runtimeTimeoutForClientMs));
+        env.insert(QStringLiteral("MEETING_SMOKE_ENABLE_LOCAL_AUDIO"), QStringLiteral("1"));
+        env.insert(QStringLiteral("MEETING_SMOKE_DISABLE_LOCAL_AUDIO"), QStringLiteral("0"));
+        env.insert(QStringLiteral("MEETING_SMOKE_ENABLE_LOCAL_VIDEO"), QStringLiteral("1"));
+        env.insert(QStringLiteral("MEETING_SMOKE_DISABLE_LOCAL_VIDEO"), QStringLiteral("0"));
         if (soakDurationMs > 0) {
             env.insert(QStringLiteral("MEETING_SMOKE_SOAK_MS"), QString::number(soakDurationMs));
             env.insert(QStringLiteral("MEETING_SMOKE_SOAK_POLL_INTERVAL_MS"), QStringLiteral("1000"));
@@ -822,9 +1017,10 @@ int main(int argc, char* argv[]) {
     if (!host.waitForStarted(10000)) {
         printFailure(QStringLiteral("failed to start host client"));
         printStageHint(QStringLiteral("host_process_start"), QStringLiteral("runtime-bootstrap"));
-        stopInternalServer();
-        return 1;
+        stopInternalServices();
+        return finishProcessSmoke(tempDir, 1);
     }
+    const qint64 hostRootPid = host.processId();
 
     QProcess guest;
     guest.setProcessChannelMode(QProcess::ForwardedChannels);
@@ -834,10 +1030,11 @@ int main(int argc, char* argv[]) {
     if (!guest.waitForStarted(10000)) {
         printFailure(QStringLiteral("failed to start guest client"));
         printStageHint(QStringLiteral("guest_process_start"), QStringLiteral("runtime-bootstrap"));
-        stopProcess(host);
-        stopInternalServer();
-        return 1;
+        stopProcess(host, QStringLiteral("host"), hostRootPid);
+        stopInternalServices();
+        return finishProcessSmoke(tempDir, 1);
     }
+    const qint64 guestRootPid = guest.processId();
 
     ProcessMemoryTracker hostMemory{QStringLiteral("host"), host.processId()};
     ProcessMemoryTracker guestMemory{QStringLiteral("guest"), guest.processId()};
@@ -940,10 +1137,10 @@ int main(int argc, char* argv[]) {
         if (internalSignalingServerStarted) {
             printFailure(QStringLiteral("server:\n%1").arg(readAllOutput(server)));
         }
-        stopProcess(host);
-        stopProcess(guest);
-        stopInternalServer();
-        return 1;
+        stopProcess(host, QStringLiteral("host"), hostRootPid);
+        stopProcess(guest, QStringLiteral("guest"), guestRootPid);
+        stopInternalServices();
+        return finishProcessSmoke(tempDir, 1);
     }
 
     if (soakDurationMs > 0 && maxWorkingSetGrowthMb > 0) {
@@ -957,8 +1154,10 @@ int main(int argc, char* argv[]) {
                          .arg(memoryBaselineDelayMs));
             printFailure(formatProcessMemory(hostMemory));
             printFailure(formatProcessMemory(guestMemory));
-            stopInternalServer();
-            return 1;
+            stopProcess(host, QStringLiteral("host"), hostRootPid);
+            stopProcess(guest, QStringLiteral("guest"), guestRootPid);
+            stopInternalServices();
+            return finishProcessSmoke(tempDir, 1);
         }
     }
     if (requireCpuEvidence) {
@@ -980,8 +1179,10 @@ int main(int argc, char* argv[]) {
             printFailure(formatProcessCpu(guestCpu));
             printFailure(formatProcessMemory(hostMemory));
             printFailure(formatProcessMemory(guestMemory));
-            stopInternalServer();
-            return 1;
+            stopProcess(host, QStringLiteral("host"), hostRootPid);
+            stopProcess(guest, QStringLiteral("guest"), guestRootPid);
+            stopInternalServices();
+            return finishProcessSmoke(tempDir, 1);
         }
     }
     std::cout << formatProcessMemory(hostMemory).toLocal8Bit().constData() << std::endl;
@@ -1003,13 +1204,14 @@ int main(int argc, char* argv[]) {
                      .constData()
               << std::endl;
 
-    stopProcess(host);
-    stopProcess(guest);
-    stopInternalServer();
-    host.close();
-    guest.close();
-    server.close();
+    bool cleanupOk = true;
+    cleanupOk = stopProcess(host, QStringLiteral("host"), hostRootPid) && cleanupOk;
+    cleanupOk = stopProcess(guest, QStringLiteral("guest"), guestRootPid) && cleanupOk;
+    cleanupOk = stopInternalServices() && cleanupOk;
+    if (!cleanupOk) {
+        return finishProcessSmoke(tempDir, 1);
+    }
     std::cout << "test_meeting_client_process_smoke passed" << std::endl;
-    return 0;
+    return finishProcessSmoke(tempDir, 0);
 }
 

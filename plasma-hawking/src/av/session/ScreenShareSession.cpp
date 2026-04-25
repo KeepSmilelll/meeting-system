@@ -7,6 +7,8 @@
 #include "net/media/SocketAddressUtils.h"
 
 #include <QDebug>
+#include <QByteArray>
+#include <QList>
 #include <QMutexLocker>
 
 #include <algorithm>
@@ -24,6 +26,10 @@ uint32_t makeSsrc() {
         value = static_cast<uint32_t>(std::random_device{}());
     }
     return value;
+}
+
+uint32_t chooseConfiguredOrRandomSsrc(uint32_t configuredSsrc) {
+    return configuredSsrc != 0U ? configuredSsrc : makeSsrc();
 }
 
 uint64_t steadyNowMs() {
@@ -86,6 +92,14 @@ void ScreenShareSession::stop() {
     m_sendFrameRingBuffer.close();
     m_forceKeyFramePending.store(false, std::memory_order_release);
     m_expectedRemoteVideoSsrc.store(0U, std::memory_order_release);
+    m_dtlsStarted.store(false, std::memory_order_release);
+    m_iceConnected.store(false, std::memory_order_release);
+    m_dtlsConnected.store(false, std::memory_order_release);
+    m_srtpReady.store(false, std::memory_order_release);
+    m_inboundSrtp.clear();
+    m_outboundSrtp.clear();
+    m_dtlsHandshakePackets.clear();
+    m_lastDtlsHandshakeSendAt = {};
     if (m_cameraRelay) {
         m_cameraRelay->setSharingEnabled(false);
         m_cameraRelay->invalidate();
@@ -130,7 +144,10 @@ bool ScreenShareSession::setSharingEnabled(bool enabled) {
                 return false;
             }
             if (enablePlan.shouldStartSendThread) {
-                resetSenderForFreshStream(m_sender, m_rtcpActionPipeline, makeSsrc());
+                resetSenderForFreshStream(m_sender,
+                                          m_rtcpActionPipeline,
+                                          chooseConfiguredOrRandomSsrc(
+                                              m_configuredVideoSsrc.load(std::memory_order_acquire)));
                 startSendThread = true;
             }
         }
@@ -237,6 +254,256 @@ void ScreenShareSession::setPeer(const std::string& address, uint16_t port) {
     m_stateWaitCondition.wakeAll();
 }
 
+void ScreenShareSession::setVideoSsrc(uint32_t ssrc) {
+    if (ssrc == 0) {
+        return;
+    }
+    m_configuredVideoSsrc.store(ssrc, std::memory_order_release);
+    QMutexLocker locker(&m_mutex);
+    m_sender.setSSRC(ssrc);
+}
+
+QString ScreenShareSession::prepareDtlsFingerprint() {
+    QMutexLocker locker(&m_mutex);
+    if (!m_dtlsTransport.prepareLocalFingerprint()) {
+        setErrorLocked(m_dtlsTransport.lastError().toStdString());
+        return {};
+    }
+    return m_dtlsTransport.localFingerprintSha256();
+}
+
+bool ScreenShareSession::startDtlsSrtp(const QString& serverFingerprint) {
+    QMutexLocker locker(&m_mutex);
+    if (serverFingerprint.trimmed().isEmpty() || !m_mediaSocket.isOpen() || !m_mediaSocket.hasPeer()) {
+        if (m_statusCallback) {
+            m_statusCallback("Video dtls-start skipped: missing fingerprint or peer");
+        }
+        return false;
+    }
+    if (m_dtlsTransport.isConnected() && m_srtpReady.load(std::memory_order_acquire)) {
+        return true;
+    }
+
+    QList<QByteArray> outgoing;
+    if (!m_dtlsTransport.start(serverFingerprint, &outgoing)) {
+        setErrorLocked(m_dtlsTransport.lastError().toStdString());
+        return false;
+    }
+
+    if (!outgoing.empty() || !m_dtlsStarted.load(std::memory_order_acquire)) {
+        m_dtlsHandshakePackets.assign(outgoing.begin(), outgoing.end());
+    }
+    m_dtlsStarted.store(true, std::memory_order_release);
+    if (m_statusCallback) {
+        m_statusCallback(QStringLiteral("Video dtls-started cached_packets=%1")
+                             .arg(static_cast<int>(m_dtlsHandshakePackets.size()))
+                             .toStdString());
+    }
+    return sendCachedDtlsHandshakeLocked(m_mediaSocket.peer());
+}
+
+bool ScreenShareSession::iceConnected() const {
+    return m_iceConnected.load(std::memory_order_acquire);
+}
+
+bool ScreenShareSession::dtlsConnected() const {
+    return m_dtlsConnected.load(std::memory_order_acquire);
+}
+
+bool ScreenShareSession::srtpReady() const {
+    return m_srtpReady.load(std::memory_order_acquire);
+}
+
+bool ScreenShareSession::sendTransportProbe(const std::vector<uint8_t>& packet) {
+    if (packet.empty()) {
+        return false;
+    }
+
+    QMutexLocker locker(&m_mutex);
+    if (!m_mediaSocket.isOpen() || !m_mediaSocket.hasPeer()) {
+        return false;
+    }
+    const media::UdpEndpoint peer = m_mediaSocket.peer();
+    const int sent = m_mediaSocket.sendTo(packet.data(), packet.size(), peer);
+    return sent == static_cast<int>(packet.size());
+}
+
+bool ScreenShareSession::configureSrtpLocked() {
+    if (m_srtpReady.load(std::memory_order_acquire)) {
+        return true;
+    }
+    if (!m_dtlsTransport.isConnected()) {
+        return false;
+    }
+
+    media::DtlsTransportClient::SrtpKeyMaterial keying;
+    if (!m_dtlsTransport.exportSrtpKeyMaterial(
+            security::SRTPContext::masterKeyLength(),
+            security::SRTPContext::masterSaltLength(),
+            &keying)) {
+        setErrorLocked("video DTLS SRTP exporter failed");
+        return false;
+    }
+    if (!m_inboundSrtp.configure(keying.remoteKey, keying.remoteSalt, security::SRTPContext::Direction::Inbound) ||
+        !m_outboundSrtp.configure(keying.localKey, keying.localSalt, security::SRTPContext::Direction::Outbound)) {
+        const QString error = !m_inboundSrtp.lastError().isEmpty() ? m_inboundSrtp.lastError() : m_outboundSrtp.lastError();
+        setErrorLocked(error.toStdString());
+        return false;
+    }
+    m_dtlsConnected.store(true, std::memory_order_release);
+    m_srtpReady.store(true, std::memory_order_release);
+    m_forceKeyFramePending.store(true, std::memory_order_release);
+    qInfo().noquote() << "[screen-session] dtls-connected srtp-ready profile=" << m_dtlsTransport.selectedSrtpProfile();
+    if (m_statusCallback) {
+        m_statusCallback(QStringLiteral("Video srtp-ready profile=%1")
+                             .arg(m_dtlsTransport.selectedSrtpProfile())
+                             .toStdString());
+    }
+    return true;
+}
+
+bool ScreenShareSession::handleDtlsPacketLocked(const uint8_t* data, std::size_t len, const media::UdpEndpoint& from) {
+    if (data == nullptr || len == 0U || !m_mediaSocket.acceptSender(from)) {
+        if (m_statusCallback) {
+            m_statusCallback("Video dtls-packet rejected: unexpected sender");
+        }
+        return false;
+    }
+
+    if (m_statusCallback) {
+        m_statusCallback(QStringLiteral("Video dtls-packet received bytes=%1")
+                             .arg(static_cast<qulonglong>(len))
+                             .toStdString());
+    }
+    QList<QByteArray> outgoing;
+    const QByteArray datagram(reinterpret_cast<const char*>(data), static_cast<int>(len));
+    if (!m_dtlsTransport.handleIncomingDatagram(datagram, &outgoing)) {
+        setErrorLocked(m_dtlsTransport.lastError().toStdString());
+        return false;
+    }
+    for (const QByteArray& packet : outgoing) {
+        const int sent = m_mediaSocket.sendTo(
+            reinterpret_cast<const uint8_t*>(packet.constData()),
+            static_cast<std::size_t>(packet.size()),
+            from);
+        if (sent != packet.size()) {
+            setErrorLocked("video DTLS response send failed");
+            return false;
+        }
+    }
+    return configureSrtpLocked();
+}
+
+bool ScreenShareSession::sendCachedDtlsHandshakeLocked(const media::UdpEndpoint& peer) {
+    if (m_srtpReady.load(std::memory_order_acquire) || !peer.isValid() || m_dtlsHandshakePackets.empty()) {
+        return true;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    if (m_lastDtlsHandshakeSendAt.time_since_epoch().count() != 0 &&
+        now - m_lastDtlsHandshakeSendAt < std::chrono::milliseconds(100)) {
+        return true;
+    }
+    for (const QByteArray& packet : m_dtlsHandshakePackets) {
+        const int sent = m_mediaSocket.sendTo(
+            reinterpret_cast<const uint8_t*>(packet.constData()),
+            static_cast<std::size_t>(packet.size()),
+            peer);
+        if (sent != packet.size()) {
+            setErrorLocked("video DTLS handshake send failed");
+            return false;
+        }
+    }
+    m_lastDtlsHandshakeSendAt = now;
+    if (m_statusCallback) {
+        m_statusCallback(QStringLiteral("Video dtls-handshake sent packets=%1")
+                             .arg(static_cast<int>(m_dtlsHandshakePackets.size()))
+                             .toStdString());
+    }
+    return true;
+}
+
+bool ScreenShareSession::protectRtpLocked(std::vector<uint8_t>* packet) {
+    if (!m_dtlsStarted.load(std::memory_order_acquire)) {
+        return true;
+    }
+    if (!m_srtpReady.load(std::memory_order_acquire)) {
+        return false;
+    }
+    QByteArray bytes(reinterpret_cast<const char*>(packet->data()), static_cast<int>(packet->size()));
+    if (!m_outboundSrtp.protectRtp(&bytes)) {
+        setErrorLocked(m_outboundSrtp.lastError().toStdString());
+        return false;
+    }
+    packet->assign(reinterpret_cast<const uint8_t*>(bytes.constData()),
+                   reinterpret_cast<const uint8_t*>(bytes.constData()) + bytes.size());
+    return true;
+}
+
+bool ScreenShareSession::protectRtcpLocked(std::vector<uint8_t>* packet) {
+    if (!m_dtlsStarted.load(std::memory_order_acquire)) {
+        return true;
+    }
+    if (!m_srtpReady.load(std::memory_order_acquire)) {
+        return false;
+    }
+    QByteArray bytes(reinterpret_cast<const char*>(packet->data()), static_cast<int>(packet->size()));
+    if (!m_outboundSrtp.protectRtcp(&bytes)) {
+        setErrorLocked(m_outboundSrtp.lastError().toStdString());
+        return false;
+    }
+    packet->assign(reinterpret_cast<const uint8_t*>(bytes.constData()),
+                   reinterpret_cast<const uint8_t*>(bytes.constData()) + bytes.size());
+    return true;
+}
+
+bool ScreenShareSession::unprotectRtpLocked(std::vector<uint8_t>* packet) {
+    if (!m_dtlsStarted.load(std::memory_order_acquire)) {
+        return true;
+    }
+    if (!m_srtpReady.load(std::memory_order_acquire)) {
+        return false;
+    }
+    QByteArray bytes(reinterpret_cast<const char*>(packet->data()), static_cast<int>(packet->size()));
+    if (!m_inboundSrtp.unprotectRtp(&bytes)) {
+        const uint8_t first = packet->empty() ? 0U : (*packet)[0];
+        const uint8_t second = packet->size() > 1U ? (*packet)[1] : 0U;
+        setErrorLocked(QStringLiteral("%1 rtp_len=%2 first=%3 second=%4")
+                           .arg(m_inboundSrtp.lastError())
+                           .arg(static_cast<qulonglong>(packet->size()))
+                           .arg(static_cast<unsigned int>(first))
+                           .arg(static_cast<unsigned int>(second))
+                           .toStdString());
+        return false;
+    }
+    packet->assign(reinterpret_cast<const uint8_t*>(bytes.constData()),
+                   reinterpret_cast<const uint8_t*>(bytes.constData()) + bytes.size());
+    return true;
+}
+
+bool ScreenShareSession::unprotectRtcpLocked(std::vector<uint8_t>* packet) {
+    if (!m_dtlsStarted.load(std::memory_order_acquire)) {
+        return true;
+    }
+    if (!m_srtpReady.load(std::memory_order_acquire)) {
+        return false;
+    }
+    QByteArray bytes(reinterpret_cast<const char*>(packet->data()), static_cast<int>(packet->size()));
+    if (!m_inboundSrtp.unprotectRtcp(&bytes)) {
+        const uint8_t first = packet->empty() ? 0U : (*packet)[0];
+        const uint8_t second = packet->size() > 1U ? (*packet)[1] : 0U;
+        setErrorLocked(QStringLiteral("%1 rtcp_len=%2 first=%3 second=%4")
+                           .arg(m_inboundSrtp.lastError())
+                           .arg(static_cast<qulonglong>(packet->size()))
+                           .arg(static_cast<unsigned int>(first))
+                           .arg(static_cast<unsigned int>(second))
+                           .toStdString());
+        return false;
+    }
+    packet->assign(reinterpret_cast<const uint8_t*>(bytes.constData()),
+                   reinterpret_cast<const uint8_t*>(bytes.constData()) + bytes.size());
+    return true;
+}
+
 void ScreenShareSession::setDecodedFrameCallback(std::function<void(av::codec::DecodedVideoFrame)> callback) {
     QMutexLocker locker(&m_mutex);
     m_decodedFrameCallback = std::move(callback);
@@ -246,6 +513,11 @@ void ScreenShareSession::setDecodedFrameWithSsrcCallback(
     std::function<void(av::codec::DecodedVideoFrame, uint32_t)> callback) {
     QMutexLocker locker(&m_mutex);
     m_decodedFrameWithSsrcCallback = std::move(callback);
+}
+
+void ScreenShareSession::setLocalCameraPreviewCallback(std::function<void(av::codec::DecodedVideoFrame)> callback) {
+    QMutexLocker locker(&m_mutex);
+    m_localCameraPreviewCallback = std::move(callback);
 }
 
 void ScreenShareSession::setErrorCallback(std::function<void(std::string)> callback) {

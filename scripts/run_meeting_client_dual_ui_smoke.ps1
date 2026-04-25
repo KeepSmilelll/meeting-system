@@ -1,6 +1,7 @@
 param(
     [string]$ClientExe = "D:\meeting\plasma-hawking\build\Debug\meeting_client.exe",
     [string]$ServerDir = "D:\meeting\meeting-server\signaling",
+    [string]$SfuExe = "",
     [switch]$SyntheticAudio,
     [switch]$RequireAudio,
     [switch]$SingleRealAudio,
@@ -57,6 +58,34 @@ function Get-FreeTcpPort {
     } finally {
         $listener.Stop()
     }
+}
+
+function Get-FreeUdpPort {
+    $socket = [System.Net.Sockets.UdpClient]::new([System.Net.IPEndPoint]::new([System.Net.IPAddress]::Loopback, 0))
+    try {
+        return $socket.Client.LocalEndPoint.Port
+    } finally {
+        $socket.Dispose()
+    }
+}
+
+function Resolve-SfuExecutable {
+    param([string]$Configured)
+
+    $candidates = @(
+        $Configured,
+        "D:\meeting\meeting-server\sfu\build_sfu_check\Debug\meeting_sfu.exe",
+        "D:\meeting\meeting-server\sfu\build\Debug\meeting_sfu.exe",
+        "D:\meeting\meeting-server\sfu\build_sfu_check\Release\meeting_sfu.exe",
+        "D:\meeting\meeting-server\sfu\build\Release\meeting_sfu.exe"
+    )
+
+    foreach ($candidate in $candidates) {
+        if (-not [string]::IsNullOrWhiteSpace($candidate) -and (Test-Path -LiteralPath $candidate)) {
+            return $candidate
+        }
+    }
+    return ""
 }
 
 function Start-ManagedProcess {
@@ -410,15 +439,29 @@ $hostResultPath = Join-Path $tempRoot "host.result.txt"
 $guestResultPath = Join-Path $tempRoot "guest.result.txt"
 $serverStdOut = Join-Path $tempRoot "server.stdout.txt"
 $serverStdErr = Join-Path $tempRoot "server.stderr.txt"
+$sfuStdOut = Join-Path $tempRoot "sfu.stdout.txt"
+$sfuStdErr = Join-Path $tempRoot "sfu.stderr.txt"
 $hostStdOut = Join-Path $tempRoot "host.stdout.txt"
 $hostStdErr = Join-Path $tempRoot "host.stderr.txt"
 $guestStdOut = Join-Path $tempRoot "guest.stdout.txt"
 $guestStdErr = Join-Path $tempRoot "guest.stderr.txt"
 
+$resolvedSfuExe = Resolve-SfuExecutable -Configured $SfuExe
+if ([string]::IsNullOrWhiteSpace($resolvedSfuExe)) {
+    throw "meeting_sfu.exe not found; build SFU first or pass -SfuExe"
+}
+$sfuRpcPort = Get-FreeTcpPort
+$sfuMediaPort = Get-FreeUdpPort
+if ($sfuRpcPort -le 0 -or $sfuMediaPort -le 0) {
+    throw "failed to reserve SFU ports"
+}
+
 $serverEnv = @{}
 $serverEnv["SIGNALING_LISTEN_ADDR"] = "127.0.0.1:$port"
 $serverEnv["SIGNALING_ENABLE_REDIS"] = "false"
 $serverEnv["SIGNALING_MYSQL_DSN"] = ""
+$serverEnv["SIGNALING_DEFAULT_SFU"] = "127.0.0.1:$sfuMediaPort"
+$serverEnv["SIGNALING_SFU_RPC_ADDR"] = "127.0.0.1:$sfuRpcPort"
 
 $clientBaseEnv = @{}
 $clientBaseEnv["MEETING_RUNTIME_SMOKE"] = "1"
@@ -460,10 +503,22 @@ if (-not [string]::IsNullOrWhiteSpace($resolvedCameraCaptureBackend)) {
 }
 
 $serverProcess = $null
+$sfuProcess = $null
 $hostProcess = $null
 $guestProcess = $null
 
 try {
+    $sfuEnv = @{}
+    $sfuEnv["SFU_ADVERTISED_HOST"] = "127.0.0.1"
+    $sfuEnv["SFU_RPC_LISTEN_PORT"] = "$sfuRpcPort"
+    $sfuEnv["SFU_MEDIA_LISTEN_PORT"] = "$sfuMediaPort"
+    $sfuEnv["SFU_NODE_ID"] = "dual-ui-smoke-sfu"
+    $sfuProcess = Start-ManagedProcess -FilePath $resolvedSfuExe -Arguments @() -WorkingDirectory (Split-Path -Parent $resolvedSfuExe) -Environment $sfuEnv -StdOutPath $sfuStdOut -StdErrPath $sfuStdErr
+    if (-not (Wait-ForTcpListening -TargetHost "127.0.0.1" -Port $sfuRpcPort -TimeoutSeconds 20)) {
+        throw "SFU RPC did not start listening`n$(Get-Content $sfuStdErr -Raw)"
+    }
+    Write-Host "[dual-ui-smoke] internal SFU rpc=127.0.0.1:$sfuRpcPort media=127.0.0.1:$sfuMediaPort"
+
     $serverProcess = Start-ManagedProcess -FilePath "go" -Arguments @("run", ".") -WorkingDirectory $ServerDir -Environment $serverEnv -StdOutPath $serverStdOut -StdErrPath $serverStdErr
     if (-not (Wait-ForTcpListening -TargetHost "127.0.0.1" -Port $port -TimeoutSeconds 20)) {
         throw "signaling server did not start listening`n$(Get-Content $serverStdErr -Raw)"
@@ -571,9 +626,13 @@ $guestResult
     if (Test-Path $serverStdErr) {
         Write-Error ("server stderr:`n" + (Get-Content $serverStdErr -Raw))
     }
+    if (Test-Path $sfuStdErr) {
+        Write-Error ("sfu stderr:`n" + (Get-Content $sfuStdErr -Raw))
+    }
     exit 1
 } finally {
     Stop-ManagedProcess $hostProcess
     Stop-ManagedProcess $guestProcess
     Stop-ManagedProcess $serverProcess
+    Stop-ManagedProcess $sfuProcess
 }

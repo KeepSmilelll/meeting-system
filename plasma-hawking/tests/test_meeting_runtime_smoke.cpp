@@ -2,6 +2,7 @@
 #include <cstdlib>
 
 #include <QCoreApplication>
+#include <QDir>
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QFileInfo>
@@ -18,6 +19,7 @@
 #include <QThread>
 #include <QStringList>
 #include <QDebug>
+#include <QUdpSocket>
 
 #include "app/MeetingController.h"
 #include "av/capture/CameraCapture.h"
@@ -91,6 +93,14 @@ quint16 reserveLocalPort() {
     return socket.serverPort();
 }
 
+quint16 reserveLocalUdpPort() {
+    QUdpSocket socket;
+    if (!socket.bind(QHostAddress::LocalHost, 0)) {
+        return 0;
+    }
+    return socket.localPort();
+}
+
 bool canConnectToServer(quint16 serverPort) {
     if (serverPort == 0) {
         return false;
@@ -162,7 +172,9 @@ bool containsMessage(const QStringList& messages, const QString& needle) {
 
 bool hasVideoNegotiationEvidence(const QStringList& messages) {
     return containsMessage(messages, QStringLiteral("Video offer sent")) ||
+           containsMessage(messages, QStringLiteral("Video transport offer sent")) ||
            containsMessage(messages, QStringLiteral("Video answer sent")) ||
+           containsMessage(messages, QStringLiteral("Media transport answer accepted")) ||
            containsMessage(messages, QStringLiteral("Video endpoint ready"));
 }
 
@@ -320,8 +332,12 @@ VideoSmokeDiagnostics collectVideoSmokeDiagnostics(const ControllerProbe& hostPr
     VideoSmokeDiagnostics diagnostics;
     diagnostics.hostVideoSignalReady = hasVideoNegotiationEvidence(hostProbe.infoMessages);
     diagnostics.guestVideoSignalReady = hasVideoNegotiationEvidence(guestProbe.infoMessages);
-    diagnostics.hostVideoOfferSent = containsMessage(hostProbe.infoMessages, QStringLiteral("Video offer sent"));
-    diagnostics.guestVideoAnswerSent = containsMessage(guestProbe.infoMessages, QStringLiteral("Video answer sent"));
+    diagnostics.hostVideoOfferSent =
+        containsMessage(hostProbe.infoMessages, QStringLiteral("Video offer sent")) ||
+        containsMessage(hostProbe.infoMessages, QStringLiteral("Video transport offer sent"));
+    diagnostics.guestVideoAnswerSent =
+        containsMessage(guestProbe.infoMessages, QStringLiteral("Video answer sent")) ||
+        containsMessage(guestProbe.infoMessages, QStringLiteral("Media transport answer accepted"));
     diagnostics.hostVideoDegraded = containsMessage(hostProbe.infoMessages,
                                                     QStringLiteral("Video encoder unavailable"));
     diagnostics.guestVideoDegraded = containsMessage(guestProbe.infoMessages,
@@ -390,6 +406,24 @@ QString resolveGoExecutable() {
     return QStringLiteral("go");
 }
 
+QString resolveSfuExecutable() {
+    const QString configured = qEnvironmentVariable("MEETING_TEST_SFU_EXE").trimmed();
+    if (!configured.isEmpty()) {
+        return configured;
+    }
+
+    const QStringList candidates = {
+        QStringLiteral("D:/meeting/meeting-server/sfu/build_sfu_check/Debug/meeting_sfu.exe"),
+        QStringLiteral("D:/meeting/meeting-server/sfu/build/Debug/meeting_sfu.exe"),
+    };
+    for (const QString& candidate : candidates) {
+        if (QFileInfo::exists(candidate)) {
+            return candidate;
+        }
+    }
+    return {};
+}
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -434,36 +468,150 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    const auto stopProcess = [](QProcess& process) {
+        const qint64 pid = process.processId();
+        if (process.state() == QProcess::NotRunning) {
+            process.close();
+            return;
+        }
+        process.terminate();
+        if (!process.waitForFinished(3000)) {
+#ifdef Q_OS_WIN
+            if (pid > 0) {
+                QProcess::execute(QStringLiteral("taskkill"),
+                                  {QStringLiteral("/PID"),
+                                   QString::number(pid),
+                                   QStringLiteral("/T"),
+                                   QStringLiteral("/F")});
+            }
+#endif
+        }
+        if (process.state() != QProcess::NotRunning && !process.waitForFinished(3000)) {
+            process.kill();
+            process.waitForFinished(3000);
+        }
+        process.close();
+    };
+
+    const quint16 sfuRpcPort = reserveLocalPort();
+    const quint16 sfuMediaPort = reserveLocalUdpPort();
+    if (sfuRpcPort == 0 || sfuMediaPort == 0) {
+        qCritical().noquote() << "failed to reserve SFU ports";
+        qCritical().noquote() << "likely-stage=sfu_port_reserve";
+        qCritical().noquote() << "likely-module=runtime-bootstrap";
+        return 1;
+    }
+    const QString sfuExecutable = resolveSfuExecutable();
+    if (sfuExecutable.isEmpty()) {
+        qCritical().noquote() << "failed to resolve meeting_sfu.exe";
+        qCritical().noquote() << "likely-stage=sfu_executable_resolve";
+        qCritical().noquote() << "likely-module=sfu";
+        return 1;
+    }
+
+    QProcess sfu;
+    sfu.setProcessChannelMode(QProcess::ForwardedChannels);
+    QProcessEnvironment sfuEnv = QProcessEnvironment::systemEnvironment();
+    sfuEnv.insert(QStringLiteral("SFU_ADVERTISED_HOST"), QStringLiteral("127.0.0.1"));
+    sfuEnv.insert(QStringLiteral("SFU_RPC_LISTEN_PORT"), QString::number(sfuRpcPort));
+    sfuEnv.insert(QStringLiteral("SFU_MEDIA_LISTEN_PORT"), QString::number(sfuMediaPort));
+    sfuEnv.insert(QStringLiteral("SFU_HEARTBEAT_INTERVAL_MS"), QStringLiteral("1000"));
+    sfu.setProcessEnvironment(sfuEnv);
+    sfu.setWorkingDirectory(QFileInfo(sfuExecutable).absolutePath());
+    const QStringList sfuCandidates = {
+        sfuExecutable,
+        QDir::toNativeSeparators(sfuExecutable),
+        QFileInfo(sfuExecutable).fileName(),
+    };
+    QString sfuStartError;
+    QString sfuStartedWith;
+    for (const QString& candidate : sfuCandidates) {
+        if (candidate.trimmed().isEmpty()) {
+            continue;
+        }
+        sfu.start(candidate);
+        if (sfu.waitForStarted(10000)) {
+            sfuStartedWith = candidate;
+            break;
+        }
+        const QString candidateError = QStringLiteral("%1 => %2").arg(candidate, sfu.errorString());
+        if (sfuStartError.isEmpty()) {
+            sfuStartError = candidateError;
+        } else if (!sfuStartError.contains(candidateError)) {
+            sfuStartError += QStringLiteral(" | %1").arg(candidateError);
+        }
+    }
+    if (sfuStartedWith.isEmpty()) {
+        qCritical().noquote() << "failed to start SFU, tried:"
+                              << (sfuStartError.isEmpty() ? sfuExecutable : sfuStartError);
+        qCritical().noquote() << "likely-stage=sfu_start";
+        qCritical().noquote() << "likely-module=sfu";
+        return 1;
+    }
+    if (!waitForCondition(app, [sfuRpcPort] { return canConnectToServer(sfuRpcPort); }, 10000)) {
+        qCritical().noquote() << "SFU RPC server did not start listening";
+        qCritical().noquote() << collectedOutput(sfu);
+        qCritical().noquote() << "likely-stage=sfu_rpc_listen";
+        qCritical().noquote() << "likely-module=sfu";
+        stopProcess(sfu);
+        return 1;
+    }
+
     QProcess server;
+    server.setProcessChannelMode(QProcess::ForwardedChannels);
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
     env.insert(QStringLiteral("SIGNALING_LISTEN_ADDR"), QStringLiteral("127.0.0.1:%1").arg(serverPort));
     env.insert(QStringLiteral("SIGNALING_ENABLE_REDIS"), QStringLiteral("false"));
     env.insert(QStringLiteral("SIGNALING_MYSQL_DSN"), QString());
+    env.insert(QStringLiteral("SIGNALING_DEFAULT_SFU"), QStringLiteral("127.0.0.1:%1").arg(sfuMediaPort));
+    env.insert(QStringLiteral("SIGNALING_SFU_RPC_ADDR"), QStringLiteral("127.0.0.1:%1").arg(sfuRpcPort));
+    env.insert(QStringLiteral("SIGNALING_SFU_NODES"),
+               QStringLiteral("local-sfu|127.0.0.1:%1|127.0.0.1:%2|16").arg(sfuMediaPort).arg(sfuRpcPort));
     server.setProcessEnvironment(env);
     server.setWorkingDirectory(QStringLiteral("D:/meeting/meeting-server/signaling"));
     const QString goExecutable = resolveGoExecutable();
-    server.start(goExecutable, {QStringLiteral("run"), QStringLiteral(".")});
-    if (!server.waitForStarted(10000)) {
-        qCritical().noquote() << "failed to start signaling server with" << goExecutable
-                              << "error:" << server.errorString();
+    const QStringList goCandidates = {
+        goExecutable,
+        QDir::toNativeSeparators(goExecutable),
+        QStringLiteral("go"),
+    };
+    QString serverStartError;
+    QString serverStartedWith;
+    for (const QString& candidate : goCandidates) {
+        if (candidate.trimmed().isEmpty()) {
+            continue;
+        }
+        server.start(candidate, {QStringLiteral("run"), QStringLiteral(".")});
+        if (server.waitForStarted(10000)) {
+            serverStartedWith = candidate;
+            break;
+        }
+        const QString candidateError = QStringLiteral("%1 => %2").arg(candidate, server.errorString());
+        if (serverStartError.isEmpty()) {
+            serverStartError = candidateError;
+        } else if (!serverStartError.contains(candidateError)) {
+            serverStartError += QStringLiteral(" | %1").arg(candidateError);
+        }
+    }
+    if (serverStartedWith.isEmpty()) {
+        qCritical().noquote() << "failed to start signaling server, tried:"
+                              << (serverStartError.isEmpty() ? goExecutable : serverStartError);
         qCritical().noquote() << "likely-stage=signaling_server_start";
         qCritical().noquote() << "likely-module=signaling-or-negotiation";
+        stopProcess(sfu);
         return 1;
     }
 
-    const auto stopServer = [&server]() {
-        server.terminate();
-        if (!server.waitForFinished(5000)) {
-            server.kill();
-            server.waitForFinished(5000);
-        }
+    const auto stopAllProcesses = [&server, &sfu, &stopProcess]() {
+        stopProcess(server);
+        stopProcess(sfu);
     };
 
     if (!waitForCondition(app, [serverPort] { return canConnectToServer(serverPort); }, 20000)) {
         qCritical().noquote() << "signaling server did not start listening\n" << collectedOutput(server);
         qCritical().noquote() << "likely-stage=signaling_server_listen";
         qCritical().noquote() << "likely-module=signaling-or-negotiation";
-        stopServer();
+        stopAllProcesses();
         return 1;
     }
 
@@ -487,7 +635,7 @@ int main(int argc, char* argv[]) {
         qCritical().noquote() << "likely-stage=client_frame_source_init";
         qCritical().noquote() << "likely-module=media-transport-or-decoder";
         qCritical().noquote() << collectedOutput(server);
-        stopServer();
+        stopAllProcesses();
         return 1;
     }
 
@@ -507,7 +655,7 @@ int main(int argc, char* argv[]) {
         qCritical().noquote() << "host status:" << hostController.statusText();
         qCritical().noquote() << "guest status:" << guestController.statusText();
         qCritical().noquote() << collectedOutput(server);
-        stopServer();
+        stopAllProcesses();
         return 1;
     }
     signalingStageDiagnostics.loginReady = true;
@@ -521,7 +669,7 @@ int main(int argc, char* argv[]) {
         qCritical().noquote() << inferSignalingFailureStage(signalingStageDiagnostics);
         qCritical().noquote() << "host status:" << hostController.statusText();
         qCritical().noquote() << collectedOutput(server);
-        stopServer();
+        stopAllProcesses();
         return 1;
     }
     signalingStageDiagnostics.hostCreateReady = true;
@@ -539,16 +687,25 @@ int main(int argc, char* argv[]) {
         qCritical().noquote() << "host status:" << hostController.statusText();
         qCritical().noquote() << "guest status:" << guestController.statusText();
         qCritical().noquote() << collectedOutput(server);
-        stopServer();
+        stopAllProcesses();
         return 1;
     }
     signalingStageDiagnostics.guestJoinReady = true;
 
     if (!waitForCondition(app, [&hostProbe, &guestProbe] {
-            return (containsMessage(hostProbe.infoMessages, QStringLiteral("Audio offer sent")) ||
-                    containsMessage(hostProbe.infoMessages, QStringLiteral("Video offer sent"))) &&
-                   (containsMessage(guestProbe.infoMessages, QStringLiteral("Audio answer sent")) ||
-                    containsMessage(guestProbe.infoMessages, QStringLiteral("Video answer sent")));
+            const bool hostTransportReady =
+                containsMessage(hostProbe.infoMessages, QStringLiteral("Audio offer sent")) ||
+                containsMessage(hostProbe.infoMessages, QStringLiteral("Video offer sent")) ||
+                containsMessage(hostProbe.infoMessages, QStringLiteral("Audio transport offer sent")) ||
+                containsMessage(hostProbe.infoMessages, QStringLiteral("Video transport offer sent")) ||
+                containsMessage(hostProbe.infoMessages, QStringLiteral("Media transport answer accepted"));
+            const bool guestTransportReady =
+                containsMessage(guestProbe.infoMessages, QStringLiteral("Audio answer sent")) ||
+                containsMessage(guestProbe.infoMessages, QStringLiteral("Video answer sent")) ||
+                containsMessage(guestProbe.infoMessages, QStringLiteral("Audio transport offer sent")) ||
+                containsMessage(guestProbe.infoMessages, QStringLiteral("Video transport offer sent")) ||
+                containsMessage(guestProbe.infoMessages, QStringLiteral("Media transport answer accepted"));
+            return hostTransportReady && guestTransportReady;
         }, 15000)) {
         const VideoSmokeDiagnostics diagnostics =
             collectVideoSmokeDiagnostics(hostProbe,
@@ -563,7 +720,7 @@ int main(int argc, char* argv[]) {
         qCritical().noquote() << "host messages:" << hostProbe.infoMessages.join(QStringLiteral(" | "));
         qCritical().noquote() << "guest messages:" << guestProbe.infoMessages.join(QStringLiteral(" | "));
         qCritical().noquote() << collectedOutput(server);
-        stopServer();
+        stopAllProcesses();
         return 1;
     }
 
@@ -591,7 +748,7 @@ int main(int argc, char* argv[]) {
         qCritical().noquote() << "host messages:" << hostProbe.infoMessages.join(QStringLiteral(" | "));
         qCritical().noquote() << "guest messages:" << guestProbe.infoMessages.join(QStringLiteral(" | "));
         qCritical().noquote() << collectedOutput(server);
-        stopServer();
+        stopAllProcesses();
         return 1;
     }
 
@@ -619,7 +776,7 @@ int main(int argc, char* argv[]) {
         qCritical().noquote() << "host messages:" << hostProbe.infoMessages.join(QStringLiteral(" | "));
         qCritical().noquote() << "guest messages:" << guestProbe.infoMessages.join(QStringLiteral(" | "));
         qCritical().noquote() << collectedOutput(server);
-        stopServer();
+        stopAllProcesses();
         return 1;
     }
     const QString expectedCameraSource = syntheticCamera
@@ -636,7 +793,7 @@ int main(int argc, char* argv[]) {
         qCritical().noquote() << "host messages:" << hostProbe.infoMessages.join(QStringLiteral(" | "));
         qCritical().noquote() << "guest messages:" << guestProbe.infoMessages.join(QStringLiteral(" | "));
         qCritical().noquote() << collectedOutput(server);
-        stopServer();
+        stopAllProcesses();
         return 1;
     }
 
@@ -659,7 +816,7 @@ int main(int argc, char* argv[]) {
         qCritical().noquote() << "host messages:" << hostProbe.infoMessages.join(QStringLiteral(" | "));
         qCritical().noquote() << "guest messages:" << guestProbe.infoMessages.join(QStringLiteral(" | "));
         qCritical().noquote() << collectedOutput(server);
-        stopServer();
+        stopAllProcesses();
         return 1;
     }
 
@@ -681,7 +838,7 @@ int main(int argc, char* argv[]) {
         qCritical().noquote() << "host messages:" << hostProbe.infoMessages.join(QStringLiteral(" | "));
         qCritical().noquote() << "guest messages:" << guestProbe.infoMessages.join(QStringLiteral(" | "));
         qCritical().noquote() << collectedOutput(server);
-        stopServer();
+        stopAllProcesses();
         return 1;
     }
 
@@ -711,7 +868,7 @@ int main(int argc, char* argv[]) {
         qCritical().noquote() << "host messages:" << hostProbe.infoMessages.join(QStringLiteral(" | "));
         qCritical().noquote() << "guest messages:" << guestProbe.infoMessages.join(QStringLiteral(" | "));
         qCritical().noquote() << collectedOutput(server);
-        stopServer();
+        stopAllProcesses();
         return 1;
     }
 
@@ -735,7 +892,7 @@ int main(int argc, char* argv[]) {
         qCritical().noquote() << "host messages:" << hostProbe.infoMessages.join(QStringLiteral(" | "));
         qCritical().noquote() << "guest messages:" << guestProbe.infoMessages.join(QStringLiteral(" | "));
         qCritical().noquote() << collectedOutput(server);
-        stopServer();
+        stopAllProcesses();
         return 1;
     }
 
@@ -754,7 +911,7 @@ int main(int argc, char* argv[]) {
         qCritical().noquote() << "host messages:" << hostProbe.infoMessages.join(QStringLiteral(" | "));
         qCritical().noquote() << "guest messages:" << guestProbe.infoMessages.join(QStringLiteral(" | "));
         qCritical().noquote() << collectedOutput(server);
-        stopServer();
+        stopAllProcesses();
         return 1;
     }
 
@@ -764,7 +921,7 @@ int main(int argc, char* argv[]) {
         return !hostController.inMeeting() && !guestController.inMeeting();
     }, 5000);
 
-    stopServer();
+    stopAllProcesses();
     qInfo().noquote() << "test_meeting_runtime_smoke passed";
     return 0;
 }

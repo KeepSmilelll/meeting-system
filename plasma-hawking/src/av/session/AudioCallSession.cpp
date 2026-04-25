@@ -4,6 +4,8 @@
 
 #include <QDebug>
 #include <QCoreApplication>
+#include <QByteArray>
+#include <QList>
 #include <QMutexLocker>
 #include <QThread>
 #include <QtGlobal>
@@ -27,6 +29,16 @@ float audioProcessFloat(const char* key, float fallback) {
     bool ok = false;
     const float value = qEnvironmentVariable(key).toFloat(&ok);
     return ok ? value : fallback;
+}
+
+bool looksLikeStunPacket(const uint8_t* data, std::size_t len) {
+    if (data == nullptr || len < 20U) {
+        return false;
+    }
+    if ((data[0] & 0xC0U) != 0U) {
+        return false;
+    }
+    return data[4] == 0x21U && data[5] == 0x12U && data[6] == 0xA4U && data[7] == 0x42U;
 }
 
 }  // namespace
@@ -115,6 +127,14 @@ bool av::session::AudioCallSession::start() {
     m_receivedPacketCount.store(0, std::memory_order_release);
     m_sentPacketCount.store(0, std::memory_order_release);
     m_sentOctetCount.store(0, std::memory_order_release);
+    m_dtlsStarted.store(false, std::memory_order_release);
+    m_iceConnected.store(false, std::memory_order_release);
+    m_dtlsConnected.store(false, std::memory_order_release);
+    m_srtpReady.store(false, std::memory_order_release);
+    m_inboundSrtp.clear();
+    m_outboundSrtp.clear();
+    m_dtlsHandshakePackets.clear();
+    m_lastDtlsHandshakeSendAt = {};
     m_audioBwe.reset();
     m_localSenderReport = {};
     m_remoteSenderReport = {};
@@ -252,6 +272,213 @@ void av::session::AudioCallSession::setPeer(const std::string& address, uint16_t
     m_stateWaitCondition.wakeAll();
 }
 
+void av::session::AudioCallSession::setAudioSsrc(uint32_t ssrc) {
+    if (ssrc == 0) {
+        return;
+    }
+    m_sender.setSSRC(ssrc);
+}
+
+QString av::session::AudioCallSession::prepareDtlsFingerprint() {
+    QMutexLocker locker(&m_mutex);
+    if (!m_dtlsTransport.prepareLocalFingerprint()) {
+        setErrorLocked(m_dtlsTransport.lastError().toStdString());
+        return {};
+    }
+    return m_dtlsTransport.localFingerprintSha256();
+}
+
+bool av::session::AudioCallSession::startDtlsSrtp(const QString& serverFingerprint) {
+    QMutexLocker locker(&m_mutex);
+    if (serverFingerprint.trimmed().isEmpty() || !m_mediaSocket.isOpen() || !m_mediaSocket.hasPeer()) {
+        return false;
+    }
+    if (m_dtlsTransport.isConnected() && m_srtpReady.load(std::memory_order_acquire)) {
+        return true;
+    }
+
+    QList<QByteArray> outgoing;
+    if (!m_dtlsTransport.start(serverFingerprint, &outgoing)) {
+        setErrorLocked(m_dtlsTransport.lastError().toStdString());
+        return false;
+    }
+
+    if (!outgoing.empty() || !m_dtlsStarted.load(std::memory_order_acquire)) {
+        m_dtlsHandshakePackets.assign(outgoing.begin(), outgoing.end());
+    }
+    m_dtlsStarted.store(true, std::memory_order_release);
+    return sendCachedDtlsHandshakeLocked(m_mediaSocket.peer());
+}
+
+bool av::session::AudioCallSession::iceConnected() const {
+    return m_iceConnected.load(std::memory_order_acquire);
+}
+
+bool av::session::AudioCallSession::dtlsConnected() const {
+    return m_dtlsConnected.load(std::memory_order_acquire);
+}
+
+bool av::session::AudioCallSession::srtpReady() const {
+    return m_srtpReady.load(std::memory_order_acquire);
+}
+
+bool av::session::AudioCallSession::sendTransportProbe(const std::vector<uint8_t>& packet) {
+    if (packet.empty()) {
+        return false;
+    }
+
+    QMutexLocker locker(&m_mutex);
+    if (!m_mediaSocket.isOpen() || !m_mediaSocket.hasPeer()) {
+        return false;
+    }
+    const media::UdpEndpoint peer = m_mediaSocket.peer();
+    const int sent = m_mediaSocket.sendTo(packet.data(), packet.size(), peer);
+    return sent == static_cast<int>(packet.size());
+}
+
+bool av::session::AudioCallSession::configureSrtpLocked() {
+    if (m_srtpReady.load(std::memory_order_acquire)) {
+        return true;
+    }
+    if (!m_dtlsTransport.isConnected()) {
+        return false;
+    }
+
+    media::DtlsTransportClient::SrtpKeyMaterial keying;
+    if (!m_dtlsTransport.exportSrtpKeyMaterial(
+            security::SRTPContext::masterKeyLength(),
+            security::SRTPContext::masterSaltLength(),
+            &keying)) {
+        setErrorLocked("DTLS SRTP exporter failed");
+        return false;
+    }
+    if (!m_inboundSrtp.configure(keying.remoteKey, keying.remoteSalt, security::SRTPContext::Direction::Inbound) ||
+        !m_outboundSrtp.configure(keying.localKey, keying.localSalt, security::SRTPContext::Direction::Outbound)) {
+        const QString error = !m_inboundSrtp.lastError().isEmpty() ? m_inboundSrtp.lastError() : m_outboundSrtp.lastError();
+        setErrorLocked(error.toStdString());
+        return false;
+    }
+    m_dtlsConnected.store(true, std::memory_order_release);
+    m_srtpReady.store(true, std::memory_order_release);
+    qInfo().noquote() << "[audio-session] dtls-connected srtp-ready profile=" << m_dtlsTransport.selectedSrtpProfile();
+    return true;
+}
+
+bool av::session::AudioCallSession::handleDtlsPacketLocked(const uint8_t* data, std::size_t len, const media::UdpEndpoint& from) {
+    if (data == nullptr || len == 0U || !m_mediaSocket.acceptSender(from)) {
+        return false;
+    }
+
+    QList<QByteArray> outgoing;
+    const QByteArray datagram(reinterpret_cast<const char*>(data), static_cast<int>(len));
+    if (!m_dtlsTransport.handleIncomingDatagram(datagram, &outgoing)) {
+        setErrorLocked(m_dtlsTransport.lastError().toStdString());
+        return false;
+    }
+    for (const QByteArray& packet : outgoing) {
+        const int sent = m_mediaSocket.sendTo(
+            reinterpret_cast<const uint8_t*>(packet.constData()),
+            static_cast<std::size_t>(packet.size()),
+            from);
+        if (sent != packet.size()) {
+            setErrorLocked("DTLS response send failed");
+            return false;
+        }
+    }
+    return configureSrtpLocked();
+}
+
+bool av::session::AudioCallSession::sendCachedDtlsHandshakeLocked(const media::UdpEndpoint& peer) {
+    if (m_srtpReady.load(std::memory_order_acquire) || !peer.isValid() || m_dtlsHandshakePackets.empty()) {
+        return true;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    if (m_lastDtlsHandshakeSendAt.time_since_epoch().count() != 0 &&
+        now - m_lastDtlsHandshakeSendAt < std::chrono::milliseconds(100)) {
+        return true;
+    }
+    for (const QByteArray& packet : m_dtlsHandshakePackets) {
+        const int sent = m_mediaSocket.sendTo(
+            reinterpret_cast<const uint8_t*>(packet.constData()),
+            static_cast<std::size_t>(packet.size()),
+            peer);
+        if (sent != packet.size()) {
+            setErrorLocked("DTLS handshake send failed");
+            return false;
+        }
+    }
+    m_lastDtlsHandshakeSendAt = now;
+    return true;
+}
+
+bool av::session::AudioCallSession::protectRtpLocked(std::vector<uint8_t>* packet) {
+    if (!m_dtlsStarted.load(std::memory_order_acquire)) {
+        return true;
+    }
+    if (!m_srtpReady.load(std::memory_order_acquire)) {
+        return false;
+    }
+    QByteArray bytes(reinterpret_cast<const char*>(packet->data()), static_cast<int>(packet->size()));
+    if (!m_outboundSrtp.protectRtp(&bytes)) {
+        setErrorLocked(m_outboundSrtp.lastError().toStdString());
+        return false;
+    }
+    packet->assign(reinterpret_cast<const uint8_t*>(bytes.constData()),
+                   reinterpret_cast<const uint8_t*>(bytes.constData()) + bytes.size());
+    return true;
+}
+
+bool av::session::AudioCallSession::protectRtcpLocked(std::vector<uint8_t>* packet) {
+    if (!m_dtlsStarted.load(std::memory_order_acquire)) {
+        return true;
+    }
+    if (!m_srtpReady.load(std::memory_order_acquire)) {
+        return false;
+    }
+    QByteArray bytes(reinterpret_cast<const char*>(packet->data()), static_cast<int>(packet->size()));
+    if (!m_outboundSrtp.protectRtcp(&bytes)) {
+        setErrorLocked(m_outboundSrtp.lastError().toStdString());
+        return false;
+    }
+    packet->assign(reinterpret_cast<const uint8_t*>(bytes.constData()),
+                   reinterpret_cast<const uint8_t*>(bytes.constData()) + bytes.size());
+    return true;
+}
+
+bool av::session::AudioCallSession::unprotectRtpLocked(std::vector<uint8_t>* packet) {
+    if (!m_dtlsStarted.load(std::memory_order_acquire)) {
+        return true;
+    }
+    if (!m_srtpReady.load(std::memory_order_acquire)) {
+        return false;
+    }
+    QByteArray bytes(reinterpret_cast<const char*>(packet->data()), static_cast<int>(packet->size()));
+    if (!m_inboundSrtp.unprotectRtp(&bytes)) {
+        setErrorLocked(m_inboundSrtp.lastError().toStdString());
+        return false;
+    }
+    packet->assign(reinterpret_cast<const uint8_t*>(bytes.constData()),
+                   reinterpret_cast<const uint8_t*>(bytes.constData()) + bytes.size());
+    return true;
+}
+
+bool av::session::AudioCallSession::unprotectRtcpLocked(std::vector<uint8_t>* packet) {
+    if (!m_dtlsStarted.load(std::memory_order_acquire)) {
+        return true;
+    }
+    if (!m_srtpReady.load(std::memory_order_acquire)) {
+        return false;
+    }
+    QByteArray bytes(reinterpret_cast<const char*>(packet->data()), static_cast<int>(packet->size()));
+    if (!m_inboundSrtp.unprotectRtcp(&bytes)) {
+        setErrorLocked(m_inboundSrtp.lastError().toStdString());
+        return false;
+    }
+    packet->assign(reinterpret_cast<const uint8_t*>(bytes.constData()),
+                   reinterpret_cast<const uint8_t*>(bytes.constData()) + bytes.size());
+    return true;
+}
+
 uint16_t av::session::AudioCallSession::localPort() const {
     QMutexLocker locker(&m_mutex);
     return m_mediaSocket.localPort();
@@ -373,13 +600,19 @@ bool av::session::AudioCallSession::encodeAndSend(av::codec::AudioEncoder& encod
         return false;
     }
 
-    const auto packet = m_sender.buildPacket(encoded.payloadType,
-                                             true,
-                                             static_cast<uint32_t>(encoded.pts),
-                                             encoded.payload);
+    auto packet = m_sender.buildPacket(encoded.payloadType,
+                                       true,
+                                       static_cast<uint32_t>(encoded.pts),
+                                       encoded.payload);
     if (packet.empty()) {
         setErrorLocked("RTP build failed");
         return false;
+    }
+    {
+        QMutexLocker locker(&m_mutex);
+        if (!protectRtpLocked(&packet)) {
+            return false;
+        }
     }
 
     const int sent = m_mediaSocket.sendTo(packet.data(), packet.size(), peer);
@@ -415,9 +648,12 @@ bool av::session::AudioCallSession::sendSenderReportLocked(const media::UdpEndpo
     report.packetCount = m_sentPacketCount.load(std::memory_order_relaxed);
     report.octetCount = m_sentOctetCount.load(std::memory_order_relaxed);
 
-    const auto packet = m_rtcpHandler.buildSenderReport(report);
+    auto packet = m_rtcpHandler.buildSenderReport(report);
     if (packet.empty()) {
         setErrorLocked("RTCP SR build failed");
+        return false;
+    }
+    if (!protectRtcpLocked(&packet)) {
         return false;
     }
 
@@ -455,9 +691,12 @@ bool av::session::AudioCallSession::sendReceiverReportLocked(const media::UdpEnd
         delaySinceLastSenderReport,
     });
 
-    const auto packet = m_rtcpHandler.buildReceiverReport(report);
+    auto packet = m_rtcpHandler.buildReceiverReport(report);
     if (packet.empty()) {
         setErrorLocked("RTCP RR build failed");
+        return false;
+    }
+    if (!protectRtcpLocked(&packet)) {
         return false;
     }
 
@@ -674,6 +913,16 @@ void av::session::AudioCallSession::sendLoop() {
         bool sendFailed = false;
         const std::size_t chunkCount = frame.samples.size() / chunkSamples;
         for (std::size_t chunkIndex = 0; chunkIndex < chunkCount; ++chunkIndex) {
+            {
+                QMutexLocker locker(&m_mutex);
+                if (m_dtlsStarted.load(std::memory_order_acquire) &&
+                    !m_srtpReady.load(std::memory_order_acquire)) {
+                    (void)sendCachedDtlsHandshakeLocked(peer);
+                    sendFailed = true;
+                    break;
+                }
+            }
+
             av::capture::AudioFrame chunk;
             chunk.sampleRate = frame.sampleRate;
             chunk.channels = frame.channels;
@@ -728,14 +977,38 @@ void av::session::AudioCallSession::recvLoop() {
             continue;
         }
 
-        if (media::looksLikeRtcpPacket(buffer, static_cast<std::size_t>(received))) {
+        const std::size_t receivedSize = static_cast<std::size_t>(received);
+        const QByteArray receivedDatagram(reinterpret_cast<const char*>(buffer), received);
+        if (media::DtlsTransportClient::looksLikeDtlsRecord(receivedDatagram)) {
             QMutexLocker locker(&m_mutex);
-            (void)handleRtcpPacketLocked(buffer, static_cast<std::size_t>(received), from);
+            (void)handleDtlsPacketLocked(buffer, receivedSize, from);
+            continue;
+        }
+        if (looksLikeStunPacket(buffer, receivedSize)) {
+            m_iceConnected.store(true, std::memory_order_release);
+            qInfo().noquote() << "[audio-session] ice-connected binding-response received";
             continue;
         }
 
+        std::vector<uint8_t> mediaPacket(buffer, buffer + received);
+        if (media::looksLikeRtcpPacket(mediaPacket.data(), mediaPacket.size())) {
+            QMutexLocker locker(&m_mutex);
+            if (!unprotectRtcpLocked(&mediaPacket)) {
+                continue;
+            }
+            (void)handleRtcpPacketLocked(mediaPacket.data(), mediaPacket.size(), from);
+            continue;
+        }
+
+        {
+            QMutexLocker locker(&m_mutex);
+            if (!unprotectRtpLocked(&mediaPacket)) {
+                continue;
+            }
+        }
+
         media::RTPPacket packet;
-        if (!m_receiver.parsePacket(buffer, static_cast<std::size_t>(received), packet)) {
+        if (!m_receiver.parsePacket(mediaPacket.data(), mediaPacket.size(), packet)) {
             setErrorLocked("RTP parse failed");
             continue;
         }

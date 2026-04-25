@@ -13,8 +13,6 @@ import (
 	"meeting-server/signaling/server"
 	signalingSfu "meeting-server/signaling/sfu"
 	"meeting-server/signaling/store"
-
-	"google.golang.org/protobuf/proto"
 )
 
 type MeetingHandler struct {
@@ -181,6 +179,8 @@ func (h *MeetingHandler) HandleKick(session *server.Session, payload []byte) {
 
 	ctx := context.Background()
 	_ = h.roomState.RemoveMember(ctx, meetingID, req.TargetUserId)
+	_ = h.closeSFUTransport(ctx, meetingID, req.TargetUserId)
+	_ = h.removeSFUSubscriber(ctx, meetingID, req.TargetUserId)
 	_ = h.removeSFUPublisher(ctx, meetingID, req.TargetUserId)
 	_ = h.mirrorMeetingLeave(ctx, meetingID, req.TargetUserId, "被主持人移出会议")
 
@@ -259,6 +259,8 @@ func (h *MeetingHandler) leave(session *server.Session, reply bool, reason strin
 	}
 
 	_ = h.roomState.RemoveMember(ctx, meetingID, userID)
+	_ = h.closeSFUTransport(ctx, meetingID, userID)
+	_ = h.removeSFUSubscriber(ctx, meetingID, userID)
 	_ = h.removeSFUPublisher(ctx, meetingID, userID)
 	_ = h.mirrorMeetingLeave(ctx, meetingID, userID, reason)
 
@@ -378,9 +380,9 @@ func (h *MeetingHandler) broadcastMeetingStateSync(meetingID, excludeUserID stri
 	participants = h.roomState.HydrateParticipants(context.Background(), meetingID, participants)
 
 	h.sessions.BroadcastToRoom(meetingID, protocol.MeetStateSync, &protocol.MeetStateSyncNotifyBody{
-		MeetingId:    meeting.ID,
-		Title:        meeting.Title,
-		HostId:       meeting.HostUserID,
+		MeetingId:    validProtoString(meeting.ID),
+		Title:        validProtoString(meeting.Title),
+		HostId:       validProtoString(meeting.HostUserID),
 		Participants: cloneParticipants(participants),
 	}, excludeUserID)
 }
@@ -415,19 +417,17 @@ func cloneParticipant(src *protocol.Participant) *protocol.Participant {
 		return nil
 	}
 
-	cloned, ok := proto.Clone(src).(*protocol.Participant)
-	if !ok {
-		return &protocol.Participant{
-			UserId:      src.UserId,
-			DisplayName: src.DisplayName,
-			AvatarUrl:   src.AvatarUrl,
-			Role:        src.Role,
-			IsAudioOn:   src.IsAudioOn,
-			IsVideoOn:   src.IsVideoOn,
-			IsSharing:   src.IsSharing,
-		}
+	return &protocol.Participant{
+		UserId:      validProtoString(src.UserId),
+		DisplayName: validProtoString(src.DisplayName),
+		AvatarUrl:   validProtoString(src.AvatarUrl),
+		Role:        src.Role,
+		IsAudioOn:   src.IsAudioOn,
+		IsVideoOn:   src.IsVideoOn,
+		IsSharing:   src.IsSharing,
+		AudioSsrc:   src.AudioSsrc,
+		VideoSsrc:   src.VideoSsrc,
 	}
-	return cloned
 }
 
 func (h *MeetingHandler) buildJoinResponse(meeting *store.Meeting, participants []*protocol.Participant, userID string) *protocol.MeetJoinRspBody {
@@ -444,12 +444,16 @@ func (h *MeetingHandler) buildJoinResponse(meeting *store.Meeting, participants 
 
 	return &protocol.MeetJoinRspBody{
 		Success:      true,
-		MeetingId:    meeting.ID,
-		Title:        meeting.Title,
+		MeetingId:    validProtoString(meeting.ID),
+		Title:        validProtoString(meeting.Title),
 		SfuAddress:   sfuAddress,
 		IceServers:   h.buildIceServers(userID),
 		Participants: cloneParticipants(participants),
 	}
+}
+
+func validProtoString(value string) string {
+	return strings.ToValidUTF8(value, "")
 }
 
 func (h *MeetingHandler) buildIceServers(userID string) []*protocol.IceServer {
@@ -622,6 +626,48 @@ func (h *MeetingHandler) removeSFUPublisher(ctx context.Context, meetingID, user
 	}
 	if err != nil {
 		return fmt.Errorf("remove sfu publisher meeting=%s user=%s: %w", meetingID, userID, err)
+	}
+	if rsp == nil || !rsp.GetSuccess() {
+		return nil
+	}
+	return nil
+}
+
+func (h *MeetingHandler) closeSFUTransport(ctx context.Context, meetingID, userID string) error {
+	if h == nil || h.sfuClient == nil || meetingID == "" || userID == "" {
+		return nil
+	}
+
+	rsp, err := h.sfuClient.CloseTransport(ctx, &pb.CloseTransportReq{
+		MeetingId: meetingID,
+		UserId:    userID,
+	})
+	if errors.Is(err, signalingSfu.ErrDisabled) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("close sfu transport meeting=%s user=%s: %w", meetingID, userID, err)
+	}
+	if rsp == nil || !rsp.GetSuccess() {
+		return nil
+	}
+	return nil
+}
+
+func (h *MeetingHandler) removeSFUSubscriber(ctx context.Context, meetingID, userID string) error {
+	if h == nil || h.sfuClient == nil || meetingID == "" || userID == "" {
+		return nil
+	}
+
+	rsp, err := h.sfuClient.RemoveSubscriber(ctx, &pb.RemoveSubscriberReq{
+		MeetingId: meetingID,
+		UserId:    userID,
+	})
+	if errors.Is(err, signalingSfu.ErrDisabled) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("remove sfu subscriber meeting=%s user=%s: %w", meetingID, userID, err)
 	}
 	if rsp == nil || !rsp.GetSuccess() {
 		return nil

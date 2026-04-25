@@ -92,6 +92,8 @@ Item {
                         audioOn: audioOn
                         videoOn: videoOn
                         sharing: sharing
+                        audioSsrc: audioSsrc
+                        videoSsrc: videoSsrc
                         Layout.preferredWidth: root.tileWidth
                         Layout.preferredHeight: root.tileHeight
                         Layout.minimumWidth: root.tileWidth
