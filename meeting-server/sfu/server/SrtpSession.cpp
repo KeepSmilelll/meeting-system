@@ -137,7 +137,11 @@ int MaxRtpTrailerBytes() {
 }
 
 int MaxRtcpTrailerBytes() {
+#ifdef SRTP_MAX_SRTCP_TRAILER_LEN
     return SRTP_MAX_SRTCP_TRAILER_LEN + 4;
+#else
+    return SRTP_MAX_TRAILER_LEN + 4;
+#endif
 }
 
 #endif
