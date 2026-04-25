@@ -2,6 +2,12 @@
 
 FROM golang:1.22-alpine AS build
 
+ARG GOPROXY=https://goproxy.cn,direct
+ARG GOSUMDB=sum.golang.google.cn
+
+ENV GOPROXY=${GOPROXY}
+ENV GOSUMDB=${GOSUMDB}
+
 WORKDIR /src
 
 COPY go.mod go.sum ./

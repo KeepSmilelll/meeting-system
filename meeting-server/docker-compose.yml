@@ -46,6 +46,9 @@ services:
   signaling:
     build:
       context: ./signaling
+      args:
+        GOPROXY: "${GOPROXY:-https://goproxy.cn,direct}"
+        GOSUMDB: "${GOSUMDB:-sum.golang.google.cn}"
     restart: unless-stopped
     depends_on:
       mysql:
