@@ -45,7 +45,8 @@ services:
 
   signaling:
     build:
-      context: ./signaling
+      context: .
+      dockerfile: signaling/Dockerfile
       args:
         GOPROXY: "${GOPROXY:-https://goproxy.cn,direct}"
         GOSUMDB: "${GOSUMDB:-sum.golang.google.cn}"

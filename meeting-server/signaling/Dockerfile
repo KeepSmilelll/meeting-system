@@ -8,12 +8,24 @@ ARG GOSUMDB=sum.golang.google.cn
 ENV GOPROXY=${GOPROXY}
 ENV GOSUMDB=${GOSUMDB}
 
-WORKDIR /src
+RUN apk add --no-cache protobuf-dev
 
-COPY go.mod go.sum ./
-RUN go mod download
+WORKDIR /src/signaling
 
-COPY . .
+COPY signaling/go.mod signaling/go.sum ./
+RUN go mod download \
+    && go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.34.2
+
+COPY proto /src/proto
+COPY signaling /src/signaling
+RUN rm -rf /src/signaling/protocol/pb \
+    && mkdir -p /src/signaling/protocol/pb \
+    && protoc --proto_path=/src/proto \
+        --go_out=/src/signaling/protocol/pb \
+        --go_opt=paths=source_relative \
+        /src/proto/signaling.proto \
+        /src/proto/sfu_rpc.proto
+
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/signaling .
 
 FROM alpine:3.20
