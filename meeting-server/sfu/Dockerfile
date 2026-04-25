@@ -1,4 +1,6 @@
-FROM ubuntu:24.04 AS build
+ARG UBUNTU_IMAGE=ubuntu:24.04
+
+FROM ${UBUNTU_IMAGE} AS build
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -32,7 +34,7 @@ RUN cmake -S /src/sfu -B /build -G Ninja \
         -DLIBSRTP_ROOT_HINT=/usr \
     && cmake --build /build --target meeting_sfu
 
-FROM ubuntu:24.04
+FROM ${UBUNTU_IMAGE}
 
 ENV DEBIAN_FRONTEND=noninteractive
 

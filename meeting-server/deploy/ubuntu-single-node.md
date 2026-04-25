@@ -56,6 +56,20 @@ Required edits:
 - Keep `PUBLIC_IP=123.207.41.63` unless the cloud public IP changes.
 - Replace `MYSQL_ROOT_PASSWORD`, `MYSQL_PASSWORD`, `JWT_SECRET`, and `TURN_SECRET`.
 - Keep `TURN_MIN_PORT` and `TURN_MAX_PORT` aligned with the Tencent Cloud security group.
+- If the host cannot reach Docker Hub, set `GOLANG_IMAGE`, `ALPINE_IMAGE`, `UBUNTU_IMAGE`, `MYSQL_IMAGE`, `REDIS_IMAGE`, and `COTURN_IMAGE` to a reachable registry mirror.
+
+Example mirror override:
+
+```bash
+cat >> .env <<'EOF'
+GOLANG_IMAGE=docker.m.daocloud.io/library/golang:1.22-alpine
+ALPINE_IMAGE=docker.m.daocloud.io/library/alpine:3.20
+UBUNTU_IMAGE=docker.m.daocloud.io/library/ubuntu:24.04
+MYSQL_IMAGE=docker.m.daocloud.io/library/mysql:8.4
+REDIS_IMAGE=docker.m.daocloud.io/library/redis:7.4-alpine
+COTURN_IMAGE=docker.m.daocloud.io/coturn/coturn:latest
+EOF
+```
 
 ## 5. Start
 

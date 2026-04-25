@@ -1,4 +1,7 @@
-FROM golang:1.22-alpine AS build
+ARG GOLANG_IMAGE=golang:1.22-alpine
+ARG ALPINE_IMAGE=alpine:3.20
+
+FROM ${GOLANG_IMAGE} AS build
 
 ARG GOPROXY=https://goproxy.cn,direct
 ARG GOSUMDB=sum.golang.google.cn
@@ -26,7 +29,7 @@ RUN rm -rf /src/signaling/protocol/pb \
 
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/signaling .
 
-FROM alpine:3.20
+FROM ${ALPINE_IMAGE}
 
 RUN apk add --no-cache ca-certificates tzdata \
     && adduser -D -H -u 10001 appuser

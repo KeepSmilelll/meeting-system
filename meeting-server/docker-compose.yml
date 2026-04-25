@@ -1,6 +1,6 @@
 services:
   mysql:
-    image: mysql:8.4
+    image: "${MYSQL_IMAGE:-mysql:8.4}"
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}"
@@ -17,7 +17,7 @@ services:
       retries: 12
 
   redis:
-    image: redis:7.4-alpine
+    image: "${REDIS_IMAGE:-redis:7.4-alpine}"
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
@@ -32,6 +32,8 @@ services:
     build:
       context: .
       dockerfile: sfu/Dockerfile
+      args:
+        UBUNTU_IMAGE: "${UBUNTU_IMAGE:-ubuntu:24.04}"
     restart: unless-stopped
     environment:
       SFU_NODE_ID: "${SFU_NODE_ID:-sfu-node-01}"
@@ -48,6 +50,8 @@ services:
       context: .
       dockerfile: signaling/Dockerfile
       args:
+        GOLANG_IMAGE: "${GOLANG_IMAGE:-golang:1.22-alpine}"
+        ALPINE_IMAGE: "${ALPINE_IMAGE:-alpine:3.20}"
         GOPROXY: "${GOPROXY:-https://goproxy.cn,direct}"
         GOSUMDB: "${GOSUMDB:-sum.golang.google.cn}"
     restart: unless-stopped
@@ -75,7 +79,7 @@ services:
       - "${SIGNALING_PORT:-8443}:8443/tcp"
 
   coturn:
-    image: coturn/coturn:latest
+    image: "${COTURN_IMAGE:-coturn/coturn:latest}"
     restart: unless-stopped
     network_mode: host
     command:
