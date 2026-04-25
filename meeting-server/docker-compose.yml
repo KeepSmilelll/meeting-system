@@ -1,3 +1,94 @@
-version: '3.8'
-services: {}
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}"
+      MYSQL_DATABASE: "${MYSQL_DATABASE:-meeting}"
+      MYSQL_USER: "${MYSQL_USER:-meeting}"
+      MYSQL_PASSWORD: "${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env}"
+      TZ: "${TZ:-Asia/Shanghai}"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  sfu:
+    build:
+      context: ./sfu
+    restart: unless-stopped
+    environment:
+      SFU_NODE_ID: "${SFU_NODE_ID:-sfu-node-01}"
+      SFU_ADVERTISED_HOST: "${PUBLIC_IP:?set PUBLIC_IP in .env}"
+      SFU_RPC_LISTEN_PORT: "${SFU_RPC_PORT:-9000}"
+      SFU_MEDIA_LISTEN_PORT: "${SFU_MEDIA_PORT:-10000}"
+    expose:
+      - "${SFU_RPC_PORT:-9000}/tcp"
+    ports:
+      - "${SFU_MEDIA_PORT:-10000}:${SFU_MEDIA_PORT:-10000}/udp"
+
+  signaling:
+    build:
+      context: ./signaling
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      sfu:
+        condition: service_started
+    environment:
+      SIGNALING_LISTEN_ADDR: ":8443"
+      SIGNALING_JWT_SECRET: "${JWT_SECRET:?set JWT_SECRET in .env}"
+      SIGNALING_ENABLE_REDIS: "true"
+      SIGNALING_REDIS_ADDR: "redis:6379"
+      SIGNALING_MYSQL_DSN: "${MYSQL_USER:-meeting}:${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env}@tcp(mysql:3306)/${MYSQL_DATABASE:-meeting}?charset=utf8mb4&parseTime=True&loc=Local"
+      SIGNALING_DEFAULT_SFU: "${PUBLIC_IP:?set PUBLIC_IP in .env}:${SFU_MEDIA_PORT:-10000}"
+      SIGNALING_DEFAULT_SFU_NODE_ID: "${SFU_NODE_ID:-sfu-node-01}"
+      SIGNALING_SFU_RPC_ADDR: "sfu:${SFU_RPC_PORT:-9000}"
+      SIGNALING_TURN_SECRET: "${TURN_SECRET:?set TURN_SECRET in .env}"
+      SIGNALING_TURN_REALM: "${TURN_REALM:-meeting.local}"
+      SIGNALING_TURN_CRED_TTL: "${TURN_CRED_TTL:-24h}"
+      SIGNALING_TURN_SERVERS: "turn:${PUBLIC_IP:?set PUBLIC_IP in .env}:${TURN_PORT:-3478}?transport=udp"
+    ports:
+      - "${SIGNALING_PORT:-8443}:8443/tcp"
+
+  coturn:
+    image: coturn/coturn:latest
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - "--listening-port=${TURN_PORT:-3478}"
+      - "--min-port=${TURN_MIN_PORT:-49152}"
+      - "--max-port=${TURN_MAX_PORT:-49252}"
+      - "--realm=${TURN_REALM:-meeting.local}"
+      - "--external-ip=${PUBLIC_IP:?set PUBLIC_IP in .env}"
+      - "--fingerprint"
+      - "--use-auth-secret"
+      - "--static-auth-secret=${TURN_SECRET:?set TURN_SECRET in .env}"
+      - "--no-cli"
+      - "--no-tls"
+      - "--no-dtls"
+      - "--no-multicast-peers"
+      - "--log-file=stdout"
+
+volumes:
+  mysql_data:
+  redis_data:
 

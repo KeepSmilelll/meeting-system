@@ -52,6 +52,11 @@ Controls.ApplicationWindow {
         controller: meetingController
     }
 
+    JoinMeetingDialog {
+        id: joinMeetingDialog
+        controller: meetingController
+    }
+
     Connections {
         target: meetingController
 
@@ -152,6 +157,12 @@ Controls.ApplicationWindow {
                     visible: appStateMachine.loggedIn && !appStateMachine.inMeeting && !appStateMachine.reconnecting
                     text: "Create meeting"
                     onClicked: createMeetingDialog.open()
+                }
+
+                Controls.Button {
+                    visible: appStateMachine.loggedIn && !appStateMachine.inMeeting && !appStateMachine.reconnecting
+                    text: "Join meeting"
+                    onClicked: joinMeetingDialog.open()
                 }
 
                 Controls.Label {

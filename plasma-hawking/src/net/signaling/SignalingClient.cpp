@@ -369,10 +369,19 @@ void SignalingClient::handlePayload(quint16 signalType, const QByteArray& payloa
         }
 
         const QString err = rsp.has_error() ? protobufError(rsp.error()) : QString();
+        QStringList iceServers;
+        iceServers.reserve(rsp.ice_servers_size());
+        for (const auto& server : rsp.ice_servers()) {
+            iceServers.push_back(QStringLiteral("%1|%2|%3")
+                                     .arg(toQtString(server.urls()),
+                                          toQtString(server.username()),
+                                          toQtString(server.credential())));
+        }
         emit joinMeetingFinished(rsp.success(),
                                  toQtString(rsp.meeting_id()),
                                  toQtString(rsp.title()),
                                  toQtString(rsp.sfu_address()),
+                                 iceServers,
                                  participants,
                                  hostUserId,
                                  err);

@@ -60,6 +60,7 @@ signals:
                              const QString& meetingId,
                              const QString& title,
                              const QString& sfuAddress,
+                             const QStringList& iceServers,
                              const QStringList& participants,
                              const QString& hostUserId,
                              const QString& error);

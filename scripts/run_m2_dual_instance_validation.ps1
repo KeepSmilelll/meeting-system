@@ -36,6 +36,12 @@ param(
     [ValidateSet("", "auto", "qt", "dshow", "ffmpeg-process", "ffmpeg")]
     [string]$CameraCaptureBackend = "",
     [switch]$Headless,
+    [ValidateSet("", "all", "relay-only")]
+    [string]$IcePolicy = "",
+    [string]$TurnServers = "",
+    [string]$TurnSecret = "",
+    [string]$TurnRealm = "meeting.local",
+    [string]$TurnCredentialTtl = "1h",
     [ValidateRange(10, 300)]
     [int]$UiTimeoutSeconds = 60,
     [ValidateRange(0, 240)]
@@ -80,6 +86,9 @@ if ($SingleRealCamera -and $useSyntheticCamera) {
 }
 if ($SingleRealAudio -and $useSyntheticAudio) {
     throw "SingleRealAudio cannot be used together with SyntheticAudio=true"
+}
+if ($IcePolicy -eq "relay-only" -and [string]::IsNullOrWhiteSpace($TurnServers)) {
+    throw "relay-only validation requires -TurnServers, for example: turn:127.0.0.1:3478?transport=udp"
 }
 
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -328,6 +337,21 @@ if (-not $SkipUiSmoke) {
     }
     if ($Headless) {
         $uiParams.Headless = $true
+    }
+    if (-not [string]::IsNullOrWhiteSpace($IcePolicy)) {
+        $uiParams.IcePolicy = $IcePolicy
+    }
+    if (-not [string]::IsNullOrWhiteSpace($TurnServers)) {
+        $uiParams.TurnServers = $TurnServers
+    }
+    if (-not [string]::IsNullOrWhiteSpace($TurnSecret)) {
+        $uiParams.TurnSecret = $TurnSecret
+    }
+    if (-not [string]::IsNullOrWhiteSpace($TurnRealm)) {
+        $uiParams.TurnRealm = $TurnRealm
+    }
+    if (-not [string]::IsNullOrWhiteSpace($TurnCredentialTtl)) {
+        $uiParams.TurnCredentialTtl = $TurnCredentialTtl
     }
     if (-not [string]::IsNullOrWhiteSpace($CameraCaptureBackend)) {
         $uiParams.CameraCaptureBackend = $CameraCaptureBackend

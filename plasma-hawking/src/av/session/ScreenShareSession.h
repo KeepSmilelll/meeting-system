@@ -69,6 +69,12 @@ public:
     uint32_t expectedRemoteVideoSsrc() const;
 
     void setPeer(const std::string& address, uint16_t port);
+    bool configureTurnRelay(const std::string& turnAddress,
+                            uint16_t turnPort,
+                            const std::string& username,
+                            const std::string& credential,
+                            const std::string& peerAddress,
+                            uint16_t peerPort);
     void setVideoSsrc(uint32_t ssrc);
     QString prepareDtlsFingerprint();
     bool startDtlsSrtp(const QString& serverFingerprint);

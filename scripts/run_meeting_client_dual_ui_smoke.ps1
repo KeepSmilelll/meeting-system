@@ -21,6 +21,12 @@ param(
     [ValidateSet("", "auto", "qt", "dshow", "ffmpeg-process", "ffmpeg")]
     [string]$CameraCaptureBackend = "",
     [switch]$Headless,
+    [ValidateSet("", "all", "relay-only")]
+    [string]$IcePolicy = "",
+    [string]$TurnServers = "",
+    [string]$TurnSecret = "",
+    [string]$TurnRealm = "meeting.local",
+    [string]$TurnCredentialTtl = "1h",
     [ValidateRange(0, 120000)]
     [int]$SoakMs = 0,
     [ValidateRange(0, 120000)]
@@ -36,6 +42,9 @@ if ($SingleRealAudio -and $SyntheticAudio) {
 }
 if ($SingleRealCamera -and $SyntheticCamera) {
     throw "SingleRealCamera cannot be used together with SyntheticCamera"
+}
+if ($IcePolicy -eq "relay-only" -and [string]::IsNullOrWhiteSpace($TurnServers)) {
+    throw "relay-only validation requires -TurnServers, for example: turn:127.0.0.1:3478?transport=udp"
 }
 if ([string]::IsNullOrWhiteSpace($HostAudioInputDevice) -and -not [string]::IsNullOrWhiteSpace($HostAudioDevice)) {
     $HostAudioInputDevice = $HostAudioDevice
@@ -462,6 +471,18 @@ $serverEnv["SIGNALING_ENABLE_REDIS"] = "false"
 $serverEnv["SIGNALING_MYSQL_DSN"] = ""
 $serverEnv["SIGNALING_DEFAULT_SFU"] = "127.0.0.1:$sfuMediaPort"
 $serverEnv["SIGNALING_SFU_RPC_ADDR"] = "127.0.0.1:$sfuRpcPort"
+if (-not [string]::IsNullOrWhiteSpace($TurnServers)) {
+    $serverEnv["SIGNALING_TURN_SERVERS"] = $TurnServers
+}
+if (-not [string]::IsNullOrWhiteSpace($TurnSecret)) {
+    $serverEnv["SIGNALING_TURN_SECRET"] = $TurnSecret
+}
+if (-not [string]::IsNullOrWhiteSpace($TurnRealm)) {
+    $serverEnv["SIGNALING_TURN_REALM"] = $TurnRealm
+}
+if (-not [string]::IsNullOrWhiteSpace($TurnCredentialTtl)) {
+    $serverEnv["SIGNALING_TURN_CRED_TTL"] = $TurnCredentialTtl
+}
 
 $clientBaseEnv = @{}
 $clientBaseEnv["MEETING_RUNTIME_SMOKE"] = "1"
@@ -496,6 +517,10 @@ if ($ExpectRealCamera) {
 }
 if ($Headless) {
     $clientBaseEnv["QT_QPA_PLATFORM"] = "offscreen"
+}
+if (-not [string]::IsNullOrWhiteSpace($IcePolicy)) {
+    $clientBaseEnv["MEETING_ICE_POLICY"] = $IcePolicy
+    Write-Host "[dual-ui-smoke] forcing MEETING_ICE_POLICY=$IcePolicy"
 }
 if (-not [string]::IsNullOrWhiteSpace($resolvedCameraCaptureBackend)) {
     $clientBaseEnv["MEETING_CAMERA_CAPTURE_BACKEND"] = $resolvedCameraCaptureBackend

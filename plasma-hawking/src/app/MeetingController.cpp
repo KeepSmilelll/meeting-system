@@ -14,6 +14,8 @@
 #include "av/render/AudioPlayer.h"
 #include "av/render/VideoFrameStore.h"
 #include "av/sync/AVSync.h"
+#include "net/ice/StunClient.h"
+#include "net/ice/TurnClient.h"
 #include "security/CryptoUtils.h"
 #include <QByteArray>
 #include <QDateTime>
@@ -492,9 +494,107 @@ QString makeHostIceCandidate(const QString& host, quint16 port) {
     return QStringLiteral("candidate:1 1 udp 2130706431 %1 %2 typ host").arg(host.trimmed()).arg(port);
 }
 
+enum class IcePolicy {
+    All,
+    RelayOnly,
+};
+
+IcePolicy icePolicyFromEnvironment() {
+    const QString value = QProcessEnvironment::systemEnvironment()
+                              .value(QStringLiteral("MEETING_ICE_POLICY"), QStringLiteral("all"))
+                              .trimmed()
+                              .toLower();
+    return value == QStringLiteral("relay-only") ? IcePolicy::RelayOnly : IcePolicy::All;
+}
+
 QStringList makeHostIceCandidates(quint16 localPort) {
     const QString candidate = makeHostIceCandidate(resolveAdvertisedHost(), localPort);
     return candidate.isEmpty() ? QStringList{} : QStringList{candidate};
+}
+
+QStringList splitIceServerEntry(const QString& entry) {
+    return entry.split(QLatin1Char('|'), Qt::KeepEmptyParts);
+}
+
+struct TurnRelaySettings {
+    bool valid{false};
+    QString host{};
+    quint16 port{0};
+    QString username{};
+    QString credential{};
+};
+
+TurnRelaySettings firstTurnRelaySettings(const QStringList& iceServers) {
+    for (const QString& entry : iceServers) {
+        const QStringList parts = splitIceServerEntry(entry);
+        const QString url = parts.value(0).trimmed();
+        if (!url.startsWith(QStringLiteral("turn:"), Qt::CaseInsensitive) &&
+            !url.startsWith(QStringLiteral("turns:"), Qt::CaseInsensitive)) {
+            continue;
+        }
+
+        ice::TurnServerConfig turn;
+        if (!ice::TurnClient::parseTurnServerUrl(url, &turn)) {
+            continue;
+        }
+        const QString username = parts.value(1).trimmed();
+        const QString credential = parts.value(2).trimmed();
+        if (username.isEmpty() || credential.isEmpty()) {
+            continue;
+        }
+        return TurnRelaySettings{true, turn.host, turn.port, username, credential};
+    }
+    return {};
+}
+
+QStringList collectIceCandidates(quint16 localPort, const QStringList& iceServers, IcePolicy policy) {
+    QStringList candidates;
+    if (policy != IcePolicy::RelayOnly) {
+        candidates.append(makeHostIceCandidates(localPort));
+    }
+
+    for (const QString& entry : iceServers) {
+        const QStringList parts = splitIceServerEntry(entry);
+        const QString url = parts.value(0).trimmed();
+        if (url.startsWith(QStringLiteral("stun:"), Qt::CaseInsensitive) && policy != IcePolicy::RelayOnly) {
+            QString host;
+            quint16 port = 0;
+            if (!ice::parseStunServerUrl(url, &host, &port)) {
+                continue;
+            }
+            ice::StunClient stun;
+            stun.setTimeoutMs(150);
+            stun.setRetryCount(1);
+            const ice::StunBindingResult result = stun.bindingRequest(host, port, localPort);
+            if (result.success) {
+                const QString candidate = ice::makeServerReflexiveCandidate(result.mappedAddress.address,
+                                                                            result.mappedAddress.port);
+                if (!candidate.isEmpty()) {
+                    candidates.append(candidate);
+                }
+            }
+            continue;
+        }
+
+        if (url.startsWith(QStringLiteral("turn:"), Qt::CaseInsensitive) ||
+            url.startsWith(QStringLiteral("turns:"), Qt::CaseInsensitive)) {
+            ice::TurnServerConfig turn;
+            if (!ice::TurnClient::parseTurnServerUrl(url, &turn)) {
+                continue;
+            }
+            QHostAddress relayAddress(turn.host);
+            if (relayAddress.isNull()) {
+                continue;
+            }
+            const QString candidate = ice::TurnClient::makeRelayCandidate(relayAddress, turn.port);
+            if (!candidate.isEmpty()) {
+                candidates.append(candidate);
+            }
+        }
+    }
+
+    candidates.removeDuplicates();
+    return candidates;
 }
 
 std::vector<uint8_t> buildStunBindingRequest(const QString& username) {
@@ -758,7 +858,7 @@ MeetingController::MeetingController(const QString& databasePath, QObject* paren
     });
 
     connect(m_signaling, &signaling::SignalingClient::joinMeetingFinished, this,
-            [this](bool success, const QString& meetingId, const QString& title, const QString& sfuAddress, const QStringList& participants, const QString& hostUserId, const QString& error) {
+            [this](bool success, const QString& meetingId, const QString& title, const QString& sfuAddress, const QStringList& iceServers, const QStringList& participants, const QString& hostUserId, const QString& error) {
         if (!success) {
             const QString msg = error.isEmpty() ? QStringLiteral("Join meeting failed") : error;
             setStatusText(msg);
@@ -768,6 +868,7 @@ MeetingController::MeetingController(const QString& databasePath, QObject* paren
 
         m_meetingId = meetingId;
         m_meetingTitle = title;
+        m_iceServers = iceServers;
         updateSfuRoute(sfuAddress);
         m_inMeeting = true;
         m_audioMuted = false;
@@ -1542,6 +1643,7 @@ void MeetingController::resetMeetingState(const QString& leaveReason) {
     m_meetingId.clear();
     m_meetingTitle.clear();
     m_sfuAddress.clear();
+    m_iceServers.clear();
     m_participantModel->clearParticipants();
     if (m_localVideoFrameStore) {
         m_localVideoFrameStore->clear();
@@ -1895,14 +1997,16 @@ void MeetingController::updateRemoteVideoSsrcMappings() {
 
     int roomVideoPublisherCount = 0;
     for (const auto& participant : m_participantModel->items()) {
-        if (participant.userId.isEmpty() || participant.videoSsrc == 0U) {
+        if (participant.userId.isEmpty() || participant.videoSsrc == 0U ||
+            (!participant.videoOn && !participant.sharing)) {
             continue;
         }
         ++roomVideoPublisherCount;
     }
 
     for (const auto& participant : m_participantModel->items()) {
-        if (participant.userId.isEmpty() || participant.userId == m_userId || participant.videoSsrc == 0U) {
+        if (participant.userId.isEmpty() || participant.userId == m_userId || participant.videoSsrc == 0U ||
+            (!participant.videoOn && !participant.sharing)) {
             continue;
         }
         quint32 remoteVideoSsrc = 0U;
@@ -1954,7 +2058,7 @@ bool MeetingController::hasRemoteVideoParticipant(const QString& userId) const {
         if (participant.userId != userId || participant.userId == m_userId) {
             continue;
         }
-        return participant.videoOn || participant.sharing || participant.videoSsrc != 0U;
+        return participant.videoOn || participant.sharing;
     }
 
     return false;
@@ -2234,6 +2338,10 @@ bool MeetingController::resolveSfuEndpoint(QString* host, quint16* port) const {
 }
 
 void MeetingController::applySfuRouteToSessions() {
+    if (icePolicyFromEnvironment() == IcePolicy::RelayOnly) {
+        return;
+    }
+
     QString routeHost;
     quint16 routePort = 0;
     if (!resolveSfuEndpoint(&routeHost, &routePort)) {
@@ -2286,15 +2394,45 @@ void MeetingController::handleMediaTransportAnswer(const QString& meetingId,
             m_mediaSessionManager->setLocalVideoSsrc(assignedVideoSsrc);
         }
     }
+    const bool relayOnly = icePolicyFromEnvironment() == IcePolicy::RelayOnly;
+    QString routeHost;
+    quint16 routePort = 0;
+    if (!resolveSfuEndpoint(&routeHost, &routePort)) {
+        emit infoMessage(QStringLiteral("Media transport answer rejected: invalid SFU route"));
+        return;
+    }
+
     updateRemoteVideoSsrcMappings();
 
-    applySfuRouteToSessions();
+    if (!relayOnly) {
+        applySfuRouteToSessions();
+    }
+
+    TurnRelaySettings turnRelay;
+    if (relayOnly) {
+        turnRelay = firstTurnRelaySettings(m_iceServers);
+        if (!turnRelay.valid) {
+            emit infoMessage(QStringLiteral("TURN relay requested but no usable TURN server was provided"));
+            return;
+        }
+    }
 
     const bool answerForAudio = assignedAudioSsrc != 0U ||
                                 (assignedAudioSsrc == 0U && assignedVideoSsrc == 0U);
     const bool answerForVideo = assignedVideoSsrc != 0U;
 
     if (answerForAudio && m_audioCallSession && !m_audioClientIceUfrag.isEmpty()) {
+        if (relayOnly &&
+            !m_audioCallSession->configureTurnRelay(turnRelay.host.toStdString(),
+                                                    turnRelay.port,
+                                                    turnRelay.username.toStdString(),
+                                                    turnRelay.credential.toStdString(),
+                                                    routeHost.toStdString(),
+                                                    routePort)) {
+            emit infoMessage(QStringLiteral("Audio TURN relay configure failed: %1")
+                                 .arg(QString::fromStdString(m_audioCallSession->lastError())));
+            return;
+        }
         const auto stunRequest = buildStunBindingRequest(serverIceUfrag + QLatin1Char(':') + m_audioClientIceUfrag);
         if (!m_audioCallSession->sendTransportProbe(stunRequest) && shouldEmitVerboseNegotiationLogs()) {
             emit infoMessage(QStringLiteral("Audio ICE binding request send failed"));
@@ -2305,6 +2443,17 @@ void MeetingController::handleMediaTransportAnswer(const QString& meetingId,
         }
     }
     if (answerForVideo && m_screenShareSession && !m_videoClientIceUfrag.isEmpty()) {
+        if (relayOnly &&
+            !m_screenShareSession->configureTurnRelay(turnRelay.host.toStdString(),
+                                                      turnRelay.port,
+                                                      turnRelay.username.toStdString(),
+                                                      turnRelay.credential.toStdString(),
+                                                      routeHost.toStdString(),
+                                                      routePort)) {
+            emit infoMessage(QStringLiteral("Video TURN relay configure failed: %1")
+                                 .arg(QString::fromStdString(m_screenShareSession->lastError())));
+            return;
+        }
         const auto stunRequest = buildStunBindingRequest(serverIceUfrag + QLatin1Char(':') + m_videoClientIceUfrag);
         if (!m_screenShareSession->sendTransportProbe(stunRequest) && shouldEmitVerboseNegotiationLogs()) {
             emit infoMessage(QStringLiteral("Video ICE binding request send failed"));
@@ -3154,9 +3303,9 @@ bool MeetingController::sendAudioOfferToPeer(bool force) {
 
     updateAudioSessionSettings();
     const quint16 localPort = m_audioCallSession ? m_audioCallSession->localPort() : 0;
-    const QStringList candidates = makeHostIceCandidates(localPort);
+    const QStringList candidates = collectIceCandidates(localPort, m_iceServers, icePolicyFromEnvironment());
     if (candidates.isEmpty()) {
-        emit infoMessage(QStringLiteral("Failed to build audio ICE host candidate"));
+        emit infoMessage(QStringLiteral("Failed to build audio ICE candidates"));
         return false;
     }
 
@@ -3215,9 +3364,9 @@ bool MeetingController::sendVideoOfferToPeer(bool force) {
         return false;
     }
     const quint16 localPort = m_screenShareSession ? m_screenShareSession->localPort() : 0;
-    const QStringList candidates = makeHostIceCandidates(localPort);
+    const QStringList candidates = collectIceCandidates(localPort, m_iceServers, icePolicyFromEnvironment());
     if (candidates.isEmpty()) {
-        emit infoMessage(QStringLiteral("Failed to build video ICE host candidate"));
+        emit infoMessage(QStringLiteral("Failed to build video ICE candidates"));
         return false;
     }
 

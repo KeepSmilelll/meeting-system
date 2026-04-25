@@ -148,6 +148,7 @@ int main(int argc, char* argv[]) {
                          const QString& meetingId,
                          const QString& title,
                          const QString& sfuAddress,
+                         const QStringList& iceServers,
                          const QStringList&,
                          const QString&,
                          const QString&) {
@@ -156,6 +157,8 @@ int main(int argc, char* argv[]) {
         joinedMeetingId = meetingId;
         joinedTitle = title;
         joinedSfuAddress = sfuAddress;
+        assert(iceServers.size() == 1);
+        assert(iceServers.front().startsWith(QStringLiteral("turn:127.0.0.1:3478|turn-user|turn-pass")));
     });
     QObject::connect(&client, &signaling::SignalingClient::mediaTransportAnswerReceived, &app,
                      [&](const QString& meetingId,
@@ -180,6 +183,10 @@ int main(int argc, char* argv[]) {
     joinRsp.set_meeting_id("meet-join");
     joinRsp.set_title("Room Title");
     joinRsp.set_sfu_address("10.0.0.8:10000");
+    auto* iceServer = joinRsp.add_ice_servers();
+    iceServer->set_urls("turn:127.0.0.1:3478");
+    iceServer->set_username("turn-user");
+    iceServer->set_credential("turn-pass");
     auto* participant = joinRsp.add_participants();
     participant->set_user_id("host-1");
     participant->set_display_name("Host");

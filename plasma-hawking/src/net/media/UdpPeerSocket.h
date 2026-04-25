@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -20,6 +21,8 @@
 #include <QtNetwork/QHostAddress>
 #include <QtNetwork/QNetworkDatagram>
 #include <QtNetwork/QUdpSocket>
+
+#include "net/ice/TurnClient.h"
 
 namespace media {
 
@@ -198,12 +201,133 @@ public:
         if (!resolveIpv4PeerAddress(address, port, endpoint)) {
             QMutexLocker locker(&m_stateMutex);
             m_peerValid = false;
+            m_turnRelay.enabled = false;
             return false;
         }
         QMutexLocker locker(&m_stateMutex);
         m_peer = endpoint;
         m_peerValid = true;
         return true;
+    }
+
+    bool configureTurnRelay(const std::string& turnAddress,
+                            uint16_t turnPort,
+                            const std::string& username,
+                            const std::string& credential,
+                            const std::string& peerAddress,
+                            uint16_t peerPort,
+                            std::string* errorMessage = nullptr) {
+        UdpEndpoint turnServer{};
+        UdpEndpoint logicalPeer{};
+        if (!resolveIpv4PeerAddress(turnAddress, turnPort, turnServer) ||
+            !resolveIpv4PeerAddress(peerAddress, peerPort, logicalPeer) ||
+            username.empty() || credential.empty()) {
+            if (errorMessage != nullptr) {
+                *errorMessage = "invalid TURN relay config";
+            }
+            return false;
+        }
+        if (!isOpen()) {
+            if (errorMessage != nullptr) {
+                *errorMessage = "socket not open";
+            }
+            return false;
+        }
+
+        QMutexLocker setupLocker(&m_turnSetupMutex);
+
+        const QByteArray allocateTx = ice::StunClient::makeTransactionId();
+        const QByteArray allocateReq = ice::TurnClient::buildAllocateRequest(allocateTx);
+        if (sendTo(reinterpret_cast<const uint8_t*>(allocateReq.constData()),
+                   static_cast<std::size_t>(allocateReq.size()),
+                   turnServer) != allocateReq.size()) {
+            if (errorMessage != nullptr) {
+                *errorMessage = "TURN Allocate challenge send failed";
+            }
+            return false;
+        }
+
+        ice::TurnAllocateResult challenge{};
+        if (!waitForTurnAllocateResponse(allocateTx, turnServer, &challenge, 3000) ||
+            challenge.realm.isEmpty() ||
+            challenge.nonce.isEmpty()) {
+            if (errorMessage != nullptr) {
+                *errorMessage = challenge.error.isEmpty()
+                                    ? "TURN Allocate challenge failed"
+                                    : challenge.error.toStdString();
+            }
+            return false;
+        }
+
+        const QByteArray authTx = ice::StunClient::makeTransactionId();
+        const QByteArray authReq = ice::TurnClient::buildAuthenticatedAllocateRequest(
+            authTx,
+            QString::fromStdString(username),
+            challenge.realm,
+            challenge.nonce,
+            QString::fromStdString(credential));
+        if (sendTo(reinterpret_cast<const uint8_t*>(authReq.constData()),
+                   static_cast<std::size_t>(authReq.size()),
+                   turnServer) != authReq.size()) {
+            if (errorMessage != nullptr) {
+                *errorMessage = "TURN Allocate authenticated send failed";
+            }
+            return false;
+        }
+
+        ice::TurnAllocateResult allocated{};
+        if (!waitForTurnAllocateResponse(authTx, turnServer, &allocated, 3000) || !allocated.success) {
+            if (errorMessage != nullptr) {
+                *errorMessage = allocated.error.isEmpty()
+                                    ? "TURN Allocate authenticated response failed"
+                                    : allocated.error.toStdString();
+            }
+            return false;
+        }
+
+        const QByteArray permissionTx = ice::StunClient::makeTransactionId();
+        const QByteArray permissionReq = ice::TurnClient::buildCreatePermissionRequest(
+            permissionTx,
+            logicalPeer.address,
+            QString::fromStdString(username),
+            challenge.realm,
+            challenge.nonce,
+            QString::fromStdString(credential));
+        if (sendTo(reinterpret_cast<const uint8_t*>(permissionReq.constData()),
+                   static_cast<std::size_t>(permissionReq.size()),
+                   turnServer) != permissionReq.size()) {
+            if (errorMessage != nullptr) {
+                *errorMessage = "TURN CreatePermission send failed";
+            }
+            return false;
+        }
+
+        QString permissionError;
+        if (!waitForTurnCreatePermissionResponse(permissionTx, turnServer, 3000, &permissionError)) {
+            if (errorMessage != nullptr) {
+                *errorMessage = permissionError.isEmpty()
+                                    ? "TURN CreatePermission response failed"
+                                    : permissionError.toStdString();
+            }
+            return false;
+        }
+
+        {
+            QMutexLocker locker(&m_stateMutex);
+            m_peer = logicalPeer;
+            m_peerValid = true;
+            m_turnRelay.enabled = true;
+            m_turnRelay.server = turnServer;
+            m_turnRelay.peer = logicalPeer;
+            m_turnRelay.relayedAddress = allocated.relayedAddress;
+        }
+        clearSocketError();
+        return true;
+    }
+
+    void disableTurnRelay() {
+        QMutexLocker locker(&m_stateMutex);
+        m_turnRelay = {};
     }
 
     bool hasPeer() const {
@@ -306,16 +430,47 @@ public:
             return -1;
         }
 
-        return invokeOnSocketThread([this, data, len, target]() -> int {
+        UdpEndpoint turnServer{};
+        UdpEndpoint turnPeer{};
+        bool relayViaTurn = false;
+        {
+            QMutexLocker locker(&m_stateMutex);
+            relayViaTurn = m_turnRelay.enabled &&
+                           sameIpv4Endpoint(target, m_turnRelay.peer, true);
+            if (relayViaTurn) {
+                turnServer = m_turnRelay.server;
+                turnPeer = m_turnRelay.peer;
+            }
+        }
+
+        QByteArray turnPayload;
+        const uint8_t* outboundData = data;
+        std::size_t outboundLen = len;
+        UdpEndpoint outboundTarget = target;
+        if (relayViaTurn) {
+            turnPayload = ice::TurnClient::buildSendIndication(
+                turnPeer.address,
+                turnPeer.port,
+                QByteArray(reinterpret_cast<const char*>(data), static_cast<int>(len)));
+            if (turnPayload.isEmpty()) {
+                setSocketError(QAbstractSocket::OperationError, "TURN Send indication build failed");
+                return -1;
+            }
+            outboundData = reinterpret_cast<const uint8_t*>(turnPayload.constData());
+            outboundLen = static_cast<std::size_t>(turnPayload.size());
+            outboundTarget = turnServer;
+        }
+
+        const int sent = invokeOnSocketThread([this, outboundData, outboundLen, outboundTarget]() -> int {
             if (m_socket == nullptr) {
                 setSocketError(QAbstractSocket::OperationError, "socket not open");
                 return -1;
             }
             const qint64 sent = m_socket->writeDatagram(
-                reinterpret_cast<const char*>(data),
-                static_cast<qint64>(len),
-                target.address,
-                target.port);
+                reinterpret_cast<const char*>(outboundData),
+                static_cast<qint64>(outboundLen),
+                outboundTarget.address,
+                outboundTarget.port);
             if (sent < 0) {
                 captureSocketError();
                 return -1;
@@ -323,9 +478,15 @@ public:
             clearSocketError();
             return static_cast<int>(sent);
         });
+        if (sent < 0) {
+            return sent;
+        }
+        return relayViaTurn ? static_cast<int>(len) : sent;
     }
 
     int recvFrom(uint8_t* data, std::size_t len, UdpEndpoint& from) const {
+        QMutexLocker setupLocker(&m_turnSetupMutex);
+
         if (data == nullptr || len == 0) {
             return -1;
         }
@@ -347,10 +508,13 @@ public:
                 return -1;
             }
 
+            QByteArray payload = pending.payload;
+            UdpEndpoint sender = pending.from;
+            maybeUnwrapTurnDataIndication(&payload, &sender);
             const std::size_t copied =
-                (std::min)(len, static_cast<std::size_t>(pending.payload.size()));
-            std::memcpy(data, pending.payload.constData(), copied);
-            from = pending.from;
+                (std::min)(len, static_cast<std::size_t>(payload.size()));
+            std::memcpy(data, payload.constData(), copied);
+            from = sender;
             clearSocketError();
             return static_cast<int>(copied);
         }
@@ -371,11 +535,14 @@ public:
                 return -1;
             }
 
-            const QByteArray payload = datagram.data();
+            QByteArray payload = datagram.data();
+            UdpEndpoint sender{};
+            sender.address = datagram.senderAddress();
+            sender.port = static_cast<uint16_t>(datagram.senderPort());
+            maybeUnwrapTurnDataIndication(&payload, &sender);
             const std::size_t copied = (std::min)(len, static_cast<std::size_t>(payload.size()));
             std::memcpy(data, payload.constData(), copied);
-            from.address = datagram.senderAddress();
-            from.port = static_cast<uint16_t>(datagram.senderPort());
+            from = sender;
             clearSocketError();
             return static_cast<int>(copied);
         });
@@ -512,6 +679,117 @@ private:
         UdpEndpoint from{};
     };
 
+    struct TurnRelayState {
+        bool enabled{false};
+        UdpEndpoint server{};
+        UdpEndpoint peer{};
+        ice::StunEndpoint relayedAddress{};
+    };
+
+    bool waitForRawDatagram(PendingDatagram* out, int timeoutMs) const {
+        if (out == nullptr) {
+            return false;
+        }
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+        while (std::chrono::steady_clock::now() < deadline) {
+            {
+                QMutexLocker locker(&m_datagramMutex);
+                if (!m_pendingDatagrams.empty()) {
+                    *out = std::move(m_pendingDatagrams.front());
+                    m_pendingDatagrams.pop_front();
+                    return true;
+                }
+            }
+            const int remainingMs = static_cast<int>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now())
+                    .count());
+            if (remainingMs <= 0 || waitForReadable((std::max)(1, (std::min)(remainingMs, 100))) <= 0) {
+                continue;
+            }
+        }
+        return false;
+    }
+
+    bool waitForTurnAllocateResponse(const QByteArray& transactionId,
+                                     const UdpEndpoint& turnServer,
+                                     ice::TurnAllocateResult* result,
+                                     int timeoutMs) const {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+        while (std::chrono::steady_clock::now() < deadline) {
+            PendingDatagram pending{};
+            if (!waitForRawDatagram(&pending, 300)) {
+                continue;
+            }
+            if (!sameIpv4Endpoint(pending.from, turnServer, true) ||
+                !turnTransactionMatches(pending.payload, transactionId)) {
+                continue;
+            }
+            ice::TurnAllocateResult parsed{};
+            if (ice::TurnClient::parseAllocateResponse(pending.payload, transactionId, &parsed)) {
+                if (result != nullptr) {
+                    *result = parsed;
+                }
+                return true;
+            }
+            if (!parsed.realm.isEmpty() || !parsed.nonce.isEmpty()) {
+                if (result != nullptr) {
+                    *result = parsed;
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool waitForTurnCreatePermissionResponse(const QByteArray& transactionId,
+                                             const UdpEndpoint& turnServer,
+                                             int timeoutMs,
+                                             QString* error) const {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+        while (std::chrono::steady_clock::now() < deadline) {
+            PendingDatagram pending{};
+            if (!waitForRawDatagram(&pending, 300)) {
+                continue;
+            }
+            if (!sameIpv4Endpoint(pending.from, turnServer, true) ||
+                !turnTransactionMatches(pending.payload, transactionId)) {
+                continue;
+            }
+            if (ice::TurnClient::parseCreatePermissionResponse(pending.payload, transactionId, error)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    static bool turnTransactionMatches(const QByteArray& datagram, const QByteArray& transactionId) {
+        return datagram.size() >= 20 &&
+               transactionId.size() == 12 &&
+               std::memcmp(datagram.constData() + 8, transactionId.constData(), 12) == 0;
+    }
+
+    void maybeUnwrapTurnDataIndication(QByteArray* payload, UdpEndpoint* sender) const {
+        if (payload == nullptr || sender == nullptr) {
+            return;
+        }
+        TurnRelayState relay{};
+        {
+            QMutexLocker locker(&m_stateMutex);
+            relay = m_turnRelay;
+        }
+        if (!relay.enabled || !sameIpv4Endpoint(*sender, relay.server, true)) {
+            return;
+        }
+        ice::StunEndpoint peer{};
+        QByteArray data;
+        if (!ice::TurnClient::parseDataIndication(*payload, &peer, &data)) {
+            return;
+        }
+        payload->swap(data);
+        sender->address = peer.address;
+        sender->port = peer.port;
+    }
+
     void enqueuePendingDatagramsFromSocket() {
         if (m_socket == nullptr) {
             return;
@@ -621,6 +899,8 @@ private:
     int m_readTimeoutMs{50};
     UdpEndpoint m_peer{};
     bool m_peerValid{false};
+    TurnRelayState m_turnRelay{};
+    mutable QMutex m_turnSetupMutex;
     mutable QMutex m_datagramMutex;
     mutable QWaitCondition m_datagramReadyCondition;
     mutable std::deque<PendingDatagram> m_pendingDatagrams;

@@ -283,6 +283,7 @@ private:
     QString m_meetingId;
     QString m_meetingTitle;
     QString m_sfuAddress;
+    QStringList m_iceServers;
     QString m_pendingMeetingTitle;
     QString m_statusText{QStringLiteral("Ready")};
     qint64 m_currentMeetingJoinedAt{0};

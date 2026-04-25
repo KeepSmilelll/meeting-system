@@ -252,6 +252,8 @@ qt_add_executable(meeting_client
     src/net/signaling/SignalProtocol.cpp
     src/net/signaling/SignalingClient.cpp
     src/net/signaling/Reconnector.cpp
+    src/net/ice/StunClient.cpp
+    src/net/ice/TurnClient.cpp
     src/net/media/DtlsTransportClient.cpp
     src/net/media/RTPSender.cpp
     src/net/media/RTPReceiver.cpp
@@ -310,6 +312,7 @@ qt_add_qml_module(meeting_client
     QML_FILES
         qml/Main.qml
         qml/dialogs/LoginDialog.qml
+        qml/dialogs/JoinMeetingDialog.qml
         qml/pages/HomePage.qml
         qml/pages/MeetingRoom.qml
         qml/components/CreateMeetingDialog.qml
@@ -388,6 +391,8 @@ add_executable(test_screen_share_session
     src/av/session/VideoSendControlActions.cpp
     src/av/session/VideoSendSourcePipeline.cpp
     src/av/session/VideoSendLoopPipeline.cpp
+    src/net/ice/StunClient.cpp
+    src/net/ice/TurnClient.cpp
     src/net/media/RTPSender.cpp
     src/net/media/RTPReceiver.cpp
     src/net/media/H264RtpPayload.cpp
@@ -449,6 +454,8 @@ add_executable(test_screen_share_session_camera_smoke
     src/av/session/VideoSendControlActions.cpp
     src/av/session/VideoSendSourcePipeline.cpp
     src/av/session/VideoSendLoopPipeline.cpp
+    src/net/ice/StunClient.cpp
+    src/net/ice/TurnClient.cpp
     src/net/media/RTPSender.cpp
     src/net/media/RTPReceiver.cpp
     src/net/media/H264RtpPayload.cpp
@@ -487,6 +494,8 @@ add_executable(test_signaling_client_ssrc
     tests/test_signaling_client_ssrc.cpp
     src/net/signaling/SignalProtocol.cpp
     src/net/signaling/SignalingClient.cpp
+    src/net/ice/StunClient.cpp
+    src/net/ice/TurnClient.cpp
     proto/pb/signaling.pb.cc
 )
 
@@ -684,6 +693,23 @@ copy_openssl_runtime(test_dtls_transport_client)
 
 add_test(NAME test_dtls_transport_client COMMAND test_dtls_transport_client)
 
+add_executable(test_stun_turn_client
+    tests/test_stun_turn_client.cpp
+    src/net/ice/StunClient.cpp
+    src/net/ice/TurnClient.cpp
+)
+
+target_include_directories(test_stun_turn_client PRIVATE
+    src
+)
+
+target_link_libraries(test_stun_turn_client PRIVATE
+    Qt6::Core
+    Qt6::Network
+)
+
+add_test(NAME test_stun_turn_client COMMAND test_stun_turn_client)
+
 add_executable(test_event_bus
     tests/test_event_bus.cpp
     src/app/EventBus.cpp
@@ -752,6 +778,8 @@ add_executable(test_meeting_controller_mute_all
     src/net/signaling/SignalProtocol.cpp
     src/net/signaling/SignalingClient.cpp
     src/net/signaling/Reconnector.cpp
+    src/net/ice/StunClient.cpp
+    src/net/ice/TurnClient.cpp
     src/net/media/RTPSender.cpp
     src/net/media/RTPReceiver.cpp
     src/net/media/H264RtpPayload.cpp
@@ -841,6 +869,8 @@ add_executable(test_meeting_runtime_smoke
     src/net/signaling/SignalProtocol.cpp
     src/net/signaling/SignalingClient.cpp
     src/net/signaling/Reconnector.cpp
+    src/net/ice/StunClient.cpp
+    src/net/ice/TurnClient.cpp
     src/net/media/RTPSender.cpp
     src/net/media/RTPReceiver.cpp
     src/net/media/H264RtpPayload.cpp
@@ -1023,6 +1053,8 @@ if(MEETING_BUILD_AUDIO_CODEC_SMOKE)
             src/av/process/AutoGainControl.cpp
             src/av/render/AudioPlayer.cpp
             src/av/session/AudioCallSession.cpp
+            src/net/ice/StunClient.cpp
+            src/net/ice/TurnClient.cpp
             src/net/media/RTPSender.cpp
             src/net/media/RTPReceiver.cpp
             src/net/media/BandwidthEstimator.cpp
@@ -1037,6 +1069,7 @@ if(MEETING_BUILD_AUDIO_CODEC_SMOKE)
         target_link_libraries(audio_codec_smoke PRIVATE
             Qt6::Core
             Qt6::Multimedia
+            Qt6::Network
             ${FFMPEG_AVCODEC_LIBRARY}
             ${FFMPEG_AVUTIL_LIBRARY}
             ${FFMPEG_SWRESAMPLE_LIBRARY}

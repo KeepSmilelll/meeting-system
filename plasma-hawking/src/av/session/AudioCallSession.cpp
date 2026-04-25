@@ -266,10 +266,39 @@ void av::session::AudioCallSession::setPeer(const std::string& address, uint16_t
     QMutexLocker locker(&m_mutex);
     m_config.peerAddress = address;
     m_config.peerPort = port;
+    m_mediaSocket.disableTurnRelay();
     if (m_mediaSocket.isOpen() && m_mediaSocket.setPeer(m_config.peerAddress, m_config.peerPort)) {
         qInfo().noquote() << "[audio-session] peer=" << QString::fromStdString(address) << ":" << port;
     }
     m_stateWaitCondition.wakeAll();
+}
+
+bool av::session::AudioCallSession::configureTurnRelay(const std::string& turnAddress,
+                                                       uint16_t turnPort,
+                                                       const std::string& username,
+                                                       const std::string& credential,
+                                                       const std::string& peerAddress,
+                                                       uint16_t peerPort) {
+    QMutexLocker locker(&m_mutex);
+    if (!m_mediaSocket.isOpen()) {
+        setErrorLocked("audio TURN relay skipped: socket not open");
+        return false;
+    }
+    m_config.peerAddress = peerAddress;
+    m_config.peerPort = peerPort;
+    std::string error;
+    if (!m_mediaSocket.configureTurnRelay(turnAddress,
+                                          turnPort,
+                                          username,
+                                          credential,
+                                          peerAddress,
+                                          peerPort,
+                                          &error)) {
+        setErrorLocked(error.empty() ? "audio TURN relay configure failed" : error);
+        return false;
+    }
+    qInfo().noquote() << "[audio-session] turn-relay=" << QString::fromStdString(turnAddress) << ":" << turnPort;
+    return true;
 }
 
 void av::session::AudioCallSession::setAudioSsrc(uint32_t ssrc) {
