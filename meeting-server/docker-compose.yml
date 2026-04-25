@@ -30,7 +30,8 @@ services:
 
   sfu:
     build:
-      context: ./sfu
+      context: .
+      dockerfile: sfu/Dockerfile
     restart: unless-stopped
     environment:
       SFU_NODE_ID: "${SFU_NODE_ID:-sfu-node-01}"

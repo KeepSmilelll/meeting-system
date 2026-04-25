@@ -18,9 +18,17 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
-COPY . .
+COPY proto /src/proto
+COPY sfu /src/sfu
 
-RUN cmake -S . -B /build -G Ninja \
+RUN rm -rf /src/sfu/proto/pb \
+    && mkdir -p /src/sfu/proto/pb \
+    && protoc --proto_path=/src/proto \
+        --cpp_out=/src/sfu/proto/pb \
+        /src/proto/signaling.proto \
+        /src/proto/sfu_rpc.proto
+
+RUN cmake -S /src/sfu -B /build -G Ninja \
         -DCMAKE_BUILD_TYPE=Release \
         -DOPENSSL_ROOT_HINT=/usr \
         -DLIBSRTP_ROOT_HINT=/usr \
