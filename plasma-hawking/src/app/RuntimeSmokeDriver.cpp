@@ -4,6 +4,7 @@
 #include "av/render/VideoFrameStore.h"
 
 #include <QCoreApplication>
+#include <QDebug>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -395,6 +396,12 @@ void RuntimeSmokeDriver::start() {
             return;
         }
         m_startedLogin = true;
+        qInfo().noquote() << "[runtime-smoke]" << m_role
+                          << "starting login"
+                          << "server=" << QStringLiteral("%1:%2").arg(m_host).arg(m_port)
+                          << "username=" << m_username;
+        writeResult(QStringLiteral("LOGIN_START"),
+                    QStringLiteral("server=%1:%2; user=%3").arg(m_host).arg(m_port).arg(m_username));
         m_controller->login(m_username, m_password);
     });
 }
@@ -761,6 +768,9 @@ void RuntimeSmokeDriver::handleStatusTextChanged() {
     }
 
     const QString status = m_controller->statusText();
+    if (!status.trimmed().isEmpty()) {
+        writeResult(QStringLiteral("STATUS"), withStageTag(status));
+    }
     if (status.contains(QStringLiteral("expired"), Qt::CaseInsensitive)) {
         fail(status);
         return;

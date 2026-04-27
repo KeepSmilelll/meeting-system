@@ -720,19 +720,13 @@ MeetingController::MeetingController(const QString& databasePath, QObject* paren
             m_reconnector->reset();
             setStatusText(QStringLiteral("Connected"));
             emit connectedChanged();
-            const bool hasCredentials = !m_username.isEmpty() && !m_passwordHash.isEmpty();
-            const bool shouldResumeOnReconnect = m_shouldStayConnected && m_loggedIn;
-            if (hasCredentials && (m_waitingLogin || shouldResumeOnReconnect)) {
-                const bool useResumeToken = m_restoringSession || !m_waitingLogin;
-                m_signaling->login(m_username,
-                                   m_passwordHash,
-                                   QStringLiteral("qt-client"),
-                                   QStringLiteral("desktop"),
-                                   useResumeToken);
-            }
+            sendPendingLoginIfReady("connected");
             return;
         }
 
+        if (m_waitingLogin || m_loggedIn || m_shouldStayConnected) {
+            m_loginRequestSent = false;
+        }
         const bool hadMeetingState = m_inMeeting || !m_meetingId.isEmpty() || !m_meetingTitle.isEmpty() || m_participantModel->rowCount() > 0;
         m_heartbeatTimer->stop();
         m_waitingLeaveResponse = false;
@@ -775,6 +769,7 @@ MeetingController::MeetingController(const QString& databasePath, QObject* paren
         m_restoringSession = false;
 
         if (!success) {
+            m_loginRequestSent = false;
             if (wasRestoringSession) {
                 m_passwordHash.clear();
                 m_userManager->clearToken();
@@ -1254,6 +1249,7 @@ void MeetingController::login(const QString& username, const QString& password) 
     m_passwordHash = password;
     m_shouldStayConnected = true;
     m_waitingLogin = true;
+    m_loginRequestSent = false;
     m_restoringSession = false;
     m_userManager->setServerEndpoint(m_serverHost, m_serverPort);
     emit sessionChanged();
@@ -1261,10 +1257,63 @@ void MeetingController::login(const QString& username, const QString& password) 
     setStatusText(QStringLiteral("Connecting..."));
 
     if (m_signaling->isConnected()) {
-        m_signaling->login(m_username, m_passwordHash, QStringLiteral("qt-client"), QStringLiteral("desktop"), m_restoringSession);
+        sendPendingLoginIfReady("already-connected");
     } else {
         m_signaling->connectToServer(m_serverHost, m_serverPort);
+        QTimer::singleShot(250, this, [this]() {
+            sendPendingLoginIfReady("connect-fallback-250ms");
+        });
+        QTimer::singleShot(1000, this, [this]() {
+            sendPendingLoginIfReady("connect-fallback-1000ms");
+        });
     }
+}
+
+void MeetingController::sendPendingLoginIfReady(const char* reason) {
+    if (!m_signaling || !m_signaling->isConnected()) {
+        if (qEnvironmentVariableIntValue("MEETING_RUNTIME_SMOKE") != 0) {
+            qInfo().noquote() << "[meeting]" << "pending login wait: socket not connected"
+                              << "reason=" << reason
+                              << "server=" << QStringLiteral("%1:%2").arg(m_serverHost).arg(m_serverPort);
+        }
+        return;
+    }
+
+    const bool hasCredentials = !m_username.isEmpty() && !m_passwordHash.isEmpty();
+    const bool shouldResumeOnReconnect = m_shouldStayConnected && m_loggedIn;
+    if (!hasCredentials || (!m_waitingLogin && !shouldResumeOnReconnect)) {
+        if (qEnvironmentVariableIntValue("MEETING_RUNTIME_SMOKE") != 0) {
+            qInfo().noquote() << "[meeting]" << "pending login skipped"
+                              << "reason=" << reason
+                              << "has_credentials=" << hasCredentials
+                              << "waiting_login=" << m_waitingLogin
+                              << "resume=" << shouldResumeOnReconnect;
+        }
+        return;
+    }
+
+    if (m_loginRequestSent) {
+        if (qEnvironmentVariableIntValue("MEETING_RUNTIME_SMOKE") != 0) {
+            qInfo().noquote() << "[meeting]" << "pending login skipped: request already sent"
+                              << "reason=" << reason;
+        }
+        return;
+    }
+
+    const bool useResumeToken = m_restoringSession || !m_waitingLogin;
+    m_loginRequestSent = true;
+    if (qEnvironmentVariableIntValue("MEETING_RUNTIME_SMOKE") != 0) {
+        qInfo().noquote() << "[meeting]" << "sending pending login"
+                          << "reason=" << reason
+                          << "username=" << m_username
+                          << "resume=" << useResumeToken
+                          << "server=" << QStringLiteral("%1:%2").arg(m_serverHost).arg(m_serverPort);
+    }
+    m_signaling->login(m_username,
+                       m_passwordHash,
+                       QStringLiteral("qt-client"),
+                       QStringLiteral("desktop"),
+                       useResumeToken);
 }
 
 void MeetingController::setServerEndpoint(const QString& host, quint16 port) {
@@ -1370,6 +1419,7 @@ void MeetingController::refreshAvailableAudioDevices() {
 void MeetingController::logout() {
     m_shouldStayConnected = false;
     m_waitingLogin = false;
+    m_loginRequestSent = false;
     m_restoringSession = false;
     m_waitingLeaveResponse = false;
     m_pendingMeetingTitle.clear();
@@ -1699,6 +1749,7 @@ void MeetingController::restoreCachedSession() {
     m_serverPort = m_userManager->serverPort();
     m_shouldStayConnected = true;
     m_waitingLogin = true;
+    m_loginRequestSent = false;
     m_restoringSession = true;
     emit sessionChanged();
 
@@ -2129,6 +2180,7 @@ void MeetingController::handleSessionKicked(const QString& reason) {
 
     m_shouldStayConnected = false;
     m_waitingLogin = false;
+    m_loginRequestSent = false;
     m_restoringSession = false;
     m_waitingLeaveResponse = false;
     m_pendingMeetingTitle.clear();

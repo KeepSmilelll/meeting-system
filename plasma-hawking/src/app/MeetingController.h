@@ -185,6 +185,7 @@ private:
     void resetMeetingState(const QString& leaveReason = QString());
     void persistMeetingSessionStart(bool host);
     void restoreCachedSession();
+    void sendPendingLoginIfReady(const char* reason);
     void handleProtobufMessage(quint16 signalType, const QByteArray& payload);
     void ensureLocalParticipant(bool host);
     void syncParticipantsChanged();
@@ -327,5 +328,6 @@ private:
     QString m_passwordHash;
     bool m_shouldStayConnected{false};
     bool m_waitingLogin{false};
+    bool m_loginRequestSent{false};
     bool m_restoringSession{false};
 };

@@ -3,7 +3,9 @@
 #include "SignalProtocol.h"
 
 #include <QDateTime>
+#include <QDebug>
 #include <QTcpSocket>
+#include <QtGlobal>
 
 #include <string>
 #include <vector>
@@ -50,10 +52,18 @@ SignalingClient::SignalingClient(QObject* parent)
     : QObject(parent)
     , m_socket(new QTcpSocket(this)) {
     connect(m_socket, &QTcpSocket::connected, this, [this]() {
+        if (qEnvironmentVariableIntValue("MEETING_RUNTIME_SMOKE") != 0) {
+            qInfo().noquote() << "[signaling]" << "connected"
+                              << QStringLiteral("%1:%2").arg(m_host).arg(m_port);
+        }
         emit connectedChanged(true);
     });
 
     connect(m_socket, &QTcpSocket::disconnected, this, [this]() {
+        if (qEnvironmentVariableIntValue("MEETING_RUNTIME_SMOKE") != 0) {
+            qInfo().noquote() << "[signaling]" << "disconnected"
+                              << QStringLiteral("%1:%2").arg(m_host).arg(m_port);
+        }
         emit connectedChanged(false);
     });
 
@@ -469,6 +479,19 @@ void SignalingClient::sendRawFrame(quint16 signalType, const std::string& payloa
 
     if (m_socket->write(reinterpret_cast<const char*>(frame.data()), static_cast<qint64>(frame.size())) < 0) {
         emit protocolError(m_socket->errorString());
+        return;
+    }
+
+    if (!m_socket->flush()) {
+        emit protocolError(QStringLiteral("Failed to flush signaling frame"));
+        return;
+    }
+
+    if (qEnvironmentVariableIntValue("MEETING_RUNTIME_SMOKE") != 0) {
+        qInfo().noquote() << "[signaling]" << "sent frame"
+                          << QStringLiteral("type=0x%1").arg(signalType, 4, 16, QLatin1Char('0'))
+                          << "payload_len=" << static_cast<int>(payload.size())
+                          << "frame_len=" << static_cast<int>(frame.size());
     }
 }
 
