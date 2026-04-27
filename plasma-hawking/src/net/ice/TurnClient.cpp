@@ -126,7 +126,9 @@ void appendMessageIntegrity(QByteArray* packet,
     updateLength(packet);
 
     const QByteArray key = longTermKey(username, realm, credential);
-    const QByteArray authenticated = packet->left(attrOffset + 4);
+    // STUN MESSAGE-INTEGRITY authenticates the header plus attributes before
+    // this attribute, while the header length already includes this attribute.
+    const QByteArray authenticated = packet->left(attrOffset);
     const QByteArray hmac = QMessageAuthenticationCode::hash(authenticated, key, QCryptographicHash::Sha1);
     std::memcpy(packet->data() + attrOffset + 4, hmac.constData(), 20);
 }

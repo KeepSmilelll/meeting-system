@@ -4,8 +4,10 @@
 
 #include <QByteArray>
 #include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QEventLoop>
 #include <QHostAddress>
+#include <QMessageAuthenticationCode>
 #include <QNetworkDatagram>
 #include <QUdpSocket>
 #include <QtEndian>
@@ -100,6 +102,25 @@ QByteArray attrValue(const QByteArray& datagram, quint16 attrType) {
     return {};
 }
 
+int attrOffset(const QByteArray& datagram, quint16 attrType) {
+    int offset = 20;
+    const int end = 20 + readU16(datagram.constData() + 2);
+    while (offset + 4 <= end && offset + 4 <= datagram.size()) {
+        const int attrStart = offset;
+        const quint16 type = readU16(datagram.constData() + offset);
+        const quint16 length = readU16(datagram.constData() + offset + 2);
+        offset += 4;
+        if (offset + length > datagram.size()) {
+            return -1;
+        }
+        if (type == attrType) {
+            return attrStart;
+        }
+        offset += (length + 3) & ~3;
+    }
+    return -1;
+}
+
 QByteArray waitDatagram(QCoreApplication& app, QUdpSocket& socket, QHostAddress* sender, quint16* senderPort) {
     for (int i = 0; i < 200; ++i) {
         app.processEvents(QEventLoop::AllEvents, 10);
@@ -157,6 +178,15 @@ void testTurnAllocateParse() {
         challenged.nonce,
         QStringLiteral("pass"));
     assert(auth.size() > unauth.size());
+    const int integrityOffset = attrOffset(auth, 0x0008);
+    assert(integrityOffset > 20);
+    const QByteArray longTermKey = QCryptographicHash::hash(
+        QByteArrayLiteral("user:example.org:pass"),
+        QCryptographicHash::Md5);
+    assert(attrValue(auth, 0x0008) == QMessageAuthenticationCode::hash(
+                                         auth.left(integrityOffset),
+                                         longTermKey,
+                                         QCryptographicHash::Sha1));
 
     QByteArray success;
     appendHeader(&success, 0x0103, tx);
@@ -238,6 +268,15 @@ void testUdpPeerSocketTurnRelay(QCoreApplication& app) {
 
     request = waitDatagram(app, turnServer, &clientAddress, &clientPort);
     assert(readU16(request.constData()) == 0x0003);
+    const int allocateIntegrityOffset = attrOffset(request, 0x0008);
+    assert(allocateIntegrityOffset > 20);
+    const QByteArray allocateLongTermKey = QCryptographicHash::hash(
+        QByteArrayLiteral("user:realm:pass"),
+        QCryptographicHash::Md5);
+    assert(attrValue(request, 0x0008) == QMessageAuthenticationCode::hash(
+                                           request.left(allocateIntegrityOffset),
+                                           allocateLongTermKey,
+                                           QCryptographicHash::Sha1));
     response.clear();
     appendHeader(&response, 0x0103, transactionIdFrom(request));
     appendAttr(&response, 0x0016, xorAddressValue(QHostAddress(QStringLiteral("127.0.0.1")), 62000));
