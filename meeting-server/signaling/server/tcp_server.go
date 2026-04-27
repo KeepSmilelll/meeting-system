@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"log"
 	"meeting-server/signaling/config"
 	"meeting-server/signaling/protocol"
 	"net"
@@ -58,6 +59,7 @@ func (s *TCPServer) Run(ctx context.Context) error {
 		return err
 	}
 	defer listener.Close()
+	log.Printf("signaling tcp listening addr=%s tls=%t auth_timeout=%s read_timeout=%s write_timeout=%s", s.cfg.ListenAddr, s.cfg.TLSEnabled, s.cfg.AuthTimeout, s.cfg.ReadTimeout, s.cfg.WriteTimeout)
 
 	done := make(chan struct{})
 	go func() {
@@ -79,6 +81,7 @@ func (s *TCPServer) Run(ctx context.Context) error {
 		}
 
 		id := s.nextID.Add(1)
+		log.Printf("signaling accepted session=%d remote=%s", id, conn.RemoteAddr())
 		session := NewSession(id, conn, s.cfg)
 		s.sessions.Add(session)
 

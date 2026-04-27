@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"io"
+	"log"
 	"meeting-server/signaling/config"
 	"meeting-server/signaling/protocol"
 	"net"
@@ -80,21 +81,25 @@ func (s *Session) readLoop(onMessage func(*Session, protocol.SignalType, []byte)
 	for {
 		_ = s.conn.SetReadDeadline(time.Now().Add(s.cfg.ReadTimeout))
 		if _, err := io.ReadFull(s.conn, header); err != nil {
+			log.Printf("session read header close session=%d remote=%s state=%d err=%v", s.ID, s.remoteAddr(), s.State(), err)
 			return
 		}
 
 		msgType, payloadLen, err := protocol.DecodeHeader(header, s.cfg.MaxPayloadBytes)
 		if err != nil {
+			log.Printf("session decode header close session=%d remote=%s state=%d err=%v", s.ID, s.remoteAddr(), s.State(), err)
 			return
 		}
 
 		payload := make([]byte, payloadLen)
 		if payloadLen > 0 {
 			if _, err := io.ReadFull(s.conn, payload); err != nil {
+				log.Printf("session read payload close session=%d remote=%s type=0x%04x len=%d state=%d err=%v", s.ID, s.remoteAddr(), uint16(msgType), payloadLen, s.State(), err)
 				return
 			}
 		}
 
+		log.Printf("session recv session=%d remote=%s type=0x%04x len=%d state=%d", s.ID, s.remoteAddr(), uint16(msgType), payloadLen, s.State())
 		s.touch()
 		onMessage(s, msgType, payload)
 	}
@@ -108,6 +113,7 @@ func (s *Session) writeLoop() {
 		case data := <-s.writeCh:
 			_ = s.conn.SetWriteDeadline(time.Now().Add(s.cfg.WriteTimeout))
 			if _, err := s.conn.Write(data); err != nil {
+				log.Printf("session write close session=%d remote=%s state=%d bytes=%d err=%v", s.ID, s.remoteAddr(), s.State(), len(data), err)
 				return
 			}
 		case <-s.closeCh:
@@ -124,12 +130,14 @@ func (s *Session) watchdogLoop() {
 		select {
 		case <-ticker.C:
 			if s.State() == StateConnected && time.Since(s.connectedAt) > s.cfg.AuthTimeout {
+				log.Printf("session auth timeout close session=%d remote=%s age=%s auth_timeout=%s", s.ID, s.remoteAddr(), time.Since(s.connectedAt), s.cfg.AuthTimeout)
 				s.Close()
 				return
 			}
 
 			lastSeen := time.Unix(0, s.lastSeenNs.Load())
 			if time.Since(lastSeen) > s.cfg.IdleTimeout {
+				log.Printf("session idle timeout close session=%d remote=%s idle=%s idle_timeout=%s state=%d", s.ID, s.remoteAddr(), time.Since(lastSeen), s.cfg.IdleTimeout, s.State())
 				s.Close()
 				return
 			}
@@ -214,4 +222,11 @@ func (s *Session) LogoutClose() bool {
 
 func (s *Session) touch() {
 	s.lastSeenNs.Store(time.Now().UnixNano())
+}
+
+func (s *Session) remoteAddr() string {
+	if s.conn == nil || s.conn.RemoteAddr() == nil {
+		return ""
+	}
+	return s.conn.RemoteAddr().String()
 }

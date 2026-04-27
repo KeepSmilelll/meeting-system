@@ -2,6 +2,9 @@ param(
     [string]$ClientExe = "D:\meeting\plasma-hawking\build\Debug\meeting_client.exe",
     [string]$ServerDir = "D:\meeting\meeting-server\signaling",
     [string]$SfuExe = "",
+    [string]$ExternalServerHost = "",
+    [ValidateRange(1, 65535)]
+    [int]$ExternalServerPort = 8443,
     [switch]$SyntheticAudio,
     [switch]$RequireAudio,
     [switch]$SingleRealAudio,
@@ -31,6 +34,8 @@ param(
     [int]$SoakMs = 0,
     [ValidateRange(0, 120000)]
     [int]$GuestMediaSoakMs = 0,
+    [ValidateRange(0, 30000)]
+    [int]$GuestLaunchDelayMs = 0,
     [int]$TimeoutSeconds = 45
 )
 
@@ -43,7 +48,9 @@ if ($SingleRealAudio -and $SyntheticAudio) {
 if ($SingleRealCamera -and $SyntheticCamera) {
     throw "SingleRealCamera cannot be used together with SyntheticCamera"
 }
-if ($IcePolicy -eq "relay-only" -and [string]::IsNullOrWhiteSpace($TurnServers)) {
+if ($IcePolicy -eq "relay-only" -and
+    [string]::IsNullOrWhiteSpace($TurnServers) -and
+    [string]::IsNullOrWhiteSpace($ExternalServerHost)) {
     throw "relay-only validation requires -TurnServers, for example: turn:127.0.0.1:3478?transport=udp"
 }
 if ([string]::IsNullOrWhiteSpace($HostAudioInputDevice) -and -not [string]::IsNullOrWhiteSpace($HostAudioDevice)) {
@@ -439,7 +446,10 @@ if (-not $SyntheticCamera) {
     }
 }
 
-$port = Get-FreeTcpPort
+$useExternalServer = -not [string]::IsNullOrWhiteSpace($ExternalServerHost)
+$externalServerHostNormalized = $ExternalServerHost.Trim()
+
+$port = if ($useExternalServer) { $ExternalServerPort } else { Get-FreeTcpPort }
 $tempRoot = Join-Path $env:TEMP ("meeting-ui-smoke-" + [guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $tempRoot | Out-Null
 
@@ -455,38 +465,43 @@ $hostStdErr = Join-Path $tempRoot "host.stderr.txt"
 $guestStdOut = Join-Path $tempRoot "guest.stdout.txt"
 $guestStdErr = Join-Path $tempRoot "guest.stderr.txt"
 
-$resolvedSfuExe = Resolve-SfuExecutable -Configured $SfuExe
-if ([string]::IsNullOrWhiteSpace($resolvedSfuExe)) {
-    throw "meeting_sfu.exe not found; build SFU first or pass -SfuExe"
-}
-$sfuRpcPort = Get-FreeTcpPort
-$sfuMediaPort = Get-FreeUdpPort
-if ($sfuRpcPort -le 0 -or $sfuMediaPort -le 0) {
-    throw "failed to reserve SFU ports"
-}
-
+$resolvedSfuExe = ""
+$sfuRpcPort = 0
+$sfuMediaPort = 0
 $serverEnv = @{}
-$serverEnv["SIGNALING_LISTEN_ADDR"] = "127.0.0.1:$port"
-$serverEnv["SIGNALING_ENABLE_REDIS"] = "false"
-$serverEnv["SIGNALING_MYSQL_DSN"] = ""
-$serverEnv["SIGNALING_DEFAULT_SFU"] = "127.0.0.1:$sfuMediaPort"
-$serverEnv["SIGNALING_SFU_RPC_ADDR"] = "127.0.0.1:$sfuRpcPort"
-if (-not [string]::IsNullOrWhiteSpace($TurnServers)) {
-    $serverEnv["SIGNALING_TURN_SERVERS"] = $TurnServers
-}
-if (-not [string]::IsNullOrWhiteSpace($TurnSecret)) {
-    $serverEnv["SIGNALING_TURN_SECRET"] = $TurnSecret
-}
-if (-not [string]::IsNullOrWhiteSpace($TurnRealm)) {
-    $serverEnv["SIGNALING_TURN_REALM"] = $TurnRealm
-}
-if (-not [string]::IsNullOrWhiteSpace($TurnCredentialTtl)) {
-    $serverEnv["SIGNALING_TURN_CRED_TTL"] = $TurnCredentialTtl
+if (-not $useExternalServer) {
+    $resolvedSfuExe = Resolve-SfuExecutable -Configured $SfuExe
+    if ([string]::IsNullOrWhiteSpace($resolvedSfuExe)) {
+        throw "meeting_sfu.exe not found; build SFU first or pass -SfuExe"
+    }
+    $sfuRpcPort = Get-FreeTcpPort
+    $sfuMediaPort = Get-FreeUdpPort
+    if ($sfuRpcPort -le 0 -or $sfuMediaPort -le 0) {
+        throw "failed to reserve SFU ports"
+    }
+
+    $serverEnv["SIGNALING_LISTEN_ADDR"] = "127.0.0.1:$port"
+    $serverEnv["SIGNALING_ENABLE_REDIS"] = "false"
+    $serverEnv["SIGNALING_MYSQL_DSN"] = ""
+    $serverEnv["SIGNALING_DEFAULT_SFU"] = "127.0.0.1:$sfuMediaPort"
+    $serverEnv["SIGNALING_SFU_RPC_ADDR"] = "127.0.0.1:$sfuRpcPort"
+    if (-not [string]::IsNullOrWhiteSpace($TurnServers)) {
+        $serverEnv["SIGNALING_TURN_SERVERS"] = $TurnServers
+    }
+    if (-not [string]::IsNullOrWhiteSpace($TurnSecret)) {
+        $serverEnv["SIGNALING_TURN_SECRET"] = $TurnSecret
+    }
+    if (-not [string]::IsNullOrWhiteSpace($TurnRealm)) {
+        $serverEnv["SIGNALING_TURN_REALM"] = $TurnRealm
+    }
+    if (-not [string]::IsNullOrWhiteSpace($TurnCredentialTtl)) {
+        $serverEnv["SIGNALING_TURN_CRED_TTL"] = $TurnCredentialTtl
+    }
 }
 
 $clientBaseEnv = @{}
 $clientBaseEnv["MEETING_RUNTIME_SMOKE"] = "1"
-$clientBaseEnv["MEETING_SERVER_HOST"] = "127.0.0.1"
+$clientBaseEnv["MEETING_SERVER_HOST"] = if ($useExternalServer) { $externalServerHostNormalized } else { "127.0.0.1" }
 $clientBaseEnv["MEETING_SERVER_PORT"] = "$port"
 $clientBaseEnv["MEETING_SMOKE_MEETING_ID_PATH"] = $meetingIdPath
 $clientBaseEnv["MEETING_SMOKE_TIMEOUT_MS"] = "$($TimeoutSeconds * 1000)"
@@ -533,20 +548,27 @@ $hostProcess = $null
 $guestProcess = $null
 
 try {
-    $sfuEnv = @{}
-    $sfuEnv["SFU_ADVERTISED_HOST"] = "127.0.0.1"
-    $sfuEnv["SFU_RPC_LISTEN_PORT"] = "$sfuRpcPort"
-    $sfuEnv["SFU_MEDIA_LISTEN_PORT"] = "$sfuMediaPort"
-    $sfuEnv["SFU_NODE_ID"] = "dual-ui-smoke-sfu"
-    $sfuProcess = Start-ManagedProcess -FilePath $resolvedSfuExe -Arguments @() -WorkingDirectory (Split-Path -Parent $resolvedSfuExe) -Environment $sfuEnv -StdOutPath $sfuStdOut -StdErrPath $sfuStdErr
-    if (-not (Wait-ForTcpListening -TargetHost "127.0.0.1" -Port $sfuRpcPort -TimeoutSeconds 20)) {
-        throw "SFU RPC did not start listening`n$(Get-Content $sfuStdErr -Raw)"
-    }
-    Write-Host "[dual-ui-smoke] internal SFU rpc=127.0.0.1:$sfuRpcPort media=127.0.0.1:$sfuMediaPort"
+    if ($useExternalServer) {
+        if (-not (Wait-ForTcpListening -TargetHost $externalServerHostNormalized -Port $ExternalServerPort -TimeoutSeconds 20)) {
+            throw "external signaling server did not accept TCP connections at ${externalServerHostNormalized}:$ExternalServerPort"
+        }
+        Write-Host "[dual-ui-smoke] external signaling=${externalServerHostNormalized}:$ExternalServerPort"
+    } else {
+        $sfuEnv = @{}
+        $sfuEnv["SFU_ADVERTISED_HOST"] = "127.0.0.1"
+        $sfuEnv["SFU_RPC_LISTEN_PORT"] = "$sfuRpcPort"
+        $sfuEnv["SFU_MEDIA_LISTEN_PORT"] = "$sfuMediaPort"
+        $sfuEnv["SFU_NODE_ID"] = "dual-ui-smoke-sfu"
+        $sfuProcess = Start-ManagedProcess -FilePath $resolvedSfuExe -Arguments @() -WorkingDirectory (Split-Path -Parent $resolvedSfuExe) -Environment $sfuEnv -StdOutPath $sfuStdOut -StdErrPath $sfuStdErr
+        if (-not (Wait-ForTcpListening -TargetHost "127.0.0.1" -Port $sfuRpcPort -TimeoutSeconds 20)) {
+            throw "SFU RPC did not start listening`n$(Get-Content $sfuStdErr -Raw)"
+        }
+        Write-Host "[dual-ui-smoke] internal SFU rpc=127.0.0.1:$sfuRpcPort media=127.0.0.1:$sfuMediaPort"
 
-    $serverProcess = Start-ManagedProcess -FilePath "go" -Arguments @("run", ".") -WorkingDirectory $ServerDir -Environment $serverEnv -StdOutPath $serverStdOut -StdErrPath $serverStdErr
-    if (-not (Wait-ForTcpListening -TargetHost "127.0.0.1" -Port $port -TimeoutSeconds 20)) {
-        throw "signaling server did not start listening`n$(Get-Content $serverStdErr -Raw)"
+        $serverProcess = Start-ManagedProcess -FilePath "go" -Arguments @("run", ".") -WorkingDirectory $ServerDir -Environment $serverEnv -StdOutPath $serverStdOut -StdErrPath $serverStdErr
+        if (-not (Wait-ForTcpListening -TargetHost "127.0.0.1" -Port $port -TimeoutSeconds 20)) {
+            throw "signaling server did not start listening`n$(Get-Content $serverStdErr -Raw)"
+        }
     }
 
     $hostEnv = $clientBaseEnv.Clone()
@@ -613,6 +635,10 @@ try {
 
     $clientDir = Split-Path -Parent $ClientExe
     $hostProcess = Start-ManagedProcess -FilePath $ClientExe -Arguments @() -WorkingDirectory $clientDir -Environment $hostEnv -StdOutPath $hostStdOut -StdErrPath $hostStdErr
+    if ($GuestLaunchDelayMs -gt 0) {
+        Write-Host "[dual-ui-smoke] delaying guest launch by ${GuestLaunchDelayMs}ms"
+        Start-Sleep -Milliseconds $GuestLaunchDelayMs
+    }
     $guestProcess = Start-ManagedProcess -FilePath $ClientExe -Arguments @() -WorkingDirectory $clientDir -Environment $guestEnv -StdOutPath $guestStdOut -StdErrPath $guestStdErr
 
     $hostExited = Wait-ForProcessExit -Process $hostProcess.Process -TimeoutSeconds $TimeoutSeconds

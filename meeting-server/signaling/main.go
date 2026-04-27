@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log"
 	"meeting-server/signaling/auth"
 	"meeting-server/signaling/config"
 	"meeting-server/signaling/handler"
@@ -15,6 +16,18 @@ import (
 
 func main() {
 	cfg := config.Load()
+	log.Printf("signaling config listen=%s node=%s auth_timeout=%s idle_timeout=%s redis_enabled=%t redis_addr=%s mysql_enabled=%t sfu_rpc=%s default_sfu=%s turn_servers=%d",
+		cfg.ListenAddr,
+		cfg.NodeID,
+		cfg.AuthTimeout,
+		cfg.IdleTimeout,
+		cfg.EnableRedis,
+		cfg.RedisAddr,
+		cfg.MySQLDSN != "",
+		cfg.SFURPCAddr,
+		cfg.DefaultSFUAddress,
+		len(cfg.TURNServers),
+	)
 
 	sessions := server.NewSessionManager()
 	memoryStore := store.NewMemoryStore()
