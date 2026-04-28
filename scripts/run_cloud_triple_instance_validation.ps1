@@ -74,8 +74,10 @@ foreach ($icePolicy in $runs) {
         ExpectRealCamera = $false
         IcePolicy = $icePolicy
         TimeoutSeconds = $TimeoutSeconds
-        SoakMs = 5000
-        SubscriberMediaSoakMs = 10000
+        SoakMs = 25000
+        SubscriberMediaSoakMs = 25000
+        RequireChat = $true
+        SubscriberBLaunchDelayMs = 5000
     }
     if ($Headless) {
         $params.Headless = $true

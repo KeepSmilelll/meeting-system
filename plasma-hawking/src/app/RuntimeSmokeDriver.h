@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QElapsedTimer>
+#include <QSet>
 #include <QString>
 #include <QStringList>
 
@@ -39,6 +40,8 @@ private:
     void maybeUpdateVideoEvidence();
     void maybeUpdateAudioEvidence();
     void maybeUpdateAvSyncEvidence();
+    void maybeScheduleChatSend();
+    void maybeUpdateChatEvidence();
     void maybeCompleteSuccess(const QString& reason);
     void maybeStartSoak(const QString& reason);
     void pollSoakProgress();
@@ -83,6 +86,7 @@ private:
     bool m_requireVideoEvidence{false};
     bool m_requireAudioEvidence{false};
     bool m_requireAvSyncEvidence{false};
+    bool m_requireChatEvidence{false};
     bool m_disableLocalAudio{false};
     bool m_disableLocalVideo{false};
     int m_meetingCapacity{2};
@@ -100,6 +104,13 @@ private:
     bool m_videoEvidenceReady{false};
     bool m_audioEvidenceReady{false};
     bool m_avSyncEvidenceReady{false};
+    bool m_chatEvidenceReady{false};
+    bool m_chatSendScheduled{false};
+    bool m_chatSent{false};
+    QString m_chatSendText;
+    QStringList m_expectedChatTexts;
+    QSet<QString> m_observedChatTexts;
+    int m_chatSendDelayMs{0};
     int m_soakDurationMs{0};
     int m_soakPollIntervalMs{1000};
     int m_cameraStartRetryCount{0};

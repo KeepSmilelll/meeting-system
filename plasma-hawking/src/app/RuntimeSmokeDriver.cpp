@@ -4,6 +4,7 @@
 #include "av/render/VideoFrameStore.h"
 
 #include <QCoreApplication>
+#include <QAbstractItemModel>
 #include <QDebug>
 #include <QDir>
 #include <QFile>
@@ -26,6 +27,25 @@ QString envValue(const char* key, const QString& fallback = QString()) {
 }
 
 QStringList envPathList(const char* key) {
+    const QString raw = qEnvironmentVariable(key).trimmed();
+    if (raw.isEmpty()) {
+        return {};
+    }
+
+    QStringList values;
+    const QStringList segments = raw.split(QChar(';'), Qt::SkipEmptyParts);
+    values.reserve(segments.size());
+    for (const auto& segment : segments) {
+        const QString trimmed = segment.trimmed();
+        if (!trimmed.isEmpty()) {
+            values.push_back(trimmed);
+        }
+    }
+    values.removeDuplicates();
+    return values;
+}
+
+QStringList envStringList(const char* key) {
     const QString raw = qEnvironmentVariable(key).trimmed();
     if (raw.isEmpty()) {
         return {};
@@ -303,8 +323,11 @@ RuntimeSmokeDriver::RuntimeSmokeDriver(MeetingController* controller, QObject* p
     , m_requireVideoEvidence(envFlag("MEETING_SMOKE_REQUIRE_VIDEO"))
     , m_requireAudioEvidence(envFlag("MEETING_SMOKE_REQUIRE_AUDIO"))
     , m_requireAvSyncEvidence(envFlag("MEETING_SMOKE_REQUIRE_AVSYNC"))
+    , m_requireChatEvidence(envFlag("MEETING_SMOKE_REQUIRE_CHAT"))
     , m_disableLocalAudio(envFlag("MEETING_SMOKE_DISABLE_LOCAL_AUDIO"))
     , m_disableLocalVideo(envFlag("MEETING_SMOKE_DISABLE_LOCAL_VIDEO"))
+    , m_chatSendText(envValue("MEETING_SMOKE_CHAT_SEND_TEXT").trimmed())
+    , m_expectedChatTexts(envStringList("MEETING_SMOKE_CHAT_EXPECT_TEXTS"))
     , m_meetingCapacity(std::max(2, envInt("MEETING_SMOKE_MEETING_CAPACITY", 2)))
     , m_avSyncMaxSkewMs(std::max(0, envInt("MEETING_SMOKE_AVSYNC_MAX_SKEW_MS", 40)))
     , m_avSyncMinSamples(std::max(1, envInt("MEETING_SMOKE_AVSYNC_MIN_SAMPLES", 10)))
@@ -345,6 +368,9 @@ RuntimeSmokeDriver::RuntimeSmokeDriver(MeetingController* controller, QObject* p
         !m_peerResultPaths.isEmpty()) {
         m_requireAvSyncEvidence = false;
     }
+
+    const int defaultChatSendDelayMs = isHostRole() ? 1000 : 3000;
+    m_chatSendDelayMs = std::max(0, envInt("MEETING_SMOKE_CHAT_SEND_DELAY_MS", defaultChatSendDelayMs));
 }
 
 bool RuntimeSmokeDriver::isHostRole() const {
@@ -371,6 +397,20 @@ void RuntimeSmokeDriver::start() {
     QObject::connect(m_controller, &MeetingController::audioMutedChanged, this, &RuntimeSmokeDriver::applyLocalAudioPolicy);
     QObject::connect(m_controller, &MeetingController::videoMutedChanged, this, &RuntimeSmokeDriver::applyLocalVideoPolicy);
     QObject::connect(m_controller, &MeetingController::statusTextChanged, this, &RuntimeSmokeDriver::handleStatusTextChanged);
+
+    if (m_requireChatEvidence) {
+        if (auto* chatModel = m_controller->chatMessageModel()) {
+            QObject::connect(chatModel,
+                             &QAbstractItemModel::rowsInserted,
+                             this,
+                             [this]() { maybeUpdateChatEvidence(); });
+            QObject::connect(chatModel,
+                             &QAbstractItemModel::modelReset,
+                             this,
+                             [this]() { maybeUpdateChatEvidence(); });
+        }
+        QTimer::singleShot(100, this, &RuntimeSmokeDriver::maybeUpdateChatEvidence);
+    }
 
     if (m_requireVideoEvidence) {
         QObject::connect(m_controller, &MeetingController::remoteVideoFrameSourceChanged, this, &RuntimeSmokeDriver::maybeUpdateVideoEvidence);
@@ -451,6 +491,10 @@ QString RuntimeSmokeDriver::currentStageTag() const {
         return QStringLiteral("avsync_evidence");
     }
 
+    if (m_requireChatEvidence && !m_chatEvidenceReady) {
+        return QStringLiteral("chat_evidence");
+    }
+
     if (!m_expectedCameraSource.isEmpty() && !m_cameraSourceObserved) {
         return QStringLiteral("camera_source_evidence");
     }
@@ -467,10 +511,18 @@ QString RuntimeSmokeDriver::currentStageTag() const {
 }
 
 bool RuntimeSmokeDriver::audioTransportReady() const {
-    return m_controller &&
-           m_controller->audioIceConnected() &&
-           m_controller->audioDtlsConnected() &&
-           m_controller->audioSrtpReady();
+    if (!m_controller || !m_controller->audioDtlsConnected() || !m_controller->audioSrtpReady()) {
+        return false;
+    }
+
+    if (m_controller->audioIceConnected()) {
+        return true;
+    }
+
+    // Some NAT/TURN paths can establish DTLS/SRTP and exchange media without
+    // surfacing a STUN binding response to this client-side flag. Treat actual
+    // audio send/receive/playback evidence as the authoritative path proof.
+    return m_audioEvidenceReady || hasAudioEvidence(collectAudioSmokeSnapshot(m_controller));
 }
 
 bool RuntimeSmokeDriver::videoTransportReady() const {
@@ -711,6 +763,10 @@ void RuntimeSmokeDriver::handleInMeetingChanged() {
     if (m_requireAvSyncEvidence) {
         maybeUpdateAvSyncEvidence();
     }
+    if (m_requireChatEvidence) {
+        maybeScheduleChatSend();
+        maybeUpdateChatEvidence();
+    }
     if (isHostRole() && !m_meetingIdPath.isEmpty()) {
         if (!writeMeetingId(m_controller->meetingId())) {
             fail(QStringLiteral("failed to publish meeting id"));
@@ -934,6 +990,69 @@ void RuntimeSmokeDriver::maybeUpdateAvSyncEvidence() {
     QTimer::singleShot(100, this, &RuntimeSmokeDriver::maybeUpdateAvSyncEvidence);
 }
 
+void RuntimeSmokeDriver::maybeScheduleChatSend() {
+    if (m_reportedResult || m_chatSendScheduled || m_chatSent || !m_controller || !m_controller->inMeeting()) {
+        return;
+    }
+    if (m_chatSendText.trimmed().isEmpty()) {
+        return;
+    }
+
+    m_chatSendScheduled = true;
+    QTimer::singleShot(m_chatSendDelayMs, this, [this]() {
+        if (m_reportedResult || m_chatSent || !m_controller || !m_controller->inMeeting()) {
+            return;
+        }
+        m_chatSent = true;
+        m_controller->sendChat(m_chatSendText);
+        writeResult(QStringLiteral("CHAT_SENT"), withStageTag(QStringLiteral("chat sent")));
+        maybeUpdateChatEvidence();
+    });
+}
+
+void RuntimeSmokeDriver::maybeUpdateChatEvidence() {
+    if (m_reportedResult || !m_requireChatEvidence || m_chatEvidenceReady || !m_controller) {
+        return;
+    }
+
+    auto* model = m_controller->chatMessageModel();
+    if (!model) {
+        QTimer::singleShot(100, this, &RuntimeSmokeDriver::maybeUpdateChatEvidence);
+        return;
+    }
+
+    const auto roles = model->roleNames();
+    const int contentRole = roles.key(QByteArrayLiteral("content"), -1);
+    if (contentRole < 0) {
+        QTimer::singleShot(100, this, &RuntimeSmokeDriver::maybeUpdateChatEvidence);
+        return;
+    }
+
+    for (int row = 0; row < model->rowCount(); ++row) {
+        const QModelIndex index = model->index(row, 0);
+        const QString content = model->data(index, contentRole).toString().trimmed();
+        if (!content.isEmpty()) {
+            m_observedChatTexts.insert(content);
+        }
+    }
+
+    bool allExpectedObserved = true;
+    for (const auto& expected : m_expectedChatTexts) {
+        if (!m_observedChatTexts.contains(expected.trimmed())) {
+            allExpectedObserved = false;
+            break;
+        }
+    }
+
+    if (allExpectedObserved && (!m_expectedChatTexts.isEmpty() || m_chatSendText.isEmpty() || m_chatSent)) {
+        m_chatEvidenceReady = true;
+        maybeCompleteSuccess(m_pendingSuccessReason.isEmpty() ? QStringLiteral("chat evidence observed") : m_pendingSuccessReason);
+        return;
+    }
+
+    QTimer::singleShot(100, this, &RuntimeSmokeDriver::maybeUpdateChatEvidence);
+}
+
 void RuntimeSmokeDriver::maybeCompleteSuccess(const QString& reason) {
     if (m_reportedResult) {
         return;
@@ -981,6 +1100,14 @@ void RuntimeSmokeDriver::maybeCompleteSuccess(const QString& reason) {
                                                      m_avSyncMaxSkewMs,
                                                      m_avSyncMinSamples,
                                                      m_avSyncMaxAbsSkewMs)));
+        return;
+    }
+
+    if (m_requireChatEvidence && !m_chatEvidenceReady) {
+        m_pendingSuccessReason = normalizedReason;
+        writeResult(QStringLiteral("WAITING_CHAT"), withStageTag(QStringLiteral("chat evidence pending")));
+        maybeScheduleChatSend();
+        maybeUpdateChatEvidence();
         return;
     }
 

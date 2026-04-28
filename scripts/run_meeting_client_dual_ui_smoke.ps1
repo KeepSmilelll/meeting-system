@@ -12,6 +12,7 @@ param(
     [switch]$SingleRealCamera,
     [switch]$RequireVideo,
     [switch]$RequireAvSync,
+    [switch]$RequireChat,
     [switch]$ExpectRealCamera,
     [string]$HostCameraDevice = "",
     [string]$GuestCameraDevice = "",
@@ -527,6 +528,9 @@ if ($RequireAvSync) {
         $clientBaseEnv["MEETING_VIDEO_FPS"] = "24"
     }
 }
+if ($RequireChat) {
+    $clientBaseEnv["MEETING_SMOKE_REQUIRE_CHAT"] = "1"
+}
 if ($ExpectRealCamera) {
     $clientBaseEnv["MEETING_SMOKE_EXPECT_CAMERA_SOURCE"] = "real-device"
 }
@@ -578,6 +582,11 @@ try {
     $hostEnv["MEETING_DB_PATH"] = (Join-Path $tempRoot "host.sqlite")
     $hostEnv["MEETING_SMOKE_RESULT_PATH"] = $hostResultPath
     $hostEnv["MEETING_SMOKE_PEER_RESULT_PATH"] = $guestResultPath
+    if ($RequireChat) {
+        $hostEnv["MEETING_SMOKE_CHAT_SEND_TEXT"] = "cloud-chat-host-to-guest"
+        $hostEnv["MEETING_SMOKE_CHAT_EXPECT_TEXTS"] = "cloud-chat-guest-to-host"
+        $hostEnv["MEETING_SMOKE_CHAT_SEND_DELAY_MS"] = "1000"
+    }
     if ($SyntheticCamera) {
         $hostEnv["MEETING_SYNTHETIC_CAMERA"] = "1"
         $hostEnv["MEETING_SMOKE_EXPECT_CAMERA_SOURCE"] = "synthetic-fallback"
@@ -609,6 +618,11 @@ try {
     $guestEnv["MEETING_DB_PATH"] = (Join-Path $tempRoot "guest.sqlite")
     $guestEnv["MEETING_SMOKE_RESULT_PATH"] = $guestResultPath
     $guestEnv["MEETING_SMOKE_PEER_RESULT_PATH"] = $hostResultPath
+    if ($RequireChat) {
+        $guestEnv["MEETING_SMOKE_CHAT_SEND_TEXT"] = "cloud-chat-guest-to-host"
+        $guestEnv["MEETING_SMOKE_CHAT_EXPECT_TEXTS"] = "cloud-chat-host-to-guest"
+        $guestEnv["MEETING_SMOKE_CHAT_SEND_DELAY_MS"] = "3000"
+    }
     if ($SyntheticCamera -or $SingleRealCamera) {
         $guestEnv["MEETING_SYNTHETIC_CAMERA"] = "1"
         $guestEnv["MEETING_SMOKE_EXPECT_CAMERA_SOURCE"] = "synthetic-fallback"

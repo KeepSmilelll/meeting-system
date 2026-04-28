@@ -11,6 +11,7 @@ param(
     [switch]$RequireAudio,
     [bool]$SyntheticCamera = $false,
     [bool]$RequireVideo = $true,
+    [switch]$RequireChat,
     [bool]$ExpectRealCamera = $true,
     [string]$HostCameraDevice = "",
     [string]$SubscriberACameraDevice = "",
@@ -51,6 +52,8 @@ param(
     [int]$SoakMs = 0,
     [ValidateRange(0, 120000)]
     [int]$SubscriberMediaSoakMs = 0,
+    [ValidateRange(0, 30000)]
+    [int]$SubscriberBLaunchDelayMs = 1000,
     [int]$TimeoutSeconds = 60
 )
 
@@ -613,6 +616,9 @@ if ($SoakMs -gt 0) {
 if ($SubscriberMediaSoakMs -gt 0) {
     $clientBaseEnv["MEETING_SMOKE_GUEST_MEDIA_SOAK_MS"] = "$SubscriberMediaSoakMs"
 }
+if ($RequireChat) {
+    $clientBaseEnv["MEETING_SMOKE_REQUIRE_CHAT"] = "1"
+}
 if ($Headless) {
     $clientBaseEnv["QT_QPA_PLATFORM"] = "offscreen"
 }
@@ -734,9 +740,20 @@ try {
     }
 
     $hostEnv = New-ClientEnv -Role "host" -Username "demo" -Password "demo" -DbPath (Join-Path $tempRoot "host.sqlite") -ResultPath $hostResultPath -PeerResultPaths "$subscriberAResultPath;$subscriberBResultPath" -ObservedRemoteVideoUserId "" -EnableLocalAudio $HostPublishAudio -DisableLocalAudio (-not $HostPublishAudio) -EnableLocalVideo $HostPublishVideo -DisableLocalVideo (-not $HostPublishVideo) -RequireAudioEvidence ($RequireAudio -and $HostPublishAudio) -RequireVideoEvidence $false -UseSyntheticAudio $hostUsesSyntheticAudio -UseSyntheticCamera $hostUsesSyntheticCamera -ExpectCameraSource ($HostPublishVideo -and $ExpectRealCamera) -CameraDeviceName $HostCameraDevice -AudioInputDeviceName $HostAudioInputDevice -AudioOutputDeviceName $HostAudioOutputDevice
+    if ($RequireChat) {
+        $hostEnv["MEETING_SMOKE_CHAT_SEND_TEXT"] = "cloud-chat-host-history"
+        $hostEnv["MEETING_SMOKE_CHAT_EXPECT_TEXTS"] = "cloud-chat-subscriber-a-to-host"
+        $hostEnv["MEETING_SMOKE_CHAT_SEND_DELAY_MS"] = "1000"
+    }
 
     $subscriberAEnv = New-ClientEnv -Role "subscriber_a" -Username "alice" -Password "alice" -DbPath (Join-Path $tempRoot "subscriber_a.sqlite") -ResultPath $subscriberAResultPath -PeerResultPaths "" -ObservedRemoteVideoUserId $SubscriberAObservedRemoteVideoUserId -EnableLocalAudio $SubscriberAPublishAudio -DisableLocalAudio (-not $SubscriberAPublishAudio) -EnableLocalVideo $SubscriberAPublishVideo -DisableLocalVideo (-not $SubscriberAPublishVideo) -RequireAudioEvidence ($RequireAudio -and $SubscriberAPublishAudio) -RequireVideoEvidence $RequireVideo -UseSyntheticAudio $subscriberAUsesSyntheticAudio -UseSyntheticCamera $subscriberAUsesSyntheticCamera -ExpectCameraSource ($SubscriberAPublishVideo -and $ExpectRealCamera) -CameraDeviceName $SubscriberACameraDevice -AudioInputDeviceName $SubscriberAAudioInputDevice -AudioOutputDeviceName $SubscriberAAudioOutputDevice
     $subscriberBEnv = New-ClientEnv -Role "subscriber_b" -Username "bob" -Password "bob" -DbPath (Join-Path $tempRoot "subscriber_b.sqlite") -ResultPath $subscriberBResultPath -PeerResultPaths "" -ObservedRemoteVideoUserId $SubscriberBObservedRemoteVideoUserId -EnableLocalAudio $SubscriberBPublishAudio -DisableLocalAudio (-not $SubscriberBPublishAudio) -EnableLocalVideo $SubscriberBPublishVideo -DisableLocalVideo (-not $SubscriberBPublishVideo) -RequireAudioEvidence ($RequireAudio -and $SubscriberBPublishAudio) -RequireVideoEvidence $RequireVideo -UseSyntheticAudio $subscriberBUsesSyntheticAudio -UseSyntheticCamera $subscriberBUsesSyntheticCamera -ExpectCameraSource ($SubscriberBPublishVideo -and $ExpectRealCamera) -CameraDeviceName $SubscriberBCameraDevice -AudioInputDeviceName $SubscriberBAudioInputDevice -AudioOutputDeviceName $SubscriberBAudioOutputDevice
+    if ($RequireChat) {
+        $subscriberAEnv["MEETING_SMOKE_CHAT_SEND_TEXT"] = "cloud-chat-subscriber-a-to-host"
+        $subscriberAEnv["MEETING_SMOKE_CHAT_EXPECT_TEXTS"] = "cloud-chat-host-history"
+        $subscriberAEnv["MEETING_SMOKE_CHAT_SEND_DELAY_MS"] = "3000"
+        $subscriberBEnv["MEETING_SMOKE_CHAT_EXPECT_TEXTS"] = "cloud-chat-host-history"
+    }
 
     $clientDir = Split-Path -Parent $ClientExe
     $hostProcess = Start-ManagedProcess -FilePath $ClientExe -Arguments @() -WorkingDirectory $clientDir -Environment $hostEnv -StdOutPath $hostStdOut -StdErrPath $hostStdErr
@@ -756,7 +773,7 @@ try {
     }
 
     $subscriberAProcess = Start-ManagedProcess -FilePath $ClientExe -Arguments @() -WorkingDirectory $clientDir -Environment $subscriberAEnv -StdOutPath $subscriberAStdOut -StdErrPath $subscriberAStdErr
-    Start-Sleep -Milliseconds 1000
+    Start-Sleep -Milliseconds $SubscriberBLaunchDelayMs
     $subscriberBProcess = Start-ManagedProcess -FilePath $ClientExe -Arguments @() -WorkingDirectory $clientDir -Environment $subscriberBEnv -StdOutPath $subscriberBStdOut -StdErrPath $subscriberBStdErr
 
     $hostExited = Wait-ForProcessExit -Process $hostProcess.Process -TimeoutSeconds $TimeoutSeconds

@@ -236,21 +236,26 @@ public:
 
         QMutexLocker setupLocker(&m_turnSetupMutex);
 
-        const QByteArray allocateTx = ice::StunClient::makeTransactionId();
-        const QByteArray allocateReq = ice::TurnClient::buildAllocateRequest(allocateTx);
-        if (sendTo(reinterpret_cast<const uint8_t*>(allocateReq.constData()),
-                   static_cast<std::size_t>(allocateReq.size()),
-                   turnServer) != allocateReq.size()) {
-            if (errorMessage != nullptr) {
-                *errorMessage = "TURN Allocate challenge send failed";
-            }
-            return false;
-        }
-
         ice::TurnAllocateResult challenge{};
-        if (!waitForTurnAllocateResponse(allocateTx, turnServer, &challenge, 3000) ||
-            challenge.realm.isEmpty() ||
-            challenge.nonce.isEmpty()) {
+        bool challengeReceived = false;
+        for (int attempt = 0; attempt < 3 && !challengeReceived; ++attempt) {
+            const QByteArray allocateTx = ice::StunClient::makeTransactionId();
+            const QByteArray allocateReq = ice::TurnClient::buildAllocateRequest(allocateTx);
+            if (sendTo(reinterpret_cast<const uint8_t*>(allocateReq.constData()),
+                       static_cast<std::size_t>(allocateReq.size()),
+                       turnServer) != allocateReq.size()) {
+                if (errorMessage != nullptr) {
+                    *errorMessage = "TURN Allocate challenge send failed";
+                }
+                return false;
+            }
+
+            challenge = {};
+            challengeReceived = waitForTurnAllocateResponse(allocateTx, turnServer, &challenge, 5000) &&
+                                !challenge.realm.isEmpty() &&
+                                !challenge.nonce.isEmpty();
+        }
+        if (!challengeReceived) {
             if (errorMessage != nullptr) {
                 *errorMessage = challenge.error.isEmpty()
                                     ? "TURN Allocate challenge failed"
