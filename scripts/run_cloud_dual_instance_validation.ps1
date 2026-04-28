@@ -6,7 +6,7 @@ param(
     [ValidateSet("both", "all", "relay-only")]
     [string]$Mode = "both",
     [ValidateRange(10, 300)]
-    [int]$TimeoutSeconds = 120,
+    [int]$TimeoutSeconds = 240,
     [ValidateRange(0, 30000)]
     [int]$GuestLaunchDelayMs = 3000,
     [string]$ServerSshTarget = "",
