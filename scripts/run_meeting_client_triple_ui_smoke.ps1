@@ -2,6 +2,11 @@ param(
     [string]$ClientExe = "D:\meeting\plasma-hawking\build\Debug\meeting_client.exe",
     [string]$ServerDir = "D:\meeting\meeting-server\signaling",
     [string]$SfuExe = "",
+    [string]$ExternalServerHost = "",
+    [ValidateRange(1, 65535)]
+    [int]$ExternalServerPort = 8443,
+    [ValidateSet("", "all", "relay-only")]
+    [string]$IcePolicy = "",
     [bool]$SyntheticAudio = $true,
     [switch]$RequireAudio,
     [bool]$SyntheticCamera = $false,
@@ -545,7 +550,8 @@ if (($HostPublishVideo -and $hostCameraSourceMode -eq "real") -or
     Write-Host "[triple-ui-smoke] real camera assignment backend=$resolvedCameraCaptureBackend host='$HostCameraDevice' subscriber_a='$SubscriberACameraDevice' subscriber_b='$SubscriberBCameraDevice'"
 }
 
-$port = Get-FreeTcpPort
+$usingExternalServer = -not [string]::IsNullOrWhiteSpace($ExternalServerHost)
+$port = if ($usingExternalServer) { $ExternalServerPort } else { Get-FreeTcpPort }
 $tempRoot = Join-Path $env:TEMP ("meeting-triple-ui-smoke-" + [guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $tempRoot | Out-Null
 
@@ -564,31 +570,42 @@ $subscriberAStdErr = Join-Path $tempRoot "subscriber_a.stderr.txt"
 $subscriberBStdOut = Join-Path $tempRoot "subscriber_b.stdout.txt"
 $subscriberBStdErr = Join-Path $tempRoot "subscriber_b.stderr.txt"
 
-$resolvedSfuExe = Resolve-SfuExecutable -Configured $SfuExe
-if ([string]::IsNullOrWhiteSpace($resolvedSfuExe)) {
-    throw "meeting_sfu.exe not found; build SFU first or pass -SfuExe"
-}
-$sfuRpcPort = Get-FreeTcpPort
-$sfuMediaPort = Get-FreeUdpPort
-if ($sfuRpcPort -le 0 -or $sfuMediaPort -le 0) {
-    throw "failed to reserve SFU ports"
+$resolvedSfuExe = ""
+$sfuRpcPort = 0
+$sfuMediaPort = 0
+$serverEnv = @{}
+if (-not $usingExternalServer) {
+    $resolvedSfuExe = Resolve-SfuExecutable -Configured $SfuExe
+    if ([string]::IsNullOrWhiteSpace($resolvedSfuExe)) {
+        throw "meeting_sfu.exe not found; build SFU first or pass -SfuExe"
+    }
+    $sfuRpcPort = Get-FreeTcpPort
+    $sfuMediaPort = Get-FreeUdpPort
+    if ($sfuRpcPort -le 0 -or $sfuMediaPort -le 0) {
+        throw "failed to reserve SFU ports"
+    }
+
+    $serverEnv = @{
+        SIGNALING_LISTEN_ADDR = "127.0.0.1:$port"
+        SIGNALING_ENABLE_REDIS = "false"
+        SIGNALING_MYSQL_DSN = ""
+        SIGNALING_DEFAULT_SFU = "127.0.0.1:$sfuMediaPort"
+        SIGNALING_SFU_RPC_ADDR = "127.0.0.1:$sfuRpcPort"
+    }
 }
 
-$serverEnv = @{
-    SIGNALING_LISTEN_ADDR = "127.0.0.1:$port"
-    SIGNALING_ENABLE_REDIS = "false"
-    SIGNALING_MYSQL_DSN = ""
-    SIGNALING_DEFAULT_SFU = "127.0.0.1:$sfuMediaPort"
-    SIGNALING_SFU_RPC_ADDR = "127.0.0.1:$sfuRpcPort"
-}
-
+$resolvedClientServerHost = if ($usingExternalServer) { $ExternalServerHost.Trim() } else { "127.0.0.1" }
 $clientBaseEnv = @{
     MEETING_RUNTIME_SMOKE = "1"
-    MEETING_SERVER_HOST = "127.0.0.1"
+    MEETING_SERVER_HOST = $resolvedClientServerHost
     MEETING_SERVER_PORT = "$port"
     MEETING_SMOKE_MEETING_ID_PATH = $meetingIdPath
     MEETING_SMOKE_TIMEOUT_MS = "$($TimeoutSeconds * 1000)"
     MEETING_SMOKE_MEETING_CAPACITY = "3"
+}
+if (-not [string]::IsNullOrWhiteSpace($IcePolicy)) {
+    $clientBaseEnv["MEETING_ICE_POLICY"] = $IcePolicy
+    Write-Host "[triple-ui-smoke] forcing MEETING_ICE_POLICY=$IcePolicy"
 }
 if ($SoakMs -gt 0) {
     $clientBaseEnv["MEETING_SMOKE_SOAK_MS"] = "$SoakMs"
@@ -692,21 +709,28 @@ $subscriberAProcess = $null
 $subscriberBProcess = $null
 
 try {
-    $sfuEnv = @{
-        SFU_ADVERTISED_HOST = "127.0.0.1"
-        SFU_RPC_LISTEN_PORT = "$sfuRpcPort"
-        SFU_MEDIA_LISTEN_PORT = "$sfuMediaPort"
-        SFU_NODE_ID = "triple-ui-smoke-sfu"
-    }
-    $sfuProcess = Start-ManagedProcess -FilePath $resolvedSfuExe -Arguments @() -WorkingDirectory (Split-Path -Parent $resolvedSfuExe) -Environment $sfuEnv -StdOutPath $sfuStdOut -StdErrPath $sfuStdErr
-    if (-not (Wait-ForTcpListening -TargetHost "127.0.0.1" -Port $sfuRpcPort -TimeoutSeconds 20)) {
-        throw "SFU RPC did not start listening`n$(Get-Content $sfuStdErr -Raw)"
-    }
-    Write-Host "[triple-ui-smoke] internal SFU rpc=127.0.0.1:$sfuRpcPort media=127.0.0.1:$sfuMediaPort"
+    if ($usingExternalServer) {
+        Write-Host "[triple-ui-smoke] external signaling=${ExternalServerHost}:$ExternalServerPort"
+        if (-not (Wait-ForTcpListening -TargetHost $ExternalServerHost -Port $ExternalServerPort -TimeoutSeconds 20)) {
+            throw "external signaling server did not accept TCP connections at ${ExternalServerHost}:$ExternalServerPort"
+        }
+    } else {
+        $sfuEnv = @{
+            SFU_ADVERTISED_HOST = "127.0.0.1"
+            SFU_RPC_LISTEN_PORT = "$sfuRpcPort"
+            SFU_MEDIA_LISTEN_PORT = "$sfuMediaPort"
+            SFU_NODE_ID = "triple-ui-smoke-sfu"
+        }
+        $sfuProcess = Start-ManagedProcess -FilePath $resolvedSfuExe -Arguments @() -WorkingDirectory (Split-Path -Parent $resolvedSfuExe) -Environment $sfuEnv -StdOutPath $sfuStdOut -StdErrPath $sfuStdErr
+        if (-not (Wait-ForTcpListening -TargetHost "127.0.0.1" -Port $sfuRpcPort -TimeoutSeconds 20)) {
+            throw "SFU RPC did not start listening`n$(Get-Content $sfuStdErr -Raw)"
+        }
+        Write-Host "[triple-ui-smoke] internal SFU rpc=127.0.0.1:$sfuRpcPort media=127.0.0.1:$sfuMediaPort"
 
-    $serverProcess = Start-ManagedProcess -FilePath "go" -Arguments @("run", ".") -WorkingDirectory $ServerDir -Environment $serverEnv -StdOutPath $serverStdOut -StdErrPath $serverStdErr
-    if (-not (Wait-ForTcpListening -TargetHost "127.0.0.1" -Port $port -TimeoutSeconds 20)) {
-        throw "signaling server did not start listening`n$(Get-Content $serverStdErr -Raw)"
+        $serverProcess = Start-ManagedProcess -FilePath "go" -Arguments @("run", ".") -WorkingDirectory $ServerDir -Environment $serverEnv -StdOutPath $serverStdOut -StdErrPath $serverStdErr
+        if (-not (Wait-ForTcpListening -TargetHost "127.0.0.1" -Port $port -TimeoutSeconds 20)) {
+            throw "signaling server did not start listening`n$(Get-Content $serverStdErr -Raw)"
+        }
     }
 
     $hostEnv = New-ClientEnv -Role "host" -Username "demo" -Password "demo" -DbPath (Join-Path $tempRoot "host.sqlite") -ResultPath $hostResultPath -PeerResultPaths "$subscriberAResultPath;$subscriberBResultPath" -ObservedRemoteVideoUserId "" -EnableLocalAudio $HostPublishAudio -DisableLocalAudio (-not $HostPublishAudio) -EnableLocalVideo $HostPublishVideo -DisableLocalVideo (-not $HostPublishVideo) -RequireAudioEvidence ($RequireAudio -and $HostPublishAudio) -RequireVideoEvidence $false -UseSyntheticAudio $hostUsesSyntheticAudio -UseSyntheticCamera $hostUsesSyntheticCamera -ExpectCameraSource ($HostPublishVideo -and $ExpectRealCamera) -CameraDeviceName $HostCameraDevice -AudioInputDeviceName $HostAudioInputDevice -AudioOutputDeviceName $HostAudioOutputDevice

@@ -12,6 +12,27 @@ bool execSql(QSqlQuery& query, const QString& sql) {
     return query.exec(sql);
 }
 
+bool tableHasColumn(QSqlDatabase& db, const QString& tableName, const QString& columnName) {
+    QSqlQuery query(db);
+    if (!query.exec(QStringLiteral("PRAGMA table_info(%1)").arg(tableName))) {
+        return false;
+    }
+    while (query.next()) {
+        if (query.value(1).toString() == columnName) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool ensureColumn(QSqlDatabase& db, const QString& tableName, const QString& columnName, const QString& definition) {
+    if (tableHasColumn(db, tableName, columnName)) {
+        return true;
+    }
+    QSqlQuery query(db);
+    return execSql(query, QStringLiteral("ALTER TABLE %1 ADD COLUMN %2 %3").arg(tableName, columnName, definition));
+}
+
 }  // namespace
 
 DatabaseManager& DatabaseManager::instance() {
@@ -142,6 +163,7 @@ bool DatabaseManager::createSchema(QSqlDatabase& db) const {
             "sender_id TEXT NOT NULL DEFAULT '',"
             "sender_name TEXT NOT NULL DEFAULT '',"
             "content TEXT NOT NULL DEFAULT '',"
+            "remote_message_id TEXT NOT NULL DEFAULT '',"
             "message_type INTEGER NOT NULL DEFAULT 0,"
             "reply_to_id TEXT NOT NULL DEFAULT '',"
             "sent_at INTEGER NOT NULL DEFAULT 0,"
@@ -202,10 +224,26 @@ bool DatabaseManager::createSchema(QSqlDatabase& db) const {
         }
     }
 
+    if (!ensureColumn(db, QStringLiteral("message"), QStringLiteral("remote_message_id"), QStringLiteral("TEXT NOT NULL DEFAULT ''"))) {
+        return false;
+    }
+
+    const QStringList messageTriggerDropStatements{
+        QStringLiteral("DROP TRIGGER IF EXISTS message_ai"),
+        QStringLiteral("DROP TRIGGER IF EXISTS message_ad"),
+        QStringLiteral("DROP TRIGGER IF EXISTS message_au"),
+    };
+    for (const auto& statement : messageTriggerDropStatements) {
+        if (!execSql(query, statement)) {
+            return false;
+        }
+    }
+
     const QStringList indexStatements{
         QStringLiteral("CREATE INDEX IF NOT EXISTS idx_meeting_updated_at ON meeting(updated_at DESC)"),
         QStringLiteral("CREATE INDEX IF NOT EXISTS idx_meeting_participant_meeting ON meeting_participant(meeting_id, joined_at ASC)"),
         QStringLiteral("CREATE INDEX IF NOT EXISTS idx_message_meeting_sent_at ON message(meeting_id, sent_at DESC, id DESC)"),
+        QStringLiteral("CREATE UNIQUE INDEX IF NOT EXISTS idx_message_remote_message_id ON message(meeting_id, remote_message_id) WHERE remote_message_id <> ''"),
         QStringLiteral("CREATE INDEX IF NOT EXISTS idx_call_log_meeting_user ON call_log(meeting_id, user_id, joined_at DESC, id DESC)"),
         QStringLiteral("CREATE INDEX IF NOT EXISTS idx_contact_display_name ON contact(display_name)"),
     };
@@ -218,21 +256,21 @@ bool DatabaseManager::createSchema(QSqlDatabase& db) const {
 
     const QStringList triggerStatements{
         QStringLiteral(
-            "CREATE TRIGGER IF NOT EXISTS message_ai AFTER INSERT ON message BEGIN "
+            "CREATE TRIGGER message_ai AFTER INSERT ON message BEGIN "
             "INSERT INTO message_fts(rowid, message_id, meeting_id, sender_id, sender_name, content) "
-            "VALUES (new.id, new.id, new.meeting_id, new.sender_id, new.sender_name, new.content); "
+            "VALUES (new.id, COALESCE(NULLIF(new.remote_message_id, ''), new.id), new.meeting_id, new.sender_id, new.sender_name, new.content); "
             "END;"),
         QStringLiteral(
-            "CREATE TRIGGER IF NOT EXISTS message_ad AFTER DELETE ON message BEGIN "
+            "CREATE TRIGGER message_ad AFTER DELETE ON message BEGIN "
             "INSERT INTO message_fts(message_fts, rowid, message_id, meeting_id, sender_id, sender_name, content) "
-            "VALUES('delete', old.id, old.id, old.meeting_id, old.sender_id, old.sender_name, old.content); "
+            "VALUES('delete', old.id, COALESCE(NULLIF(old.remote_message_id, ''), old.id), old.meeting_id, old.sender_id, old.sender_name, old.content); "
             "END;"),
         QStringLiteral(
-            "CREATE TRIGGER IF NOT EXISTS message_au AFTER UPDATE ON message BEGIN "
+            "CREATE TRIGGER message_au AFTER UPDATE ON message BEGIN "
             "INSERT INTO message_fts(message_fts, rowid, message_id, meeting_id, sender_id, sender_name, content) "
-            "VALUES('delete', old.id, old.id, old.meeting_id, old.sender_id, old.sender_name, old.content); "
+            "VALUES('delete', old.id, COALESCE(NULLIF(old.remote_message_id, ''), old.id), old.meeting_id, old.sender_id, old.sender_name, old.content); "
             "INSERT INTO message_fts(rowid, message_id, meeting_id, sender_id, sender_name, content) "
-            "VALUES (new.id, new.id, new.meeting_id, new.sender_id, new.sender_name, new.content); "
+            "VALUES (new.id, COALESCE(NULLIF(new.remote_message_id, ''), new.id), new.meeting_id, new.sender_id, new.sender_name, new.content); "
             "END;"),
     };
 

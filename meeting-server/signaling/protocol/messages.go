@@ -51,6 +51,8 @@ type (
 	ChatSendReqBody                = pb.ChatSendReq
 	ChatSendRspBody                = pb.ChatSendRsp
 	ChatRecvNotifyBody             = pb.ChatRecvNotify
+	ChatHistoryReqBody             = pb.ChatHistoryReq
+	ChatHistoryRspBody             = pb.ChatHistoryRsp
 	FileOfferReqBody               = pb.FileOfferReq
 	FileOfferRspBody               = pb.FileOfferRsp
 	FileAcceptReqBody              = pb.FileAcceptReq

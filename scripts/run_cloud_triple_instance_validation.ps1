@@ -6,9 +6,7 @@ param(
     [ValidateSet("both", "all", "relay-only")]
     [string]$Mode = "both",
     [ValidateRange(10, 300)]
-    [int]$TimeoutSeconds = 120,
-    [ValidateRange(0, 30000)]
-    [int]$GuestLaunchDelayMs = 3000,
+    [int]$TimeoutSeconds = 150,
     [string]$ServerSshTarget = "",
     [string]$ServerComposeDir = "/opt/meeting/meeting-server",
     [switch]$Headless
@@ -18,9 +16,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$uiScript = Join-Path $scriptRoot "run_meeting_client_dual_ui_smoke.ps1"
+$uiScript = Join-Path $scriptRoot "run_meeting_client_triple_ui_smoke.ps1"
 if (-not (Test-Path -LiteralPath $uiScript)) {
-    throw "UI smoke script not found: $uiScript"
+    throw "triple UI smoke script not found: $uiScript"
 }
 if (-not (Test-Path -LiteralPath $ClientExe)) {
     throw "meeting_client.exe not found: $ClientExe"
@@ -38,13 +36,13 @@ function Write-CloudOpsSnapshot {
     )
 
     if ([string]::IsNullOrWhiteSpace($ServerSshTarget)) {
-        Write-Host "[cloud-dual] ops snapshot skipped: pass -ServerSshTarget root@$ServerHost to collect compose/logs/stats"
+        Write-Host "[cloud-triple] ops snapshot skipped: pass -ServerSshTarget root@$ServerHost to collect compose/logs/stats"
         return
     }
 
     $remoteCommand = "cd '$ServerComposeDir' && " +
         "echo '===== compose ps ($Label) =====' && docker compose -f docker-compose.yml -f docker-compose.2c2g.yml ps && " +
-        "echo '===== logs signaling/sfu/coturn ($Label) =====' && docker compose -f docker-compose.yml -f docker-compose.2c2g.yml logs --tail=80 signaling sfu coturn && " +
+        "echo '===== logs signaling/sfu/coturn ($Label) =====' && docker compose -f docker-compose.yml -f docker-compose.2c2g.yml logs --tail=120 signaling sfu coturn && " +
         "echo '===== docker stats ($Label) =====' && docker stats --no-stream"
     & ssh $ServerSshTarget $remoteCommand
     if ($LASTEXITCODE -ne 0) {
@@ -61,22 +59,35 @@ foreach ($icePolicy in $runs) {
         SyntheticCamera = $true
         RequireAudio = $true
         RequireVideo = $true
-        RequireAvSync = $true
+        HostAudioSource = "synthetic"
+        SubscriberAAudioSource = "synthetic"
+        SubscriberBAudioSource = "synthetic"
+        HostCameraSource = "synthetic"
+        SubscriberACameraSource = "synthetic"
+        SubscriberBCameraSource = "synthetic"
+        HostPublishAudio = $true
+        HostPublishVideo = $true
+        SubscriberAPublishAudio = $true
+        SubscriberAPublishVideo = $true
+        SubscriberBPublishAudio = $true
+        SubscriberBPublishVideo = $true
+        ExpectRealCamera = $false
         IcePolicy = $icePolicy
         TimeoutSeconds = $TimeoutSeconds
-        GuestLaunchDelayMs = $GuestLaunchDelayMs
+        SoakMs = 5000
+        SubscriberMediaSoakMs = 10000
     }
     if ($Headless) {
         $params.Headless = $true
     }
 
-    Write-Host "[cloud-dual] >>> ice_policy=$icePolicy server=${ServerHost}:$ServerPort"
+    Write-Host "[cloud-triple] >>> ice_policy=$icePolicy server=${ServerHost}:$ServerPort"
     & $uiScript @params
     if ($LASTEXITCODE -ne 0) {
-        throw "cloud dual validation failed for ice_policy=$icePolicy, exit_code=$LASTEXITCODE"
+        throw "cloud triple validation failed for ice_policy=$icePolicy, exit_code=$LASTEXITCODE"
     }
-    Write-CloudOpsSnapshot -Label "dual-$icePolicy"
-    Write-Host "[cloud-dual] <<< ice_policy=$icePolicy passed"
+    Write-CloudOpsSnapshot -Label "triple-$icePolicy"
+    Write-Host "[cloud-triple] <<< ice_policy=$icePolicy passed"
 }
 
-Write-Host "[cloud-dual] all requested validations passed"
+Write-Host "[cloud-triple] all requested validations passed"

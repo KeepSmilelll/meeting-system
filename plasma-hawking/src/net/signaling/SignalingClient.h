@@ -34,6 +34,7 @@ public:
     void joinMeeting(const QString& meetingId, const QString& password);
     void leaveMeeting();
     void sendChat(int type, const QString& content, const QString& replyToId = {});
+    void requestChatHistory(const QString& meetingId, int limit = 50);
     void sendTransportOffer(const QString& meetingId,
                             bool publishAudio,
                             bool publishVideo,
@@ -66,8 +67,9 @@ signals:
                              const QString& error);
     void leaveMeetingFinished(bool success, const QString& error);
     void kicked(const QString& reason);
-    void chatSendFinished(bool success, const QString& messageId, const QString& error);
-    void chatReceived(const QString& senderId,
+    void chatSendFinished(bool success, const QString& messageId, qint64 timestamp, const QString& error);
+    void chatReceived(const QString& messageId,
+                      const QString& senderId,
                       const QString& senderName,
                       int type,
                       const QString& content,

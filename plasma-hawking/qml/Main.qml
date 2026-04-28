@@ -57,6 +57,28 @@ Controls.ApplicationWindow {
         controller: meetingController
     }
 
+    Controls.Popup {
+        id: settingsPopup
+        modal: true
+        focus: true
+        width: Math.min(rootWindow.width - 64, 900)
+        height: Math.min(rootWindow.height - 80, 620)
+        anchors.centerIn: parent
+        padding: 0
+        closePolicy: Controls.Popup.CloseOnEscape | Controls.Popup.CloseOnPressOutside
+
+        background: Rectangle {
+            radius: 26
+            color: "#020617"
+            border.color: "#334155"
+        }
+
+        SettingsPage {
+            anchors.fill: parent
+            controller: meetingController
+        }
+    }
+
     Connections {
         target: meetingController
 
@@ -163,6 +185,11 @@ Controls.ApplicationWindow {
                     visible: appStateMachine.loggedIn && !appStateMachine.inMeeting && !appStateMachine.reconnecting
                     text: "Join meeting"
                     onClicked: joinMeetingDialog.open()
+                }
+
+                Controls.Button {
+                    text: "Settings"
+                    onClicked: settingsPopup.open()
                 }
 
                 Controls.Label {

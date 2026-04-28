@@ -23,7 +23,11 @@ MessageRepository::MessageRecord recordFromQuery(QSqlQuery& query) {
     record.senderId = query.value(2).toString();
     record.senderName = query.value(3).toString();
     record.content = query.value(4).toString();
-    record.sentAt = query.value(5).toLongLong();
+    record.remoteMessageId = query.value(5).toString();
+    record.messageType = query.value(6).toInt();
+    record.replyToId = query.value(7).toString();
+    record.sentAt = query.value(8).toLongLong();
+    record.isLocal = query.value(9).toInt() != 0;
     return record;
 }
 
@@ -57,19 +61,21 @@ bool MessageRepository::saveMessage(const QString& meetingId,
                                     qint64 sentAt,
                                     int messageType,
                                     const QString& replyToId,
-                                    bool isLocal) {
+                                    bool isLocal,
+                                    const QString& remoteMessageId) {
     if (!ensureOpen() || meetingId.trimmed().isEmpty()) {
         return false;
     }
 
     QSqlQuery query(m_db);
     query.prepare(QStringLiteral(
-        "INSERT INTO message(meeting_id, sender_id, sender_name, content, message_type, reply_to_id, sent_at, is_local, created_at) "
-        "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)"));
+        "INSERT OR IGNORE INTO message(meeting_id, sender_id, sender_name, content, remote_message_id, message_type, reply_to_id, sent_at, is_local, created_at) "
+        "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"));
     query.addBindValue(meetingId.trimmed());
     query.addBindValue(senderId.trimmed());
     query.addBindValue(senderName.trimmed());
     query.addBindValue(content);
+    query.addBindValue(remoteMessageId.trimmed());
     query.addBindValue(messageType);
     const QString normalizedReplyToId = replyToId.trimmed().isNull() ? QStringLiteral("") : replyToId.trimmed();
     query.addBindValue(normalizedReplyToId);
@@ -93,8 +99,11 @@ QVector<MessageRepository::MessageRecord> MessageRepository::listByMeeting(const
 
     QSqlQuery query(m_db);
     query.prepare(QStringLiteral(
-        "SELECT id, meeting_id, sender_id, sender_name, content, sent_at "
-        "FROM message WHERE meeting_id = ? ORDER BY sent_at DESC, id DESC LIMIT ?"));
+        "SELECT id, meeting_id, sender_id, sender_name, content, remote_message_id, message_type, reply_to_id, sent_at, is_local "
+        "FROM ("
+        "SELECT id, meeting_id, sender_id, sender_name, content, remote_message_id, message_type, reply_to_id, sent_at, is_local "
+        "FROM message WHERE meeting_id = ? ORDER BY sent_at DESC, id DESC LIMIT ?"
+        ") ORDER BY sent_at ASC, id ASC"));
     query.addBindValue(meetingId.trimmed());
     query.addBindValue(qMax(1, limit));
     if (!query.exec()) {
@@ -116,7 +125,7 @@ QVector<MessageRepository::MessageRecord> MessageRepository::searchMessages(cons
 
     QSqlQuery query(m_db);
     query.prepare(QStringLiteral(
-        "SELECT m.id, m.meeting_id, m.sender_id, m.sender_name, m.content, m.sent_at "
+        "SELECT m.id, m.meeting_id, m.sender_id, m.sender_name, m.content, m.remote_message_id, m.message_type, m.reply_to_id, m.sent_at, m.is_local "
         "FROM message_fts f JOIN message m ON m.id = f.rowid "
         "WHERE message_fts MATCH ? ORDER BY m.sent_at DESC, m.id DESC LIMIT ?"));
     query.addBindValue(trimmed);

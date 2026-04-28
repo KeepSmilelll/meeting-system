@@ -36,6 +36,8 @@ const (
 	ChatSendReq    SignalType = 0x0401
 	ChatSendRsp    SignalType = 0x0402
 	ChatRecvNotify SignalType = 0x0403
+	ChatHistoryReq SignalType = 0x0404
+	ChatHistoryRsp SignalType = 0x0405
 
 	FileOfferReq       SignalType = 0x0501
 	FileOfferRsp       SignalType = 0x0502

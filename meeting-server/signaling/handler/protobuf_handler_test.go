@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"meeting-server/signaling/auth"
 	"meeting-server/signaling/config"
@@ -14,6 +15,7 @@ import (
 	"meeting-server/signaling/store"
 	"net"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -1920,6 +1922,174 @@ func TestChatHandlerSendWithProtoPayload(t *testing.T) {
 	}
 	if !rsp.Success || rsp.MessageId == "" {
 		t.Fatalf("expected chat send success with message id, got %+v", rsp)
+	}
+}
+
+func TestChatHandlerPersistsBroadcastsAndReturnsHistory(t *testing.T) {
+	cfg := config.Load()
+	sessions := server.NewSessionManager()
+	memStore := store.NewMemoryStore()
+	repo := store.NewInMemoryMessageRepo()
+	h := NewChatHandler(cfg, sessions, memStore, repo)
+
+	senderSess, senderConn, senderCleanup := newRunningSession(t, 31, cfg)
+	defer senderCleanup()
+	peerSess, peerConn, peerCleanup := newRunningSession(t, 32, cfg)
+	defer peerCleanup()
+
+	const meetingID = "123456"
+	for _, item := range []struct {
+		sess   *server.Session
+		userID string
+	}{
+		{senderSess, "u1001"},
+		{peerSess, "u1002"},
+	} {
+		sessions.Add(item.sess)
+		sessions.BindUser(item.sess, item.userID)
+		item.sess.SetMeetingID(meetingID)
+		item.sess.SetState(server.StateInMeeting)
+	}
+
+	payload, err := proto.Marshal(&protocol.ChatSendReqBody{Type: 0, Content: "persisted hello"})
+	if err != nil {
+		t.Fatalf("marshal request failed: %v", err)
+	}
+	h.HandleSend(senderSess, payload)
+
+	msgType, rspPayload := readFrame(t, senderConn, cfg.MaxPayloadBytes)
+	if msgType != protocol.ChatSendRsp {
+		t.Fatalf("unexpected send rsp type: got %v want %v", msgType, protocol.ChatSendRsp)
+	}
+	var sendRsp protocol.ChatSendRspBody
+	if err := proto.Unmarshal(rspPayload, &sendRsp); err != nil {
+		t.Fatalf("unmarshal send rsp failed: %v", err)
+	}
+	if !sendRsp.Success || sendRsp.MessageId == "" || sendRsp.Timestamp == 0 {
+		t.Fatalf("expected persisted send success, got %+v", sendRsp)
+	}
+
+	notifyType, notifyPayload := readFrame(t, peerConn, cfg.MaxPayloadBytes)
+	if notifyType != protocol.ChatRecvNotify {
+		t.Fatalf("unexpected notify type: got %v want %v", notifyType, protocol.ChatRecvNotify)
+	}
+	var notify protocol.ChatRecvNotifyBody
+	if err := proto.Unmarshal(notifyPayload, &notify); err != nil {
+		t.Fatalf("unmarshal notify failed: %v", err)
+	}
+	if notify.MessageId != sendRsp.MessageId || notify.SenderId != "u1001" || notify.Content != "persisted hello" {
+		t.Fatalf("unexpected notify: %+v", notify)
+	}
+
+	historyPayload, err := proto.Marshal(&protocol.ChatHistoryReqBody{MeetingId: meetingID, Limit: 50})
+	if err != nil {
+		t.Fatalf("marshal history request failed: %v", err)
+	}
+	h.HandleHistory(peerSess, historyPayload)
+
+	historyType, historyRspPayload := readFrame(t, peerConn, cfg.MaxPayloadBytes)
+	if historyType != protocol.ChatHistoryRsp {
+		t.Fatalf("unexpected history rsp type: got %v want %v", historyType, protocol.ChatHistoryRsp)
+	}
+	var historyRsp protocol.ChatHistoryRspBody
+	if err := proto.Unmarshal(historyRspPayload, &historyRsp); err != nil {
+		t.Fatalf("unmarshal history rsp failed: %v", err)
+	}
+	if !historyRsp.Success || len(historyRsp.Messages) != 1 {
+		t.Fatalf("expected one history message, got %+v", historyRsp)
+	}
+	if got := historyRsp.Messages[0]; got.MessageId != sendRsp.MessageId || got.SenderId != "u1001" || got.Content != "persisted hello" {
+		t.Fatalf("unexpected history item: %+v", got)
+	}
+}
+
+func TestChatHandlerHistoryReturnsLatestFiftyAscending(t *testing.T) {
+	cfg := config.Load()
+	sessions := server.NewSessionManager()
+	memStore := store.NewMemoryStore()
+	repo := store.NewInMemoryMessageRepo()
+	h := NewChatHandler(cfg, sessions, memStore, repo)
+
+	sess, conn, cleanup := newRunningSession(t, 33, cfg)
+	defer cleanup()
+	sessions.Add(sess)
+	sessions.BindUser(sess, "u1001")
+	sess.SetMeetingID("123456")
+	sess.SetState(server.StateInMeeting)
+
+	for i := 0; i < 55; i++ {
+		content := fmt.Sprintf("msg-%02d", i)
+		payload, err := proto.Marshal(&protocol.ChatSendReqBody{Type: 0, Content: content})
+		if err != nil {
+			t.Fatalf("marshal send request failed: %v", err)
+		}
+		h.HandleSend(sess, payload)
+		msgType, _ := readFrame(t, conn, cfg.MaxPayloadBytes)
+		if msgType != protocol.ChatSendRsp {
+			t.Fatalf("unexpected send rsp type at %d: got %v want %v", i, msgType, protocol.ChatSendRsp)
+		}
+	}
+
+	historyPayload, err := proto.Marshal(&protocol.ChatHistoryReqBody{Limit: 50})
+	if err != nil {
+		t.Fatalf("marshal history request failed: %v", err)
+	}
+	h.HandleHistory(sess, historyPayload)
+
+	msgType, rspPayload := readFrame(t, conn, cfg.MaxPayloadBytes)
+	if msgType != protocol.ChatHistoryRsp {
+		t.Fatalf("unexpected history rsp type: got %v want %v", msgType, protocol.ChatHistoryRsp)
+	}
+	var rsp protocol.ChatHistoryRspBody
+	if err := proto.Unmarshal(rspPayload, &rsp); err != nil {
+		t.Fatalf("unmarshal history rsp failed: %v", err)
+	}
+	if !rsp.Success || len(rsp.Messages) != 50 {
+		t.Fatalf("expected 50 history messages, got %+v", rsp)
+	}
+	if rsp.Messages[0].Content != "msg-05" || rsp.Messages[49].Content != "msg-54" {
+		t.Fatalf("expected latest 50 ascending, first=%q last=%q", rsp.Messages[0].Content, rsp.Messages[49].Content)
+	}
+}
+
+func TestChatHandlerRejectsOversizedMessage(t *testing.T) {
+	cfg := config.Load()
+	cfg.MaxMessageLen = 4
+	sessions := server.NewSessionManager()
+	memStore := store.NewMemoryStore()
+	repo := store.NewInMemoryMessageRepo()
+	h := NewChatHandler(cfg, sessions, memStore, repo)
+
+	sess, conn, cleanup := newRunningSession(t, 34, cfg)
+	defer cleanup()
+	sessions.Add(sess)
+	sessions.BindUser(sess, "u1001")
+	sess.SetMeetingID("123456")
+	sess.SetState(server.StateInMeeting)
+
+	payload, err := proto.Marshal(&protocol.ChatSendReqBody{Type: 0, Content: strings.Repeat("x", 5)})
+	if err != nil {
+		t.Fatalf("marshal request failed: %v", err)
+	}
+	h.HandleSend(sess, payload)
+
+	msgType, rspPayload := readFrame(t, conn, cfg.MaxPayloadBytes)
+	if msgType != protocol.ChatSendRsp {
+		t.Fatalf("unexpected rsp type: got %v want %v", msgType, protocol.ChatSendRsp)
+	}
+	var rsp protocol.ChatSendRspBody
+	if err := proto.Unmarshal(rspPayload, &rsp); err != nil {
+		t.Fatalf("unmarshal rsp failed: %v", err)
+	}
+	if rsp.Success || rsp.Error == nil || rsp.Error.Code != protocol.ErrMessageTooLong {
+		t.Fatalf("expected message too long error, got %+v", rsp)
+	}
+	list, err := repo.ListByMeeting(context.Background(), 123456, 10)
+	if err != nil {
+		t.Fatalf("list repo failed: %v", err)
+	}
+	if len(list) != 0 {
+		t.Fatalf("expected oversized message not persisted, got %+v", list)
 	}
 }
 

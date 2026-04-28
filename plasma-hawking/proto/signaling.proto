@@ -193,6 +193,18 @@ message ChatRecvNotify {
   int64 timestamp = 7;
 }
 
+message ChatHistoryReq {
+  string meeting_id = 1;
+  int32 limit = 2;
+  int64 before_timestamp = 3;
+}
+
+message ChatHistoryRsp {
+  bool success = 1;
+  ErrorInfo error = 2;
+  repeated ChatRecvNotify messages = 3;
+}
+
 message FileOfferReq {
   string file_name = 1;
   int64 file_size = 2;

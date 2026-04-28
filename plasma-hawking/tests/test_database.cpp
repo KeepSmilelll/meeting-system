@@ -56,6 +56,8 @@ int main(int argc, char* argv[]) {
     assert(settings.saveServerEndpoint(QStringLiteral("127.0.0.1"), 8443));
     assert(settings.serverHost() == QStringLiteral("127.0.0.1"));
     assert(settings.serverPort() == 8443);
+    assert(settings.saveIcePolicy(QStringLiteral("relay-only")));
+    assert(settings.icePolicy() == QStringLiteral("relay-only"));
     assert(settings.savePreferredCameraDevice(QStringLiteral("e2eSoft iVCam")));
     assert(settings.preferredCameraDevice() == QStringLiteral("e2eSoft iVCam"));
 
@@ -70,7 +72,23 @@ int main(int argc, char* argv[]) {
                                 QStringLiteral("user-1"),
                                 QStringLiteral("Alice"),
                                 QStringLiteral("hello sqlite fts"),
-                                3000));
+                                3000,
+                                0,
+                                QString(),
+                                false,
+                                QStringLiteral("remote-1")));
+    assert(messages.saveMessage(QStringLiteral("123456"),
+                                QStringLiteral("user-1"),
+                                QStringLiteral("Alice"),
+                                QStringLiteral("hello sqlite fts"),
+                                3000,
+                                0,
+                                QString(),
+                                false,
+                                QStringLiteral("remote-1")));
+    const auto meetingMessages = messages.listByMeeting(QStringLiteral("123456"));
+    assert(meetingMessages.size() == 1);
+    assert(meetingMessages.first().remoteMessageId == QStringLiteral("remote-1"));
     const auto searchResults = messages.searchMessages(QStringLiteral("sqlite"));
     assert(!searchResults.isEmpty());
     assert(searchResults.first().content.contains(QStringLiteral("sqlite"), Qt::CaseInsensitive));

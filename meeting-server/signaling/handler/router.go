@@ -28,6 +28,10 @@ type Router struct {
 }
 
 func NewRouter(cfg config.Config, sessions *server.SessionManager, memStore *store.MemoryStore, meetingStore store.MeetingLifecycleStore, roomStateStore *store.RedisRoomStore, sessionStore store.SessionStore, tokenManager *auth.TokenManager, limiter *auth.RateLimiter, mediaSfuClient signalingSfu.Client, directBus store.UserEventPublisher, meetingMirror ...MeetingMirror) *Router {
+	return NewRouterWithMessageRepo(cfg, sessions, memStore, meetingStore, roomStateStore, sessionStore, tokenManager, limiter, mediaSfuClient, directBus, nil, meetingMirror...)
+}
+
+func NewRouterWithMessageRepo(cfg config.Config, sessions *server.SessionManager, memStore *store.MemoryStore, meetingStore store.MeetingLifecycleStore, roomStateStore *store.RedisRoomStore, sessionStore store.SessionStore, tokenManager *auth.TokenManager, limiter *auth.RateLimiter, mediaSfuClient signalingSfu.Client, directBus store.UserEventPublisher, messageRepo *store.MessageRepo, meetingMirror ...MeetingMirror) *Router {
 	r := &Router{cfg: cfg, handlers: make(map[protocol.SignalType]HandlerFunc), sessions: sessions, sessionStore: sessionStore}
 
 	r.authHandler = NewAuthHandler(cfg, sessions, memStore, tokenManager, limiter, sessionStore, directBus)
@@ -36,7 +40,7 @@ func NewRouter(cfg config.Config, sessions *server.SessionManager, memStore *sto
 	}
 	r.meetingHandler = NewMeetingHandler(cfg, sessions, meetingStore, roomStateStore, sessionStore, directBus, mediaSfuClient, meetingMirror...)
 	r.mediaHandler = NewMediaHandler(cfg, sessions, meetingStore, roomStateStore, mediaSfuClient, sessionStore, directBus)
-	r.chatHandler = NewChatHandler(cfg, sessions, memStore)
+	r.chatHandler = NewChatHandler(cfg, sessions, memStore, messageRepo)
 	r.fileHandler = NewFileHandler(cfg, sessions)
 
 	r.Register(protocol.AuthLoginReq, r.authHandler.HandleLogin)
@@ -56,6 +60,7 @@ func NewRouter(cfg config.Config, sessions *server.SessionManager, memStore *sto
 	r.Register(protocol.MediaScreenShare, r.mediaHandler.HandleScreenShare)
 
 	r.Register(protocol.ChatSendReq, r.chatHandler.HandleSend)
+	r.Register(protocol.ChatHistoryReq, r.chatHandler.HandleHistory)
 
 	r.Register(protocol.FileOfferReq, r.fileHandler.HandleOffer)
 	r.Register(protocol.FileAcceptReq, r.fileHandler.HandleAccept)
@@ -136,7 +141,7 @@ func isStateAllowed(state server.SessionState, msgType protocol.SignalType) bool
 		return state == server.StateAuthenticated || state == server.StateInMeeting
 	case protocol.MeetCreateReq, protocol.MeetJoinReq:
 		return state == server.StateAuthenticated
-	case protocol.MeetLeaveReq, protocol.ChatSendReq, protocol.MeetKickReq, protocol.MeetMuteAllReq,
+	case protocol.MeetLeaveReq, protocol.ChatSendReq, protocol.ChatHistoryReq, protocol.MeetKickReq, protocol.MeetMuteAllReq,
 		protocol.FileOfferReq, protocol.FileAcceptReq, protocol.FileChunkData:
 		return state == server.StateInMeeting
 	case protocol.MediaOffer, protocol.MediaAnswer, protocol.MediaIceCandidate, protocol.MediaMuteToggle, protocol.MediaScreenShare:

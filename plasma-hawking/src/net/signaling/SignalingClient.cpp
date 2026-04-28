@@ -34,6 +34,8 @@ constexpr quint16 kMediaScreenShare = 0x0305;
 constexpr quint16 kChatSendReq = 0x0401;
 constexpr quint16 kChatSendRsp = 0x0402;
 constexpr quint16 kChatRecvNotify = 0x0403;
+constexpr quint16 kChatHistoryReq = 0x0404;
+constexpr quint16 kChatHistoryRsp = 0x0405;
 
 QString toQtString(const std::string& s) {
     return QString::fromUtf8(s.data(), static_cast<int>(s.size()));
@@ -211,6 +213,20 @@ void SignalingClient::sendChat(int type, const QString& content, const QString& 
     }
 
     sendRawFrame(kChatSendReq, payload);
+}
+
+void SignalingClient::requestChatHistory(const QString& meetingId, int limit) {
+    meeting::ChatHistoryReq req;
+    req.set_meeting_id(meetingId.toStdString());
+    req.set_limit(limit <= 0 ? 50 : limit);
+
+    std::string payload;
+    if (!req.SerializeToString(&payload)) {
+        emit protocolError(QStringLiteral("Failed to serialize ChatHistoryReq"));
+        return;
+    }
+
+    sendRawFrame(kChatHistoryReq, payload);
 }
 
 void SignalingClient::sendTransportOffer(const QString& meetingId,
@@ -444,7 +460,7 @@ void SignalingClient::handlePayload(quint16 signalType, const QByteArray& payloa
         }
 
         const QString err = rsp.has_error() ? protobufError(rsp.error()) : QString();
-        emit chatSendFinished(rsp.success(), toQtString(rsp.message_id()), err);
+        emit chatSendFinished(rsp.success(), toQtString(rsp.message_id()), static_cast<qint64>(rsp.timestamp()), err);
         return;
     }
     case kChatRecvNotify: {
@@ -454,12 +470,36 @@ void SignalingClient::handlePayload(quint16 signalType, const QByteArray& payloa
             return;
         }
 
-        emit chatReceived(toQtString(notify.sender_id()),
+        emit chatReceived(toQtString(notify.message_id()),
+                          toQtString(notify.sender_id()),
                           toQtString(notify.sender_name()),
                           notify.type(),
                           toQtString(notify.content()),
                           toQtString(notify.reply_to_id()),
                           static_cast<qint64>(notify.timestamp()));
+        return;
+    }
+    case kChatHistoryRsp: {
+        meeting::ChatHistoryRsp rsp;
+        if (!rsp.ParseFromArray(payload.constData(), payload.size())) {
+            emit protocolError(QStringLiteral("Failed to parse ChatHistoryRsp"));
+            return;
+        }
+
+        if (!rsp.success()) {
+            emit protocolError(rsp.has_error() ? protobufError(rsp.error()) : QStringLiteral("Load chat history failed"));
+            return;
+        }
+
+        for (const auto& message : rsp.messages()) {
+            emit chatReceived(toQtString(message.message_id()),
+                              toQtString(message.sender_id()),
+                              toQtString(message.sender_name()),
+                              message.type(),
+                              toQtString(message.content()),
+                              toQtString(message.reply_to_id()),
+                              static_cast<qint64>(message.timestamp()));
+        }
         return;
     }
     default:

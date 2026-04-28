@@ -16,9 +16,11 @@
 class QMediaDevices;
 class QTimer;
 class UserManager;
+class ChatMessageListModel;
 class ParticipantListModel;
 class MeetingRepository;
 class CallLogRepository;
+class MessageRepository;
 class MediaSessionManager;
 namespace av::session {
 class AudioCallSession;
@@ -55,11 +57,15 @@ class MeetingController : public QObject {
     Q_PROPERTY(QStringList availableAudioOutputDevices READ availableAudioOutputDevices NOTIFY availableAudioOutputDevicesChanged)
     Q_PROPERTY(QString preferredMicrophoneDevice READ preferredMicrophoneDevice NOTIFY preferredMicrophoneDeviceChanged)
     Q_PROPERTY(QString preferredSpeakerDevice READ preferredSpeakerDevice NOTIFY preferredSpeakerDeviceChanged)
+    Q_PROPERTY(QString serverHost READ serverHost NOTIFY serverEndpointChanged)
+    Q_PROPERTY(quint16 serverPort READ serverPort NOTIFY serverEndpointChanged)
+    Q_PROPERTY(QString icePolicy READ icePolicy NOTIFY icePolicyChanged)
     Q_PROPERTY(QString username READ username NOTIFY sessionChanged)
     Q_PROPERTY(QString userId READ userId NOTIFY sessionChanged)
     Q_PROPERTY(QString meetingId READ meetingId NOTIFY meetingIdChanged)
     Q_PROPERTY(QString meetingTitle READ meetingTitle NOTIFY meetingTitleChanged)
     Q_PROPERTY(QAbstractItemModel* participantModel READ participantModel CONSTANT)
+    Q_PROPERTY(QAbstractItemModel* chatMessageModel READ chatMessageModel CONSTANT)
     Q_PROPERTY(QStringList participants READ participants NOTIFY participantsChanged)
     Q_PROPERTY(QString statusText READ statusText NOTIFY statusTextChanged)
 
@@ -90,11 +96,15 @@ public:
     QStringList availableAudioOutputDevices() const;
     QString preferredMicrophoneDevice() const;
     QString preferredSpeakerDevice() const;
+    QString serverHost() const;
+    quint16 serverPort() const;
+    QString icePolicy() const;
     QString username() const;
     QString userId() const;
     QString meetingId() const;
     QString meetingTitle() const;
     QAbstractItemModel* participantModel() const;
+    QAbstractItemModel* chatMessageModel() const;
     QStringList participants() const;
     QString statusText() const;
     quint64 audioSentPacketCount() const;
@@ -126,6 +136,7 @@ public:
 
     Q_INVOKABLE void login(const QString& username, const QString& password);
     Q_INVOKABLE void setServerEndpoint(const QString& host, quint16 port);
+    Q_INVOKABLE void setIcePolicy(const QString& policy);
     Q_INVOKABLE void logout();
     Q_INVOKABLE void createMeeting(const QString& title, const QString& password, int maxParticipants = 16);
     Q_INVOKABLE void joinMeeting(const QString& meetingId, const QString& password);
@@ -133,6 +144,7 @@ public:
     Q_INVOKABLE void toggleAudio();
     Q_INVOKABLE void toggleVideo();
     Q_INVOKABLE void toggleScreenSharing();
+    Q_INVOKABLE void sendChat(const QString& content);
     Q_INVOKABLE bool setPreferredCameraDevice(const QString& deviceName);
     Q_INVOKABLE bool setPreferredMicrophoneDevice(const QString& deviceName);
     Q_INVOKABLE bool setPreferredSpeakerDevice(const QString& deviceName);
@@ -155,6 +167,8 @@ signals:
     void availableAudioOutputDevicesChanged();
     void preferredMicrophoneDeviceChanged();
     void preferredSpeakerDeviceChanged();
+    void serverEndpointChanged();
+    void icePolicyChanged();
     void localVideoFrameSourceChanged();
     void remoteScreenFrameSourceChanged();
     void remoteVideoFrameSourceChanged();
@@ -236,11 +250,24 @@ private:
     void clearRemoteVideoFrameStores();
     void refreshAvailableCameraDevices();
     void refreshAvailableAudioDevices();
+    void loadLocalChatHistory();
+    void requestRemoteChatHistory();
+    void appendAndPersistChatMessage(const QString& messageId,
+                                     const QString& senderId,
+                                     const QString& senderName,
+                                     int type,
+                                     const QString& content,
+                                     const QString& replyToId,
+                                     qint64 timestamp,
+                                     bool isLocal);
+    QString effectiveIcePolicyName() const;
 
     UserManager* m_userManager{nullptr};
+    ChatMessageListModel* m_chatMessageModel{nullptr};
     ParticipantListModel* m_participantModel{nullptr};
     std::unique_ptr<MeetingRepository> m_meetingRepository;
     std::unique_ptr<CallLogRepository> m_callLogRepository;
+    std::unique_ptr<MessageRepository> m_messageRepository;
     std::unique_ptr<MediaSessionManager> m_audioSessionManager;
     std::unique_ptr<MediaSessionManager> m_mediaSessionManager;
     std::unique_ptr<av::session::AudioCallSession> m_audioCallSession;
@@ -285,6 +312,7 @@ private:
     QString m_meetingTitle;
     QString m_sfuAddress;
     QStringList m_iceServers;
+    QString m_icePolicy{QStringLiteral("all")};
     QString m_pendingMeetingTitle;
     QString m_statusText{QStringLiteral("Ready")};
     qint64 m_currentMeetingJoinedAt{0};
@@ -326,6 +354,12 @@ private:
     QString m_username;
     QString m_userId;
     QString m_passwordHash;
+    struct PendingChatMessage {
+        QString content;
+        QString replyToId;
+        int type{0};
+    };
+    std::deque<PendingChatMessage> m_pendingChatMessages;
     bool m_shouldStayConnected{false};
     bool m_waitingLogin{false};
     bool m_loginRequestSent{false};

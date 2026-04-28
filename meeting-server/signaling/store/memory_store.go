@@ -498,6 +498,31 @@ func (s *MemoryStore) SaveMessage(meetingID, senderID string, msgType int32, con
 	return msg
 }
 
+func (s *MemoryStore) ListMessages(meetingID string, limit int) []Message {
+	if limit <= 0 {
+		limit = 100
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	messages := s.meetingMsgs[meetingID]
+	if len(messages) == 0 {
+		return nil
+	}
+
+	start := 0
+	if len(messages) > limit {
+		start = len(messages) - limit
+	}
+
+	out := make([]Message, 0, len(messages)-start)
+	for i := start; i < len(messages); i++ {
+		out = append(out, messages[i])
+	}
+	return out
+}
+
 func participantsToList(m map[string]*protocol.Participant) []*protocol.Participant {
 	result := make([]*protocol.Participant, 0, len(m))
 	for _, p := range m {

@@ -1,11 +1,13 @@
 #include "MeetingController.h"
 
+#include "ChatMessageListModel.h"
 #include "ParticipantListModel.h"
 #include "UserManager.h"
 #include "net/signaling/Reconnector.h"
 #include "net/signaling/SignalingClient.h"
 #include "storage/CallLogRepository.h"
 #include "storage/MeetingRepository.h"
+#include "storage/MessageRepository.h"
 #include "MediaSessionManager.h"
 #include "av/session/AudioCallSession.h"
 #include "av/session/ScreenShareSession.h"
@@ -499,12 +501,21 @@ enum class IcePolicy {
     RelayOnly,
 };
 
-IcePolicy icePolicyFromEnvironment() {
+QString normalizeIcePolicyName(const QString& value) {
+    return value.trimmed().toLower() == QStringLiteral("relay-only")
+               ? QStringLiteral("relay-only")
+               : QStringLiteral("all");
+}
+
+QString icePolicyNameFromEnvironment() {
     const QString value = QProcessEnvironment::systemEnvironment()
-                              .value(QStringLiteral("MEETING_ICE_POLICY"), QStringLiteral("all"))
-                              .trimmed()
-                              .toLower();
-    return value == QStringLiteral("relay-only") ? IcePolicy::RelayOnly : IcePolicy::All;
+                              .value(QStringLiteral("MEETING_ICE_POLICY"))
+                              .trimmed();
+    return value.isEmpty() ? QString() : normalizeIcePolicyName(value);
+}
+
+IcePolicy icePolicyFromName(const QString& value) {
+    return normalizeIcePolicyName(value) == QStringLiteral("relay-only") ? IcePolicy::RelayOnly : IcePolicy::All;
 }
 
 QStringList makeHostIceCandidates(quint16 localPort) {
@@ -661,9 +672,11 @@ QStringList readAvailableAudioOutputDeviceNames() {
 MeetingController::MeetingController(const QString& databasePath, QObject* parent)
     : QObject(parent)
     , m_userManager(new UserManager(databasePath, this))
+    , m_chatMessageModel(new ChatMessageListModel(this))
     , m_participantModel(new ParticipantListModel(this))
     , m_meetingRepository(std::make_unique<MeetingRepository>(databasePath))
     , m_callLogRepository(std::make_unique<CallLogRepository>(databasePath))
+    , m_messageRepository(std::make_unique<MessageRepository>(databasePath))
     , m_signaling(new signaling::SignalingClient(this))
     , m_reconnector(new signaling::Reconnector(this))
     , m_heartbeatTimer(new QTimer(this))
@@ -673,9 +686,10 @@ MeetingController::MeetingController(const QString& databasePath, QObject* paren
 
     m_serverHost = m_userManager->serverHost();
     m_serverPort = m_userManager->serverPort();
+    m_icePolicy = normalizeIcePolicyName(m_userManager->icePolicy());
     m_username = m_userManager->username();
     m_userId = m_userManager->userId();
-        const QString storedPreferredCameraDevice = normalizePreferredCameraDevice(m_userManager->preferredCameraDevice());
+    const QString storedPreferredCameraDevice = normalizePreferredCameraDevice(m_userManager->preferredCameraDevice());
     m_preferredCameraDevice = storedPreferredCameraDevice.isEmpty()
                                   ? qEnvironmentVariable("MEETING_CAMERA_DEVICE_NAME").trimmed()
                                   : storedPreferredCameraDevice;
@@ -839,6 +853,8 @@ MeetingController::MeetingController(const QString& databasePath, QObject* paren
         m_participantModel->clearParticipants();
         ensureLocalParticipant(true);
         persistMeetingSessionStart(true);
+        loadLocalChatHistory();
+        requestRemoteChatHistory();
         syncParticipantsChanged();
 
         emit meetingIdChanged();
@@ -878,6 +894,8 @@ MeetingController::MeetingController(const QString& databasePath, QObject* paren
         }
         ensureLocalParticipant(isHost);
         persistMeetingSessionStart(isHost);
+        loadLocalChatHistory();
+        requestRemoteChatHistory();
         syncParticipantsChanged();
 
         emit meetingIdChanged();
@@ -917,7 +935,13 @@ MeetingController::MeetingController(const QString& databasePath, QObject* paren
     });
 
     connect(m_signaling, &signaling::SignalingClient::chatSendFinished, this,
-            [this](bool success, const QString& messageId, const QString& error) {
+            [this](bool success, const QString& messageId, qint64 timestamp, const QString& error) {
+        PendingChatMessage pending;
+        if (!m_pendingChatMessages.empty()) {
+            pending = m_pendingChatMessages.front();
+            m_pendingChatMessages.pop_front();
+        }
+
         if (!success) {
             const QString msg = error.isEmpty() ? QStringLiteral("Send chat failed") : error;
             setStatusText(msg);
@@ -925,20 +949,26 @@ MeetingController::MeetingController(const QString& databasePath, QObject* paren
             return;
         }
 
-        emit infoMessage(QStringLiteral("Chat sent: %1").arg(messageId));
+        appendAndPersistChatMessage(messageId,
+                                    m_userId,
+                                    m_username.isEmpty() ? m_userId : m_username,
+                                    pending.type,
+                                    pending.content,
+                                    pending.replyToId,
+                                    timestamp,
+                                    true);
+        emit infoMessage(QStringLiteral("Chat sent"));
     });
 
     connect(m_signaling, &signaling::SignalingClient::chatReceived, this,
-            [this](const QString& senderId,
+            [this](const QString& messageId,
+                   const QString& senderId,
                    const QString& senderName,
                    int type,
                    const QString& content,
                    const QString& replyToId,
                    qint64 timestamp) {
-        Q_UNUSED(senderId)
-        Q_UNUSED(type)
-        Q_UNUSED(replyToId)
-        Q_UNUSED(timestamp)
+        appendAndPersistChatMessage(messageId, senderId, senderName, type, content, replyToId, timestamp, senderId == m_userId);
         emit infoMessage(QStringLiteral("[%1] %2").arg(senderName, content));
     });
 
@@ -1082,6 +1112,10 @@ QAbstractItemModel* MeetingController::participantModel() const {
     return m_participantModel;
 }
 
+QAbstractItemModel* MeetingController::chatMessageModel() const {
+    return m_chatMessageModel;
+}
+
 QStringList MeetingController::participants() const {
     return m_participantModel->displayNames();
 }
@@ -1108,6 +1142,18 @@ QString MeetingController::preferredMicrophoneDevice() const {
 
 QString MeetingController::preferredSpeakerDevice() const {
     return m_preferredSpeakerDevice;
+}
+
+QString MeetingController::serverHost() const {
+    return m_serverHost;
+}
+
+quint16 MeetingController::serverPort() const {
+    return m_serverPort;
+}
+
+QString MeetingController::icePolicy() const {
+    return effectiveIcePolicyName();
 }
 
 QString MeetingController::statusText() const {
@@ -1328,6 +1374,23 @@ void MeetingController::setServerEndpoint(const QString& host, quint16 port) {
     if (m_userManager) {
         m_userManager->setServerEndpoint(m_serverHost, m_serverPort);
     }
+    emit serverEndpointChanged();
+}
+
+void MeetingController::setIcePolicy(const QString& policy) {
+    const QString normalized = normalizeIcePolicyName(policy);
+    const QString previousEffective = effectiveIcePolicyName();
+    if (m_icePolicy == normalized) {
+        return;
+    }
+
+    m_icePolicy = normalized;
+    if (m_userManager) {
+        m_userManager->setIcePolicy(m_icePolicy);
+    }
+    if (effectiveIcePolicyName() != previousEffective) {
+        emit icePolicyChanged();
+    }
 }
 
 bool MeetingController::setPreferredCameraDevice(const QString& deviceName) {
@@ -1393,6 +1456,20 @@ bool MeetingController::setPreferredSpeakerDevice(const QString& deviceName) {
 }
 
 
+void MeetingController::sendChat(const QString& content) {
+    const QString normalized = content.trimmed();
+    if (!m_loggedIn || !m_inMeeting || !m_signaling || !m_signaling->isConnected()) {
+        setStatusText(QStringLiteral("Join a meeting before sending chat"));
+        return;
+    }
+    if (normalized.isEmpty()) {
+        return;
+    }
+
+    m_pendingChatMessages.push_back(PendingChatMessage{normalized, QString(), 0});
+    m_signaling->sendChat(0, normalized);
+}
+
 void MeetingController::refreshAvailableCameraDevices() {
     const QStringList nextDevices = readAvailableCameraDeviceNames();
     if (m_availableCameraDevices == nextDevices) {
@@ -1414,6 +1491,71 @@ void MeetingController::refreshAvailableAudioDevices() {
         m_availableAudioOutputDevices = nextOutputs;
         emit availableAudioOutputDevicesChanged();
     }
+}
+
+void MeetingController::loadLocalChatHistory() {
+    if (!m_chatMessageModel) {
+        return;
+    }
+    if (!m_messageRepository || m_meetingId.trimmed().isEmpty()) {
+        m_chatMessageModel->clear();
+        return;
+    }
+    m_chatMessageModel->replaceMessages(m_messageRepository->listByMeeting(m_meetingId, 50));
+}
+
+void MeetingController::requestRemoteChatHistory() {
+    if (!m_signaling || !m_signaling->isConnected() || m_meetingId.trimmed().isEmpty()) {
+        return;
+    }
+    m_signaling->requestChatHistory(m_meetingId, 50);
+}
+
+void MeetingController::appendAndPersistChatMessage(const QString& messageId,
+                                                    const QString& senderId,
+                                                    const QString& senderName,
+                                                    int type,
+                                                    const QString& content,
+                                                    const QString& replyToId,
+                                                    qint64 timestamp,
+                                                    bool isLocal) {
+    if (m_meetingId.trimmed().isEmpty() || content.trimmed().isEmpty()) {
+        return;
+    }
+
+    MessageRepository::MessageRecord record;
+    record.meetingId = m_meetingId;
+    record.senderId = senderId.trimmed();
+    record.senderName = senderName.trimmed().isEmpty() ? record.senderId : senderName.trimmed();
+    record.content = content;
+    record.remoteMessageId = messageId.trimmed();
+    record.messageType = type;
+    record.replyToId = replyToId.trimmed();
+    record.sentAt = timestamp > 0 ? timestamp : QDateTime::currentMSecsSinceEpoch();
+    record.isLocal = isLocal;
+
+    if (m_messageRepository) {
+        (void)m_messageRepository->saveMessage(record.meetingId,
+                                               record.senderId,
+                                               record.senderName,
+                                               record.content,
+                                               record.sentAt,
+                                               record.messageType,
+                                               record.replyToId,
+                                               record.isLocal,
+                                               record.remoteMessageId);
+    }
+    if (m_chatMessageModel) {
+        (void)m_chatMessageModel->appendMessage(record);
+    }
+}
+
+QString MeetingController::effectiveIcePolicyName() const {
+    const QString envPolicy = icePolicyNameFromEnvironment();
+    if (!envPolicy.isEmpty()) {
+        return envPolicy;
+    }
+    return normalizeIcePolicyName(m_icePolicy);
 }
 
 void MeetingController::logout() {
@@ -1694,7 +1836,11 @@ void MeetingController::resetMeetingState(const QString& leaveReason) {
     m_meetingTitle.clear();
     m_sfuAddress.clear();
     m_iceServers.clear();
+    m_pendingChatMessages.clear();
     m_participantModel->clearParticipants();
+    if (m_chatMessageModel) {
+        m_chatMessageModel->clear();
+    }
     if (m_localVideoFrameStore) {
         m_localVideoFrameStore->clear();
     }
@@ -1747,6 +1893,7 @@ void MeetingController::restoreCachedSession() {
     m_passwordHash = m_userManager->token();
     m_serverHost = m_userManager->serverHost();
     m_serverPort = m_userManager->serverPort();
+    m_icePolicy = normalizeIcePolicyName(m_userManager->icePolicy());
     m_shouldStayConnected = true;
     m_waitingLogin = true;
     m_loginRequestSent = false;
@@ -2390,7 +2537,7 @@ bool MeetingController::resolveSfuEndpoint(QString* host, quint16* port) const {
 }
 
 void MeetingController::applySfuRouteToSessions() {
-    if (icePolicyFromEnvironment() == IcePolicy::RelayOnly) {
+    if (icePolicyFromName(effectiveIcePolicyName()) == IcePolicy::RelayOnly) {
         return;
     }
 
@@ -2446,7 +2593,7 @@ void MeetingController::handleMediaTransportAnswer(const QString& meetingId,
             m_mediaSessionManager->setLocalVideoSsrc(assignedVideoSsrc);
         }
     }
-    const bool relayOnly = icePolicyFromEnvironment() == IcePolicy::RelayOnly;
+    const bool relayOnly = icePolicyFromName(effectiveIcePolicyName()) == IcePolicy::RelayOnly;
     QString routeHost;
     quint16 routePort = 0;
     if (!resolveSfuEndpoint(&routeHost, &routePort)) {
@@ -3355,7 +3502,7 @@ bool MeetingController::sendAudioOfferToPeer(bool force) {
 
     updateAudioSessionSettings();
     const quint16 localPort = m_audioCallSession ? m_audioCallSession->localPort() : 0;
-    const QStringList candidates = collectIceCandidates(localPort, m_iceServers, icePolicyFromEnvironment());
+    const QStringList candidates = collectIceCandidates(localPort, m_iceServers, icePolicyFromName(effectiveIcePolicyName()));
     if (candidates.isEmpty()) {
         emit infoMessage(QStringLiteral("Failed to build audio ICE candidates"));
         return false;
@@ -3416,7 +3563,7 @@ bool MeetingController::sendVideoOfferToPeer(bool force) {
         return false;
     }
     const quint16 localPort = m_screenShareSession ? m_screenShareSession->localPort() : 0;
-    const QStringList candidates = collectIceCandidates(localPort, m_iceServers, icePolicyFromEnvironment());
+    const QStringList candidates = collectIceCandidates(localPort, m_iceServers, icePolicyFromName(effectiveIcePolicyName()));
     if (candidates.isEmpty()) {
         emit infoMessage(QStringLiteral("Failed to build video ICE candidates"));
         return false;

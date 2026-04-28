@@ -63,15 +63,17 @@ func main() {
 	sfuClient := signalingSfu.NewRoutedClient(cfg, roomStateStore, signalingSfu.WithTimeout(cfg.SFURPCTimeout))
 
 	var meetingStore store.MeetingLifecycleStore = memoryStore
+	messageRepo := store.NewInMemoryMessageRepo()
 	if mysqlDB != nil {
 		meetingStore = store.NewMeetingLifecycleStoreWithParticipantRepo(
 			memoryStore,
 			store.NewMeetingRepo(mysqlDB),
 			store.NewParticipantRepo(mysqlDB),
 		)
+		messageRepo = store.NewMessageRepo(mysqlDB)
 	}
 
-	router := handler.NewRouter(cfg, sessions, memoryStore, meetingStore, roomStateStore, sessionStore, tokenManager, limiter, sfuClient, nodeEventBus)
+	router := handler.NewRouterWithMessageRepo(cfg, sessions, memoryStore, meetingStore, roomStateStore, sessionStore, tokenManager, limiter, sfuClient, nodeEventBus, messageRepo)
 	tcpServer := server.NewTCPServer(cfg, sessions, router)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

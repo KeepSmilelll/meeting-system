@@ -13,6 +13,7 @@ Item {
     implicitHeight: 800
 
     readonly property bool wideLayout: width >= 1040
+    property bool narrowChatVisible: false
 
     function videoGridHint() {
         if (!root.hasController) {
@@ -168,10 +169,22 @@ Item {
                     }
                 }
 
-                ParticipantPanel {
+                ColumnLayout {
                     Layout.preferredWidth: 340
                     Layout.fillHeight: true
-                    controller: root.controller
+                    spacing: 16
+
+                    ParticipantPanel {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        controller: root.controller
+                    }
+
+                    ChatPanel {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        controller: root.controller
+                    }
                 }
             }
         }
@@ -231,10 +244,43 @@ Item {
                     }
                 }
 
-                ParticipantPanel {
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    Controls.Button {
+                        text: "Participants"
+                        checkable: true
+                        checked: !root.narrowChatVisible
+                        onClicked: root.narrowChatVisible = false
+                    }
+
+                    Controls.Button {
+                        text: "Chat"
+                        checkable: true
+                        checked: root.narrowChatVisible
+                        onClicked: root.narrowChatVisible = true
+                    }
+
+                    Item { Layout.fillWidth: true }
+                }
+
+                StackLayout {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    controller: root.controller
+                    currentIndex: root.narrowChatVisible ? 1 : 0
+
+                    ParticipantPanel {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        controller: root.controller
+                    }
+
+                    ChatPanel {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        controller: root.controller
+                    }
                 }
             }
         }

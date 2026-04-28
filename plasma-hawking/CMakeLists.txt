@@ -193,6 +193,7 @@ function(target_enable_dtls_srtp target_name)
 endfunction()
 qt_add_executable(meeting_client
     src/main.cpp
+    src/app/ChatMessageListModel.cpp
     src/app/AppStateMachine.cpp
     src/app/MeetingController.cpp
     src/app/MediaSessionManager.cpp
@@ -315,6 +316,8 @@ qt_add_qml_module(meeting_client
         qml/dialogs/JoinMeetingDialog.qml
         qml/pages/HomePage.qml
         qml/pages/MeetingRoom.qml
+        qml/pages/SettingsPage.qml
+        qml/components/ChatPanel.qml
         qml/components/CreateMeetingDialog.qml
         qml/components/TitleBar.qml
         qml/components/ToolBar.qml
@@ -727,6 +730,7 @@ add_test(NAME test_event_bus COMMAND test_event_bus)
 
 add_executable(test_meeting_controller_mute_all
     tests/test_meeting_controller_mute_all.cpp
+    src/app/ChatMessageListModel.cpp
     src/app/MeetingController.cpp
     src/app/MediaSessionManager.cpp
     src/app/ParticipantListModel.cpp
@@ -773,6 +777,7 @@ add_executable(test_meeting_controller_mute_all
     src/av/session/VideoSendLoopPipeline.cpp
     src/storage/DatabaseManager.cpp
     src/storage/SettingsRepository.cpp
+    src/storage/MessageRepository.cpp
     src/storage/MeetingRepository.cpp
     src/storage/CallLogRepository.cpp
     src/net/signaling/SignalProtocol.cpp
@@ -818,6 +823,7 @@ add_test(NAME test_meeting_controller_mute_all COMMAND test_meeting_controller_m
 
 add_executable(test_meeting_runtime_smoke
     tests/test_meeting_runtime_smoke.cpp
+    src/app/ChatMessageListModel.cpp
     src/app/MeetingController.cpp
     src/app/MediaSessionManager.cpp
     src/app/ParticipantListModel.cpp
@@ -864,6 +870,7 @@ add_executable(test_meeting_runtime_smoke
     src/av/session/VideoSendLoopPipeline.cpp
     src/storage/DatabaseManager.cpp
     src/storage/SettingsRepository.cpp
+    src/storage/MessageRepository.cpp
     src/storage/MeetingRepository.cpp
     src/storage/CallLogRepository.cpp
     src/net/signaling/SignalProtocol.cpp

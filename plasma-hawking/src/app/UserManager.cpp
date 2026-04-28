@@ -13,6 +13,7 @@ bool UserManager::load() {
     const QString loadedToken = m_tokenManager.isExpired() ? QString() : m_tokenManager.token();
     const QString loadedHost = m_settings.serverHost(m_serverHost);
     const quint16 loadedPort = m_settings.serverPort(m_serverPort);
+    const QString loadedIcePolicy = m_settings.icePolicy(m_icePolicy);
     const QString loadedPreferredCameraDevice = m_settings.preferredCameraDevice(m_preferredCameraDevice);
     const QString loadedPreferredMicrophoneDevice = m_settings.preferredMicrophoneDevice(m_preferredMicrophoneDevice);
     const QString loadedPreferredSpeakerDevice = m_settings.preferredSpeakerDevice(m_preferredSpeakerDevice);
@@ -27,6 +28,7 @@ bool UserManager::load() {
                                    (m_token != loadedToken) ||
                                    (m_serverHost != loadedHost) ||
                                    (m_serverPort != loadedPort) ||
+                                   (m_icePolicy != loadedIcePolicy) ||
                                    (m_preferredCameraDevice != loadedPreferredCameraDevice) ||
                                    (m_preferredMicrophoneDevice != loadedPreferredMicrophoneDevice) ||
                                    (m_preferredSpeakerDevice != loadedPreferredSpeakerDevice);
@@ -36,6 +38,7 @@ bool UserManager::load() {
     m_token = loadedToken;
     m_serverHost = loadedHost.isEmpty() ? QStringLiteral("127.0.0.1") : loadedHost;
     m_serverPort = loadedPort == 0 ? 8443 : loadedPort;
+    m_icePolicy = loadedIcePolicy;
     m_preferredCameraDevice = loadedPreferredCameraDevice.trimmed();
     m_preferredMicrophoneDevice = loadedPreferredMicrophoneDevice.trimmed();
     m_preferredSpeakerDevice = loadedPreferredSpeakerDevice.trimmed();
@@ -82,6 +85,10 @@ quint16 UserManager::serverPort() const {
     return m_serverPort;
 }
 
+QString UserManager::icePolicy() const {
+    return m_icePolicy;
+}
+
 QString UserManager::preferredCameraDevice() const {
     return m_preferredCameraDevice;
 }
@@ -124,6 +131,19 @@ void UserManager::setServerEndpoint(const QString& host, quint16 port) {
     m_serverHost = normalized;
     m_serverPort = port == 0 ? 8443 : port;
     m_settings.saveServerEndpoint(m_serverHost, m_serverPort);
+    emit settingsChanged();
+}
+
+void UserManager::setIcePolicy(const QString& policy) {
+    const QString normalized = policy.trimmed().toLower() == QStringLiteral("relay-only")
+                                   ? QStringLiteral("relay-only")
+                                   : QStringLiteral("all");
+    if (m_icePolicy == normalized) {
+        return;
+    }
+
+    m_icePolicy = normalized;
+    m_settings.saveIcePolicy(m_icePolicy);
     emit settingsChanged();
 }
 

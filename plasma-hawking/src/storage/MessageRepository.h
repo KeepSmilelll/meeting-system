@@ -12,7 +12,11 @@ public:
         QString senderId;
         QString senderName;
         QString content;
+        QString remoteMessageId;
+        int messageType{0};
+        QString replyToId;
         qint64 sentAt{0};
+        bool isLocal{false};
     };
 
     explicit MessageRepository(const QString& databasePath = QString());
@@ -27,7 +31,8 @@ public:
                      qint64 sentAt,
                      int messageType = 0,
                      const QString& replyToId = QString(),
-                     bool isLocal = false);
+                     bool isLocal = false,
+                     const QString& remoteMessageId = QString());
     QVector<MessageRecord> listByMeeting(const QString& meetingId, int limit = 50) const;
     QVector<MessageRecord> searchMessages(const QString& keyword, int limit = 20) const;
 

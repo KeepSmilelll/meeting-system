@@ -123,6 +123,18 @@ quint16 SettingsRepository::serverPort(quint16 defaultValue) const {
     return static_cast<quint16>(parsed);
 }
 
+bool SettingsRepository::saveIcePolicy(const QString& policy) {
+    const QString normalized = policy.trimmed().toLower() == QStringLiteral("relay-only")
+                                   ? QStringLiteral("relay-only")
+                                   : QStringLiteral("all");
+    return saveValue(QStringLiteral("ice_policy"), normalized, QStringLiteral("network"));
+}
+
+QString SettingsRepository::icePolicy(const QString& defaultValue) const {
+    const QString normalized = value(QStringLiteral("ice_policy"), defaultValue, QStringLiteral("network")).toString().trimmed().toLower();
+    return normalized == QStringLiteral("relay-only") ? QStringLiteral("relay-only") : QStringLiteral("all");
+}
+
 bool SettingsRepository::savePreferredCameraDevice(const QString& deviceName) {
     return saveValue(QStringLiteral("preferred_camera_device"), deviceName.trimmed(), QStringLiteral("media"));
 }
