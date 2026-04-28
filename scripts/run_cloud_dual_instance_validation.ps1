@@ -43,9 +43,9 @@ function Write-CloudOpsSnapshot {
     }
 
     $remoteCommand = "cd '$ServerComposeDir' && " +
-        "echo '===== compose ps ($Label) =====' && docker compose -f docker-compose.yml -f docker-compose.2c2g.yml ps && " +
-        "echo '===== logs signaling/sfu/coturn ($Label) =====' && docker compose -f docker-compose.yml -f docker-compose.2c2g.yml logs --tail=80 signaling sfu coturn && " +
-        "echo '===== docker stats ($Label) =====' && docker stats --no-stream"
+        "echo '===== compose ps ($Label) =====' && sudo docker compose -f docker-compose.yml -f docker-compose.2c2g.yml ps && " +
+        "echo '===== logs signaling/sfu/coturn ($Label) =====' && sudo docker compose -f docker-compose.yml -f docker-compose.2c2g.yml logs --tail=80 signaling sfu coturn && " +
+        "echo '===== docker stats ($Label) =====' && sudo docker stats --no-stream"
     & ssh $ServerSshTarget $remoteCommand
     if ($LASTEXITCODE -ne 0) {
         throw "cloud ops snapshot failed for $Label, exit_code=$LASTEXITCODE"
