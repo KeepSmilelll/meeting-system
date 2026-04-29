@@ -28,12 +28,20 @@ Item {
     readonly property bool oneOnOne: participantCount <= 2
     readonly property int columns: computeColumns(participantCount, width)
     readonly property int rows: hasParticipants ? Math.max(1, Math.ceil(participantCount / columns)) : 1
+    readonly property real viewportWidth: gridViewport.width
+    readonly property real viewportHeight: gridViewport.height
+    readonly property real maxTileWidth: hasParticipants
+                                         ? (viewportWidth - (columns - 1) * grid.columnSpacing) / columns
+                                         : viewportWidth
+    readonly property real maxTileHeight: hasParticipants
+                                          ? (viewportHeight - (rows - 1) * grid.rowSpacing) / rows
+                                          : viewportHeight
     readonly property real tileWidth: hasParticipants
-                                     ? Math.max(oneOnOne ? 320 : 240, (width - (columns - 1) * grid.columnSpacing) / columns)
-                                     : width
+                                     ? Math.max(oneOnOne ? 320 : 240, Math.min(maxTileWidth, maxTileHeight * 16 / 9))
+                                     : viewportWidth
     readonly property real tileHeight: hasParticipants
-                                      ? Math.max(oneOnOne ? 240 : 180, (height - (rows - 1) * grid.rowSpacing) / rows)
-                                      : height
+                                      ? Math.max(oneOnOne ? 180 : 135, Math.min(maxTileHeight, tileWidth * 9 / 16))
+                                      : viewportHeight
     readonly property string statusHint: !root.hasController
                                          ? "Meeting view is closing."
                                          : (!root.controller.inMeeting
@@ -58,6 +66,7 @@ Item {
         }
 
         Item {
+            id: gridViewport
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
@@ -74,7 +83,9 @@ Item {
 
             GridLayout {
                 id: grid
-                anchors.fill: parent
+                width: root.hasParticipants ? root.columns * root.tileWidth + (root.columns - 1) * columnSpacing : 0
+                height: root.hasParticipants ? root.rows * root.tileHeight + (root.rows - 1) * rowSpacing : 0
+                anchors.centerIn: parent
                 visible: root.hasParticipants
                 columns: root.columns
                 rowSpacing: 12
@@ -99,8 +110,8 @@ Item {
                         Layout.preferredHeight: root.tileHeight
                         Layout.minimumWidth: root.tileWidth
                         Layout.minimumHeight: root.tileHeight
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
+                        Layout.maximumWidth: root.tileWidth
+                        Layout.maximumHeight: root.tileHeight
 
                         VideoTile {
                             anchors.fill: parent

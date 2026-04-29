@@ -127,9 +127,6 @@ func (r *Router) OnUserNodeEvent(event store.UserNodeEvent) {
 }
 
 func decodeProto(payload []byte, out proto.Message) bool {
-	if len(payload) == 0 {
-		return false
-	}
 	return proto.Unmarshal(payload, out) == nil
 }
 

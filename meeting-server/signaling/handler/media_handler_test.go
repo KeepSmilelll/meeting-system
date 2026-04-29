@@ -1194,6 +1194,92 @@ func TestRouterBroadcastsStateSyncForMediaMuteToggleWithoutRedis(t *testing.T) {
 	assertNoFrame(t, targetConn, "target raw media mute toggle without redis")
 }
 
+func TestRouterBroadcastsStateSyncForMediaAudioUnmuteDefaultPayload(t *testing.T) {
+	mini := miniredis.RunT(t)
+
+	cfg := config.Load()
+	cfg.EnableRedis = true
+	cfg.RedisAddr = mini.Addr()
+
+	sessions := server.NewSessionManager()
+	memStore := store.NewMemoryStore()
+	roomState := store.NewRedisRoomStore(cfg)
+	defer roomState.Close()
+	tokenManager := auth.NewTokenManager("unit-test-secret", time.Hour)
+	limiter := auth.NewRateLimiter(nil, 5, 10*time.Minute)
+	router := NewRouter(cfg, sessions, memStore, memStore, roomState, nil, tokenManager, limiter, nil, nil)
+
+	meeting, hostParticipant, err := memStore.CreateMeeting("media-unmute-room", "", "u1001", 4)
+	if err != nil {
+		t.Fatalf("create meeting failed: %v", err)
+	}
+	_, _, joined, err := memStore.JoinMeeting(meeting.ID, "", "u1002")
+	if err != nil {
+		t.Fatalf("join meeting failed: %v", err)
+	}
+	if err := roomState.UpsertRoom(context.Background(), meeting.ID, hostParticipant.UserId, "sfu-node-01", "127.0.0.1:5000"); err != nil {
+		t.Fatalf("upsert room failed: %v", err)
+	}
+	if err := roomState.AddMember(context.Background(), meeting.ID, hostParticipant); err != nil {
+		t.Fatalf("add host member failed: %v", err)
+	}
+	if err := roomState.AddMember(context.Background(), meeting.ID, joined); err != nil {
+		t.Fatalf("add joined member failed: %v", err)
+	}
+	if err := roomState.SetParticipantMediaMuted(context.Background(), meeting.ID, "u1001", 0, true); err != nil {
+		t.Fatalf("seed audio muted in room state failed: %v", err)
+	}
+	if err := memStore.SetParticipantMediaMuted(meeting.ID, "u1001", 0, true); err != nil {
+		t.Fatalf("seed audio muted in memory state failed: %v", err)
+	}
+
+	senderSess, senderConn, senderCleanup := newRunningSession(t, 621, cfg)
+	defer senderCleanup()
+	sessions.Add(senderSess)
+	sessions.BindUser(senderSess, "u1001")
+	senderSess.SetMeetingID(meeting.ID)
+	senderSess.SetState(server.StateInMeeting)
+
+	targetSess, targetConn, targetCleanup := newRunningSession(t, 622, cfg)
+	defer targetCleanup()
+	sessions.Add(targetSess)
+	sessions.BindUser(targetSess, "u1002")
+	targetSess.SetMeetingID(meeting.ID)
+	targetSess.SetState(server.StateInMeeting)
+
+	payload, err := proto.Marshal(&protocol.MediaMuteToggleBody{MediaType: 0, Muted: false})
+	if err != nil {
+		t.Fatalf("marshal media unmute toggle failed: %v", err)
+	}
+	if len(payload) != 0 {
+		t.Fatalf("expected proto3 default audio unmute payload to be empty, got %d bytes", len(payload))
+	}
+	router.HandleMessage(senderSess, protocol.MediaMuteToggle, payload)
+
+	senderType, senderPayload := readFrame(t, senderConn, cfg.MaxPayloadBytes)
+	if senderType != protocol.MeetStateSync {
+		t.Fatalf("unexpected sender sync type: got %v want %v", senderType, protocol.MeetStateSync)
+	}
+	targetType, targetPayload := readFrame(t, targetConn, cfg.MaxPayloadBytes)
+	if targetType != protocol.MeetStateSync {
+		t.Fatalf("unexpected target sync type: got %v want %v", targetType, protocol.MeetStateSync)
+	}
+
+	var senderSync protocol.MeetStateSyncNotifyBody
+	if err := proto.Unmarshal(senderPayload, &senderSync); err != nil {
+		t.Fatalf("unmarshal sender state sync failed: %v", err)
+	}
+	var targetSync protocol.MeetStateSyncNotifyBody
+	if err := proto.Unmarshal(targetPayload, &targetSync); err != nil {
+		t.Fatalf("unmarshal target state sync failed: %v", err)
+	}
+
+	assertParticipantMediaState(t, senderSync.Participants, "u1001", true, true, false)
+	assertParticipantMediaState(t, targetSync.Participants, "u1001", true, true, false)
+	assertNoFrame(t, senderConn, "sender raw media unmute toggle")
+	assertNoFrame(t, targetConn, "target raw media unmute toggle")
+}
+
 func TestRouterBroadcastsStateSyncForMediaScreenShare(t *testing.T) {
 	mini := miniredis.RunT(t)
 
