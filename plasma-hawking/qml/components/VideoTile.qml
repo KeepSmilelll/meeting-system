@@ -24,23 +24,37 @@ Rectangle {
                                                       && !root.controller.hasActiveShare
                                                       && remoteUser
                                                       && (userId === root.controller.activeVideoPeerUserId)
-    readonly property bool activeLocalCameraPreview: localUser && videoOn && !sharing
+    readonly property bool activeLocalCameraPreview: localUser && !sharing
     readonly property bool remoteVideoAvailable: root.hasController
                                                  && !root.controller.hasActiveShare
                                                  && remoteUser
-                                                 && videoOn
                                                  && root.remoteVideoSource() !== null
     readonly property bool showLiveFrame: activeShareSelected || remoteVideoAvailable || activeLocalCameraPreview
     readonly property bool shareFocusable: remoteUser && sharing && !selected
     property int frameSourceRevision: 0
+    property var currentFrameSource: null
 
     Connections {
         target: root.hasController ? root.controller : null
         function onRemoteVideoFrameSourceChanged() {
             root.frameSourceRevision += 1
+            root.refreshFrameSource()
         }
         function onLocalVideoFrameSourceChanged() {
             root.frameSourceRevision += 1
+            root.refreshFrameSource()
+        }
+        function onSessionChanged() {
+            root.refreshFrameSource()
+        }
+        function onVideoMutedChanged() {
+            root.refreshFrameSource()
+        }
+        function onActiveShareChanged() {
+            root.refreshFrameSource()
+        }
+        function onActiveVideoPeerUserIdChanged() {
+            root.refreshFrameSource()
         }
     }
 
@@ -48,6 +62,32 @@ Rectangle {
         root.frameSourceRevision
         return root.hasController ? root.controller.remoteVideoFrameSourceForUser(root.userId) : null
     }
+
+    function resolveFrameSource() {
+        if (!root.hasController || !root.showLiveFrame) {
+            return null
+        }
+        if (root.activeLocalCameraPreview) {
+            return root.controller.localVideoFrameSource
+        }
+        if (root.activeShareSelected) {
+            return root.controller.remoteScreenFrameSource
+        }
+        return root.remoteVideoSource()
+    }
+
+    function refreshFrameSource() {
+        root.currentFrameSource = root.resolveFrameSource()
+    }
+
+    Component.onCompleted: refreshFrameSource()
+    onUserIdChanged: refreshFrameSource()
+    onSharingChanged: refreshFrameSource()
+    onVideoOnChanged: refreshFrameSource()
+    onShowLiveFrameChanged: refreshFrameSource()
+    onActiveLocalCameraPreviewChanged: refreshFrameSource()
+    onRemoteVideoAvailableChanged: refreshFrameSource()
+    onActiveShareSelectedChanged: refreshFrameSource()
 
     implicitWidth: 320
     implicitHeight: 240
@@ -62,7 +102,7 @@ Rectangle {
         anchors.fill: parent
         enabled: root.hasController
                  && remoteUser
-                 && (sharing || videoOn || (userId === root.controller.activeVideoPeerUserId))
+                 && (sharing || root.remoteVideoSource() !== null || (userId === root.controller.activeVideoPeerUserId))
         cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
         onClicked: {
             if (!root.hasController) {
@@ -83,21 +123,16 @@ Rectangle {
             id: liveFrameRenderer
             anchors.fill: parent
             anchors.margins: 1
-            frameSource: (!root.hasController || !root.showLiveFrame)
-                        ? null
-                        : (root.activeLocalCameraPreview
-                        ? root.controller.localVideoFrameSource
-                        : (root.activeShareSelected
-                        ? root.controller.remoteScreenFrameSource
-                        : root.remoteVideoSource()))
+            frameSource: root.currentFrameSource
             visible: root.showLiveFrame
         }
 
         Rectangle {
             anchors.fill: parent
+            visible: !root.showLiveFrame
             gradient: Gradient {
-                GradientStop { position: 0.0; color: root.showLiveFrame ? "#00000000" : "#18263d" }
-                GradientStop { position: 1.0; color: root.showLiveFrame ? "#33000000" : "#0f172a" }
+                GradientStop { position: 0.0; color: "#18263d" }
+                GradientStop { position: 1.0; color: "#0f172a" }
             }
         }
 
@@ -171,6 +206,7 @@ Rectangle {
                 spacing: 8
 
                 Rectangle {
+                    id: audioTogglePill
                     radius: 999
                     color: root.audioOn ? "#14532d" : "#7f1d1d"
                     implicitWidth: 72
@@ -181,9 +217,16 @@ Rectangle {
                         color: "#f8fafc"
                         font.pixelSize: 10
                     }
+                    MouseArea {
+                        anchors.fill: parent
+                        enabled: root.localUser && root.hasController && root.controller.inMeeting
+                        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                        onClicked: root.controller.toggleAudio()
+                    }
                 }
 
                 Rectangle {
+                    id: videoTogglePill
                     radius: 999
                     color: root.videoOn ? "#1e3a8a" : "#7f1d1d"
                     implicitWidth: 82
@@ -193,6 +236,12 @@ Rectangle {
                         text: root.videoOn ? "Camera on" : "Camera off"
                         color: "#f8fafc"
                         font.pixelSize: 10
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        enabled: root.localUser && root.hasController && root.controller.inMeeting
+                        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                        onClicked: root.controller.toggleVideo()
                     }
                 }
 

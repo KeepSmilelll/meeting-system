@@ -812,12 +812,11 @@ private:
     }
 
     void initializeGeometry() {
-        // Qt's FBO item is mirrored vertically by the scene graph; these texture coordinates compensate it.
         static constexpr std::array<float, 16> kVertices = {
-            -1.0F, -1.0F, 0.0F, 1.0F,
-             1.0F, -1.0F, 1.0F, 1.0F,
-             1.0F,  1.0F, 1.0F, 0.0F,
-            -1.0F,  1.0F, 0.0F, 0.0F,
+            -1.0F, -1.0F, 0.0F, 0.0F,
+             1.0F, -1.0F, 1.0F, 0.0F,
+             1.0F,  1.0F, 1.0F, 1.0F,
+            -1.0F,  1.0F, 0.0F, 1.0F,
         };
         static constexpr std::array<unsigned int, 6> kIndices = {0, 1, 2, 0, 2, 3};
 
@@ -1064,9 +1063,12 @@ private:
 }  // namespace
 
 VideoRenderer::VideoRenderer(QQuickItem* parent)
-    : QQuickFramebufferObject(parent) {}
+    : QQuickFramebufferObject(parent) {
+    qInfo().noquote() << "[video-renderer] item constructed";
+}
 
 QQuickFramebufferObject::Renderer* VideoRenderer::createRenderer() const {
+    qInfo().noquote() << "[video-renderer] backend created";
     return new VideoRendererBackend();
 }
 
@@ -1079,13 +1081,39 @@ void VideoRenderer::setFrameSource(QObject* source) {
         return;
     }
 
-    if (auto* currentStore = qobject_cast<VideoFrameStore*>(m_frameSource)) {
-        disconnect(currentStore, &VideoFrameStore::frameChanged, this, &VideoRenderer::update);
+    if (m_frameChangedConnection) {
+        disconnect(m_frameChangedConnection);
+        m_frameChangedConnection = {};
     }
 
     m_frameSource = source;
+    if (!m_loggedFrameSourceChange) {
+        qInfo().noquote() << "[video-renderer] frame source changed"
+                          << "source=" << (m_frameSource != nullptr ? m_frameSource->metaObject()->className() : "null")
+                          << "is_store=" << (qobject_cast<VideoFrameStore*>(m_frameSource) != nullptr);
+        m_loggedFrameSourceChange = true;
+    }
     if (auto* nextStore = qobject_cast<VideoFrameStore*>(m_frameSource)) {
-        connect(nextStore, &VideoFrameStore::frameChanged, this, &VideoRenderer::update, Qt::QueuedConnection);
+        if (!m_loggedFrameSourceAssigned) {
+            uint64_t revision = 0;
+            const VideoFrameStore::FramePtr frame = nextStore->snapshotFrame(&revision);
+            qInfo().noquote() << "[video-renderer] frame source assigned"
+                              << "revision=" << revision
+                              << "has_frame=" << (frame != nullptr);
+            m_loggedFrameSourceAssigned = true;
+        }
+        m_frameChangedConnection =
+            connect(nextStore, &VideoFrameStore::frameChanged, this, [this, nextStore]() {
+                if (!m_loggedFrameChangeObserved) {
+                    uint64_t revision = 0;
+                    const VideoFrameStore::FramePtr frame = nextStore->snapshotFrame(&revision);
+                    qInfo().noquote() << "[video-renderer] frame change observed"
+                                      << "revision=" << revision
+                                      << "has_frame=" << (frame != nullptr);
+                    m_loggedFrameChangeObserved = true;
+                }
+                update();
+            }, Qt::QueuedConnection);
     }
     emit frameSourceChanged();
     update();

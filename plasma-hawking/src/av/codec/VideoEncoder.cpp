@@ -801,58 +801,74 @@ bool VideoEncoder::encode(const AVFrame& inFrame,
 }
 
 bool VideoEncoder::receivePacket(int64_t fallbackPts, EncodedVideoFrame& outFrame, std::string* error) {
-    av::AVPacketPtr packet = av::makePacket();
-    if (!packet) {
-        if (error != nullptr) {
-            *error = "packet alloc failed";
-        }
-        return false;
-    }
-
-    const int receiveResult = avcodec_receive_packet(m_codecContext.get(), packet.get());
-    if (receiveResult == AVERROR(EAGAIN) || receiveResult == AVERROR_EOF) {
-        if (error != nullptr) {
-            error->clear();
-        }
-        return false;
-    }
-    if (receiveResult < 0) {
-        if (error != nullptr) {
-            *error = "avcodec_receive_packet failed: " + describeAvError(receiveResult);
-        }
-        return false;
-    }
-
     outFrame.width = m_width;
     outFrame.height = m_height;
     outFrame.frameRate = m_frameRate;
-    outFrame.pts = packet->pts != AV_NOPTS_VALUE ? packet->pts : fallbackPts;
-    outFrame.keyFrame = (packet->flags & AV_PKT_FLAG_KEY) != 0;
+    outFrame.pts = fallbackPts;
+    outFrame.keyFrame = false;
     outFrame.payloadType = m_payloadType;
-    outFrame.payload.assign(packet->data, packet->data + packet->size);
-    if (outFrame.payload.empty()) {
-        if (error != nullptr) {
-            *error = "empty video packet";
-        }
-        return false;
-    }
 
     const int nalLengthSize = (m_codecContext->extradata != nullptr && m_codecContext->extradata_size >= 5 &&
                                m_codecContext->extradata[0] == 1)
                                   ? ((m_codecContext->extradata[4] & 0x03) + 1)
                                   : 4;
-    std::vector<uint8_t> annexBPayload;
-    if (!convertAvccPayloadToAnnexB(outFrame.payload, nalLengthSize, annexBPayload)) {
+
+    std::vector<uint8_t> accessUnit;
+    bool receivedPacket = false;
+    while (true) {
+        av::AVPacketPtr packet = av::makePacket();
+        if (!packet) {
+            if (error != nullptr) {
+                *error = "packet alloc failed";
+            }
+            return false;
+        }
+
+        const int receiveResult = avcodec_receive_packet(m_codecContext.get(), packet.get());
+        if (receiveResult == AVERROR(EAGAIN) || receiveResult == AVERROR_EOF) {
+            break;
+        }
+        if (receiveResult < 0) {
+            if (error != nullptr) {
+                *error = "avcodec_receive_packet failed: " + describeAvError(receiveResult);
+            }
+            return false;
+        }
+        if (packet->data == nullptr || packet->size <= 0) {
+            continue;
+        }
+
+        std::vector<uint8_t> packetPayload(packet->data, packet->data + packet->size);
+        std::vector<uint8_t> annexBPayload;
+        if (!convertAvccPayloadToAnnexB(packetPayload, nalLengthSize, annexBPayload)) {
+            if (error != nullptr) {
+                *error = "avcc-to-annexb conversion failed";
+            }
+            return false;
+        }
+        if (annexBPayload.empty()) {
+            continue;
+        }
+
+        if (!receivedPacket && packet->pts != AV_NOPTS_VALUE) {
+            outFrame.pts = packet->pts;
+        }
+        outFrame.keyFrame = outFrame.keyFrame || ((packet->flags & AV_PKT_FLAG_KEY) != 0);
+        accessUnit.insert(accessUnit.end(), annexBPayload.begin(), annexBPayload.end());
+        receivedPacket = true;
+    }
+
+    if (!receivedPacket || accessUnit.empty()) {
         if (error != nullptr) {
-            *error = "avcc-to-annexb conversion failed";
+            error->clear();
         }
         return false;
     }
-    prependParameterSetsForKeyFrame(annexBPayload,
+    prependParameterSetsForKeyFrame(accessUnit,
                                     outFrame.keyFrame,
                                     m_codecContext->extradata,
                                     m_codecContext->extradata_size);
-    outFrame.payload = std::move(annexBPayload);
+    outFrame.payload = std::move(accessUnit);
 
     return true;
 }

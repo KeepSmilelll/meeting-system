@@ -653,9 +653,26 @@ void ScreenShareSession::recvLoop() {
                 {
                     QMutexLocker locker(&m_mutex);
                     std::string pliError;
-                    pliSent = m_rtcpActionPipeline.sendPictureLossIndication(
-                        m_mediaSocket, m_sender.ssrc(), request.remoteMediaSsrc, &pliError);
-                    if (!pliSent && !pliError.empty()) {
+                    std::vector<uint8_t> pliPacket =
+                        m_rtcpActionPipeline.buildPictureLossIndication(
+                            m_sender.ssrc(), request.remoteMediaSsrc);
+                    bool readyToSend = !pliPacket.empty();
+                    if (readyToSend && m_dtlsStarted.load(std::memory_order_acquire)) {
+                        readyToSend = protectRtcpLocked(&pliPacket);
+                        if (!readyToSend) {
+                            pliError = "PLI SRTCP protect failed";
+                        }
+                    }
+                    if (readyToSend) {
+                        const int sent = m_mediaSocket.sendToPeer(pliPacket.data(), pliPacket.size());
+                        pliSent = sent == static_cast<int>(pliPacket.size());
+                        if (!pliSent) {
+                            pliError = "PLI sendto failed";
+                        }
+                    } else if (pliPacket.empty()) {
+                        pliError = "PLI packet build failed";
+                    }
+                    if (!pliSent) {
                         setErrorLocked(pliError);
                     }
                 }

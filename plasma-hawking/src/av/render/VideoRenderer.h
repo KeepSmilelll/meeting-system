@@ -24,6 +24,10 @@ signals:
 
 private:
     QObject* m_frameSource{nullptr};
+    QMetaObject::Connection m_frameChangedConnection;
+    bool m_loggedFrameSourceAssigned{false};
+    bool m_loggedFrameChangeObserved{false};
+    bool m_loggedFrameSourceChange{false};
 };
 
 }  // namespace av::render

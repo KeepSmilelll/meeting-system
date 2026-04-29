@@ -84,22 +84,36 @@ Item {
                     id: participantRepeater
                     model: root.hasController ? root.controller.participantModel : null
 
-                    delegate: VideoTile {
-                        controller: root.controller
-                        userId: userId
-                        displayName: displayName
-                        host: host
-                        audioOn: audioOn
-                        videoOn: videoOn
-                        sharing: sharing
-                        audioSsrc: audioSsrc
-                        videoSsrc: videoSsrc
+                    delegate: Item {
+                        id: tileDelegate
+                        required property string userId
+                        required property string displayName
+                        required property bool host
+                        required property bool audioOn
+                        required property bool videoOn
+                        required property bool sharing
+                        required property int audioSsrc
+                        required property int videoSsrc
+
                         Layout.preferredWidth: root.tileWidth
                         Layout.preferredHeight: root.tileHeight
                         Layout.minimumWidth: root.tileWidth
                         Layout.minimumHeight: root.tileHeight
                         Layout.fillWidth: true
                         Layout.fillHeight: true
+
+                        VideoTile {
+                            anchors.fill: parent
+                            controller: root.controller
+                            userId: tileDelegate.userId
+                            displayName: tileDelegate.displayName
+                            host: tileDelegate.host
+                            audioOn: tileDelegate.audioOn
+                            videoOn: tileDelegate.videoOn
+                            sharing: tileDelegate.sharing
+                            audioSsrc: tileDelegate.audioSsrc
+                            videoSsrc: tileDelegate.videoSsrc
+                        }
                     }
                 }
             }

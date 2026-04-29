@@ -847,6 +847,8 @@ MeetingController::MeetingController(const QString& databasePath, QObject* paren
         m_inMeeting = true;
         m_audioMuted = false;
         m_videoMuted = shouldStartVideoMutedByDefault();
+        m_audioMuteLocallyControlled = false;
+        m_videoMuteLocallyControlled = false;
         setScreenSharing(false);
         m_waitingLeaveResponse = false;
         m_currentMeetingHost = true;
@@ -884,6 +886,8 @@ MeetingController::MeetingController(const QString& databasePath, QObject* paren
         m_inMeeting = true;
         m_audioMuted = false;
         m_videoMuted = shouldStartVideoMutedByDefault();
+        m_audioMuteLocallyControlled = false;
+        m_videoMuteLocallyControlled = false;
         setScreenSharing(false);
         m_waitingLeaveResponse = false;
         const bool isHost = !hostUserId.isEmpty() && hostUserId == m_userId;
@@ -1067,7 +1071,7 @@ QObject* MeetingController::remoteVideoFrameSource() const {
 
 QObject* MeetingController::remoteVideoFrameSourceForUser(const QString& userId) const {
     const QString normalized = userId.trimmed();
-    if (normalized.isEmpty() || normalized == m_userId || !hasRemoteVideoParticipant(normalized)) {
+    if (normalized.isEmpty() || normalized == m_userId) {
         return nullptr;
     }
 
@@ -1647,6 +1651,7 @@ void MeetingController::toggleAudio() {
         return;
     }
     m_audioMuted = !m_audioMuted;
+    m_audioMuteLocallyControlled = true;
     if (m_signaling->isConnected()) {
         m_signaling->sendMediaMuteToggle(0, m_audioMuted);
     }
@@ -1670,6 +1675,7 @@ void MeetingController::toggleVideo() {
         return;
     }
     m_videoMuted = !m_videoMuted;
+    m_videoMuteLocallyControlled = true;
     if (m_signaling->isConnected()) {
         m_signaling->sendMediaMuteToggle(1, m_videoMuted);
     }
@@ -1828,6 +1834,8 @@ void MeetingController::resetMeetingState(const QString& leaveReason) {
     m_inMeeting = false;
     m_audioMuted = false;
     m_videoMuted = shouldStartVideoMutedByDefault();
+    m_audioMuteLocallyControlled = false;
+    m_videoMuteLocallyControlled = false;
     setScreenSharing(false);
     m_waitingLeaveResponse = false;
     m_currentMeetingHost = false;
@@ -1943,15 +1951,28 @@ void MeetingController::handleProtobufMessage(quint16 signalType, const QByteArr
             }
 
             const bool nextAudioMuted = !participant.audioOn;
-            if (m_audioMuted != nextAudioMuted) {
+            if (!m_audioMuteLocallyControlled && m_audioMuted != nextAudioMuted) {
                 m_audioMuted = nextAudioMuted;
                 emit audioMutedChanged();
             }
 
             const bool nextVideoMuted = !participant.videoOn;
-            if (m_videoMuted != nextVideoMuted) {
+            if (!m_videoMuteLocallyControlled && m_videoMuted != nextVideoMuted) {
                 m_videoMuted = nextVideoMuted;
                 emit videoMutedChanged();
+            }
+
+            m_participantModel->upsertParticipant(m_userId,
+                                                  participant.displayName,
+                                                  participant.avatarUrl,
+                                                  participant.role,
+                                                  !m_audioMuted,
+                                                  !m_videoMuted,
+                                                  participant.sharing,
+                                                  participant.audioSsrc,
+                                                  participant.videoSsrc);
+            if (m_currentMeetingHost || participant.role == 1) {
+                m_participantModel->setHostUserId(m_userId);
             }
 
             if (m_audioCallSession) {
@@ -1997,6 +2018,9 @@ void MeetingController::handleProtobufMessage(quint16 signalType, const QByteArr
         if (participant.role == 1) {
             m_participantModel->setHostUserId(participant.userId);
             m_currentMeetingHost = participant.userId == m_userId;
+        }
+        if (participant.userId == m_userId) {
+            syncLocalParticipantMediaState();
         }
         if (!m_inMeeting) {
             m_inMeeting = true;
@@ -2071,6 +2095,7 @@ void MeetingController::handleProtobufMessage(quint16 signalType, const QByteArr
         const bool muted = notify.mute();
         if (m_audioMuted != muted) {
             m_audioMuted = muted;
+            m_audioMuteLocallyControlled = true;
             emit audioMutedChanged();
         }
         if (m_audioCallSession) {
@@ -3150,8 +3175,8 @@ void MeetingController::syncLocalParticipantMediaState() {
                                           !m_audioMuted,
                                           !m_videoMuted,
                                           m_screenSharing,
-                                          m_assignedAudioSsrc,
-                                          m_assignedVideoSsrc);
+                                          hasExistingItem ? existingItem.audioSsrc : m_assignedAudioSsrc,
+                                          hasExistingItem ? existingItem.videoSsrc : m_assignedVideoSsrc);
     if (m_currentMeetingHost || role == 1) {
         m_participantModel->setHostUserId(m_userId);
     }
@@ -3386,6 +3411,10 @@ void MeetingController::maybeStartVideoNegotiation() {
                     if (!framePeerUserId.isEmpty()) {
                         if (auto* peerStore = ensureRemoteVideoFrameStore(framePeerUserId)) {
                             peerStore->setFrame(framePtr);
+                            if (!m_loggedRemoteVideoFrameStorePeers.contains(framePeerUserId)) {
+                                m_loggedRemoteVideoFrameStorePeers.insert(framePeerUserId);
+                                emit infoMessage(QStringLiteral("Video remote frame stored: %1").arg(framePeerUserId));
+                            }
                         }
                     }
                 }, renderDelayMs, framePts, framePeerUserId);
@@ -3405,6 +3434,10 @@ void MeetingController::maybeStartVideoNegotiation() {
                 [this, frame = std::move(frame)]() mutable {
                     if (!m_localVideoFrameStore || !m_inMeeting || m_videoMuted || m_screenSharing) {
                         return;
+                    }
+                    if (!m_loggedLocalVideoPreviewFrameStored && frame.hasRenderableData()) {
+                        m_loggedLocalVideoPreviewFrameStored = true;
+                        emit infoMessage(QStringLiteral("Video local preview frame stored"));
                     }
                     m_localVideoFrameStore->setFrame(std::move(frame));
                 },
@@ -3434,6 +3467,7 @@ void MeetingController::maybeStartVideoNegotiation() {
                 }
 
                 m_videoMuted = true;
+                m_videoMuteLocallyControlled = true;
                 emit videoMutedChanged();
                 syncLocalParticipantMediaState();
                 updateVideoSessionSettings();
@@ -3595,11 +3629,6 @@ bool MeetingController::sendVideoOfferToPeer(bool force) {
     }
     return true;
 }
-
-
-
-
-
 
 
 

@@ -52,17 +52,11 @@ bool VideoRtcpActionPipeline::retransmitPacket(uint16_t sequenceNumber,
     return false;
 }
 
-bool VideoRtcpActionPipeline::sendPictureLossIndication(const media::UdpPeerSocket& socket,
-                                                        uint32_t senderSsrc,
-                                                        uint32_t mediaSsrc,
-                                                        std::string* error) const {
-    if (error != nullptr) {
-        error->clear();
+std::vector<uint8_t> VideoRtcpActionPipeline::buildPictureLossIndication(uint32_t senderSsrc,
+                                                                         uint32_t mediaSsrc) const {
+    if (mediaSsrc == 0U) {
+        return {};
     }
-    if (!socket.isOpen() || !socket.hasPeer() || mediaSsrc == 0U) {
-        return false;
-    }
-
     std::array<uint8_t, 12> packet{};
     packet[0] = static_cast<uint8_t>((2U << 6) | 1U);  // v=2, fmt=PLI
     packet[1] = 206U;                                   // PSFB
@@ -79,6 +73,24 @@ bool VideoRtcpActionPipeline::sendPictureLossIndication(const media::UdpPeerSock
     packet[10] = static_cast<uint8_t>((mediaSsrc >> 8) & 0xFFU);
     packet[11] = static_cast<uint8_t>(mediaSsrc & 0xFFU);
 
+    return std::vector<uint8_t>(packet.begin(), packet.end());
+}
+
+bool VideoRtcpActionPipeline::sendPictureLossIndication(const media::UdpPeerSocket& socket,
+                                                        uint32_t senderSsrc,
+                                                        uint32_t mediaSsrc,
+                                                        std::string* error) const {
+    if (error != nullptr) {
+        error->clear();
+    }
+    if (!socket.isOpen() || !socket.hasPeer() || mediaSsrc == 0U) {
+        return false;
+    }
+
+    const std::vector<uint8_t> packet = buildPictureLossIndication(senderSsrc, mediaSsrc);
+    if (packet.empty()) {
+        return false;
+    }
     const int sent = socket.sendToPeer(packet.data(), packet.size());
     if (sent == static_cast<int>(packet.size())) {
         return true;

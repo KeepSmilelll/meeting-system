@@ -287,6 +287,8 @@ private:
     bool m_inMeeting{false};
     bool m_audioMuted{false};
     bool m_videoMuted{true};
+    bool m_audioMuteLocallyControlled{false};
+    bool m_videoMuteLocallyControlled{false};
     bool m_screenSharing{false};
     bool m_waitingLeaveResponse{false};
     bool m_currentMeetingHost{false};
@@ -342,6 +344,8 @@ private:
     quint64 m_remoteVideoStalePtsDropCount{0};
     quint64 m_remoteVideoRescheduledFrameCount{0};
     quint64 m_remoteVideoQueueResetCount{0};
+    bool m_loggedLocalVideoPreviewFrameStored{false};
+    QSet<QString> m_loggedRemoteVideoFrameStorePeers;
 
     QString m_serverHost{QStringLiteral("127.0.0.1")};
     quint16 m_serverPort{8443};

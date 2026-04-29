@@ -7,8 +7,11 @@ namespace av::session {
 void resetSenderForFreshStream(media::RTPSender& sender,
                                VideoRtcpActionPipeline& rtcpActionPipeline,
                                uint32_t ssrc) {
+    const uint32_t previousSsrc = sender.ssrc();
     sender.setSSRC(ssrc);
-    sender.setSequence(0);
+    if (previousSsrc == 0U || previousSsrc != ssrc) {
+        sender.setSequence(0);
+    }
     rtcpActionPipeline.reset();
 }
 

@@ -22,6 +22,9 @@ public:
                           const media::UdpPeerSocket& socket,
                           std::string* error = nullptr) const;
 
+    std::vector<uint8_t> buildPictureLossIndication(uint32_t senderSsrc,
+                                                    uint32_t mediaSsrc) const;
+
     bool sendPictureLossIndication(const media::UdpPeerSocket& socket,
                                    uint32_t senderSsrc,
                                    uint32_t mediaSsrc,
