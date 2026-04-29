@@ -2218,13 +2218,12 @@ void MeetingController::syncParticipantsChanged() {
 void MeetingController::updateRemoteVideoSsrcMappings() {
     QHash<QString, quint32> next;
 
-    int remoteVideoPublisherCount = 0;
+    int registeredVideoPublisherCount = 0;
     for (const auto& participant : m_participantModel->items()) {
-        if (participant.userId.isEmpty() || participant.userId == m_userId || participant.videoSsrc == 0U ||
-            (!participant.videoOn && !participant.sharing)) {
+        if (participant.userId.isEmpty() || participant.videoSsrc == 0U) {
             continue;
         }
-        ++remoteVideoPublisherCount;
+        ++registeredVideoPublisherCount;
     }
 
     for (const auto& participant : m_participantModel->items()) {
@@ -2233,7 +2232,7 @@ void MeetingController::updateRemoteVideoSsrcMappings() {
             continue;
         }
         quint32 remoteVideoSsrc = 0U;
-        if (remoteVideoPublisherCount > 1 && m_assignedVideoSsrc != 0U) {
+        if (registeredVideoPublisherCount > 1 && m_assignedVideoSsrc != 0U) {
             remoteVideoSsrc = routeRewriteSsrc(m_meetingId, m_userId, participant.videoSsrc, true);
             if (remoteVideoSsrc == m_assignedVideoSsrc || remoteVideoSsrc == participant.videoSsrc) {
                 remoteVideoSsrc ^= 0x01010101U;

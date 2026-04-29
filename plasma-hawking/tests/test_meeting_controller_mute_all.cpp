@@ -259,7 +259,8 @@ int main(int argc, char* argv[]) {
     stateSync.mutable_participants(0)->set_is_video_on(true);
     assert(emitProtoMessage(signalingClient, kMeetStateSync, stateSync));
     const quint32 remoteSsrcWithLocalCameraOn = controller.remoteVideoSsrcForUser(QStringLiteral("u1002"));
-    assert(remoteSsrcWithLocalCameraOn == 8888U);
+    assert(remoteSsrcWithLocalCameraOn ==
+           expectedMappedVideoSsrc(QStringLiteral("m-mute"), QStringLiteral("u1001"), 8888U, 2222U, true));
 
     stateSync.mutable_participants(0)->set_is_video_on(false);
     assert(emitProtoMessage(signalingClient, kMeetStateSync, stateSync));
@@ -332,7 +333,8 @@ int main(int argc, char* argv[]) {
     assert(remoteVideoFrameStore->snapshot(staleVideoFrame));
     stateSync.mutable_participants(2)->set_is_video_on(false);
     assert(emitProtoMessage(signalingClient, kMeetStateSync, stateSync));
-    assert(controller.remoteVideoSsrcForUser(QStringLiteral("u1002")) == 8888U);
+    assert(controller.remoteVideoSsrcForUser(QStringLiteral("u1002")) ==
+           expectedMappedVideoSsrc(QStringLiteral("m-mute"), QStringLiteral("u1001"), 8888U, 2222U, true));
     assert(controller.remoteVideoSsrcForUser(QStringLiteral("u1003")) == 0U);
     assert(controller.remoteVideoFrameSourceForUser(QStringLiteral("u1003")) == nullptr);
     assert(controller.activeAudioPeerUserId() == QStringLiteral("u1002"));
@@ -352,7 +354,8 @@ int main(int argc, char* argv[]) {
     stateSync.mutable_participants()->DeleteSubrange(1, 1);
     assert(emitProtoMessage(signalingClient, kMeetStateSync, stateSync));
     assert(controller.remoteVideoSsrcForUser(QStringLiteral("u1002")) == 0U);
-    assert(controller.remoteVideoSsrcForUser(QStringLiteral("u1003")) == 8888U);
+    assert(controller.remoteVideoSsrcForUser(QStringLiteral("u1003")) ==
+           expectedMappedVideoSsrc(QStringLiteral("m-mute"), QStringLiteral("u1001"), 8888U, 4444U, true));
     assert(controller.activeAudioPeerUserId() == QStringLiteral("u1003"));
 
     stateSync.mutable_participants(0)->set_is_sharing(false);
