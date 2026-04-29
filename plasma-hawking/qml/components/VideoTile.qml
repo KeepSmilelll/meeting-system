@@ -24,10 +24,11 @@ Rectangle {
                                                       && !root.controller.hasActiveShare
                                                       && remoteUser
                                                       && (userId === root.controller.activeVideoPeerUserId)
-    readonly property bool activeLocalCameraPreview: localUser && !sharing
+    readonly property bool activeLocalCameraPreview: localUser && !sharing && videoOn
     readonly property bool remoteVideoAvailable: root.hasController
                                                  && !root.controller.hasActiveShare
                                                  && remoteUser
+                                                 && (videoOn || sharing)
                                                  && root.remoteVideoSource() !== null
     readonly property bool showLiveFrame: activeShareSelected || remoteVideoAvailable || activeLocalCameraPreview
     readonly property bool shareFocusable: remoteUser && sharing && !selected

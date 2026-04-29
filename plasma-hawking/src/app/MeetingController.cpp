@@ -1060,7 +1060,7 @@ QObject* MeetingController::remoteScreenFrameSource() const {
 
 QObject* MeetingController::remoteVideoFrameSource() const {
     const QString normalized = m_activeVideoPeerUserId.trimmed();
-    if (!normalized.isEmpty()) {
+    if (!normalized.isEmpty() && hasRemoteVideoParticipant(normalized)) {
         const auto it = m_remoteVideoFrameStoresByPeer.constFind(normalized);
         if (it != m_remoteVideoFrameStoresByPeer.constEnd() && it.value() != nullptr) {
             return it.value();
@@ -1071,7 +1071,7 @@ QObject* MeetingController::remoteVideoFrameSource() const {
 
 QObject* MeetingController::remoteVideoFrameSourceForUser(const QString& userId) const {
     const QString normalized = userId.trimmed();
-    if (normalized.isEmpty() || normalized == m_userId) {
+    if (normalized.isEmpty() || normalized == m_userId || !hasRemoteVideoParticipant(normalized)) {
         return nullptr;
     }
 
@@ -2253,6 +2253,35 @@ void MeetingController::updateRemoteVideoSsrcMappings() {
 
     if (m_remoteVideoSsrcByPeer == next) {
         return;
+    }
+
+    bool activePeerStreamChanged = false;
+    for (auto it = m_remoteVideoSsrcByPeer.constBegin(); it != m_remoteVideoSsrcByPeer.constEnd(); ++it) {
+        const auto nextIt = next.constFind(it.key());
+        if (nextIt != next.constEnd() && nextIt.value() == it.value()) {
+            continue;
+        }
+
+        if (auto storeIt = m_remoteVideoFrameStoresByPeer.find(it.key()); storeIt != m_remoteVideoFrameStoresByPeer.end() && storeIt.value() != nullptr) {
+            storeIt.value()->clear();
+        }
+        if (it.key() == m_activeVideoPeerUserId || it.key() == currentVideoPeerUserId()) {
+            activePeerStreamChanged = true;
+        }
+    }
+
+    for (auto it = next.constBegin(); it != next.constEnd(); ++it) {
+        const auto previousIt = m_remoteVideoSsrcByPeer.constFind(it.key());
+        if (previousIt != m_remoteVideoSsrcByPeer.constEnd() && previousIt.value() == it.value()) {
+            continue;
+        }
+        if (it.key() == m_activeVideoPeerUserId || it.key() == currentVideoPeerUserId()) {
+            activePeerStreamChanged = true;
+        }
+    }
+
+    if (activePeerStreamChanged) {
+        invalidateRemoteVideoRenderQueue(true);
     }
 
     m_remoteVideoSsrcByPeer = next;

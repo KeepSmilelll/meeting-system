@@ -461,6 +461,47 @@ func (s *MemoryStore) SetParticipantMediaSsrc(meetingID, userID string, audioSsr
 	return nil
 }
 
+func (s *MemoryStore) SetParticipantMediaMuted(meetingID, userID string, mediaType int32, muted bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	members, ok := s.participants[meetingID]
+	if !ok {
+		return ErrMeetingNotFound
+	}
+	participant, ok := members[userID]
+	if !ok || participant == nil {
+		return ErrUserNotFound
+	}
+
+	switch mediaType {
+	case 0:
+		participant.IsAudioOn = !muted
+	case 1:
+		participant.IsVideoOn = !muted
+	default:
+		return nil
+	}
+	return nil
+}
+
+func (s *MemoryStore) SetParticipantSharing(meetingID, userID string, sharing bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	members, ok := s.participants[meetingID]
+	if !ok {
+		return ErrMeetingNotFound
+	}
+	participant, ok := members[userID]
+	if !ok || participant == nil {
+		return ErrUserNotFound
+	}
+
+	participant.IsSharing = sharing
+	return nil
+}
+
 func (s *MemoryStore) SnapshotMeeting(meetingID string) (*Meeting, []*protocol.Participant, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

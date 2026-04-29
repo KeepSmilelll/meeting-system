@@ -320,6 +320,7 @@ int main(int argc, char* argv[]) {
     assert(emitProtoMessage(signalingClient, kMeetStateSync, stateSync));
     assert(controller.remoteVideoSsrcForUser(QStringLiteral("u1002")) == 8888U);
     assert(controller.remoteVideoSsrcForUser(QStringLiteral("u1003")) == 0U);
+    assert(controller.remoteVideoFrameSourceForUser(QStringLiteral("u1003")) == nullptr);
     assert(controller.activeAudioPeerUserId() == QStringLiteral("u1002"));
     assert(activeVideoPeerUserId() == QStringLiteral("u1002"));
     assert(!controller.setActiveVideoPeerUserId(QStringLiteral("u1003")));

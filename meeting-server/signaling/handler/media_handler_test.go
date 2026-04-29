@@ -1130,6 +1130,70 @@ func TestRouterBroadcastsStateSyncForMediaMuteToggle(t *testing.T) {
 	assertNoFrame(t, targetConn, "target raw media mute toggle")
 }
 
+func TestRouterBroadcastsStateSyncForMediaMuteToggleWithoutRedis(t *testing.T) {
+	cfg := config.Load()
+	cfg.EnableRedis = false
+
+	sessions := server.NewSessionManager()
+	memStore := store.NewMemoryStore()
+	roomState := store.NewRedisRoomStore(cfg)
+	defer roomState.Close()
+	tokenManager := auth.NewTokenManager("unit-test-secret", time.Hour)
+	limiter := auth.NewRateLimiter(nil, 5, 10*time.Minute)
+	router := NewRouter(cfg, sessions, memStore, memStore, roomState, nil, tokenManager, limiter, nil, nil)
+
+	meeting, _, err := memStore.CreateMeeting("media-state-memory-room", "", "u1001", 4)
+	if err != nil {
+		t.Fatalf("create meeting failed: %v", err)
+	}
+	if _, _, _, err := memStore.JoinMeeting(meeting.ID, "", "u1002"); err != nil {
+		t.Fatalf("join meeting failed: %v", err)
+	}
+
+	senderSess, senderConn, senderCleanup := newRunningSession(t, 611, cfg)
+	defer senderCleanup()
+	sessions.Add(senderSess)
+	sessions.BindUser(senderSess, "u1001")
+	senderSess.SetMeetingID(meeting.ID)
+	senderSess.SetState(server.StateInMeeting)
+
+	targetSess, targetConn, targetCleanup := newRunningSession(t, 612, cfg)
+	defer targetCleanup()
+	sessions.Add(targetSess)
+	sessions.BindUser(targetSess, "u1002")
+	targetSess.SetMeetingID(meeting.ID)
+	targetSess.SetState(server.StateInMeeting)
+
+	payload, err := proto.Marshal(&protocol.MediaMuteToggleBody{MediaType: 1, Muted: true})
+	if err != nil {
+		t.Fatalf("marshal media mute toggle failed: %v", err)
+	}
+	router.HandleMessage(senderSess, protocol.MediaMuteToggle, payload)
+
+	senderType, senderPayload := readFrame(t, senderConn, cfg.MaxPayloadBytes)
+	if senderType != protocol.MeetStateSync {
+		t.Fatalf("unexpected sender sync type: got %v want %v", senderType, protocol.MeetStateSync)
+	}
+	targetType, targetPayload := readFrame(t, targetConn, cfg.MaxPayloadBytes)
+	if targetType != protocol.MeetStateSync {
+		t.Fatalf("unexpected target sync type: got %v want %v", targetType, protocol.MeetStateSync)
+	}
+
+	var senderSync protocol.MeetStateSyncNotifyBody
+	if err := proto.Unmarshal(senderPayload, &senderSync); err != nil {
+		t.Fatalf("unmarshal sender state sync failed: %v", err)
+	}
+	var targetSync protocol.MeetStateSyncNotifyBody
+	if err := proto.Unmarshal(targetPayload, &targetSync); err != nil {
+		t.Fatalf("unmarshal target state sync failed: %v", err)
+	}
+
+	assertParticipantMediaState(t, senderSync.Participants, "u1001", true, false, false)
+	assertParticipantMediaState(t, targetSync.Participants, "u1001", true, false, false)
+	assertNoFrame(t, senderConn, "sender raw media mute toggle without redis")
+	assertNoFrame(t, targetConn, "target raw media mute toggle without redis")
+}
+
 func TestRouterBroadcastsStateSyncForMediaScreenShare(t *testing.T) {
 	mini := miniredis.RunT(t)
 

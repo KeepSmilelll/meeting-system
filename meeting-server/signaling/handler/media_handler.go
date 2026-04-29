@@ -38,6 +38,11 @@ type participantMediaSsrcStore interface {
 	SetParticipantMediaSsrc(meetingID, userID string, audioSsrc, videoSsrc uint32) error
 }
 
+type participantMediaStateStore interface {
+	SetParticipantMediaMuted(meetingID, userID string, mediaType int32, muted bool) error
+	SetParticipantSharing(meetingID, userID string, sharing bool) error
+}
+
 type meetingRecoveryLock struct {
 	mu   sync.Mutex
 	refs int
@@ -126,7 +131,12 @@ func (h *MediaHandler) HandleMuteToggle(session *server.Session, payload []byte)
 		return
 	}
 
-	_ = h.roomState.SetParticipantMediaMuted(context.Background(), session.MeetingID(), session.UserID(), req.MediaType, req.Muted)
+	if h.roomState != nil {
+		_ = h.roomState.SetParticipantMediaMuted(context.Background(), session.MeetingID(), session.UserID(), req.MediaType, req.Muted)
+	}
+	if stateStore, ok := h.meetingStore.(participantMediaStateStore); ok {
+		_ = stateStore.SetParticipantMediaMuted(session.MeetingID(), session.UserID(), req.MediaType, req.Muted)
+	}
 	h.broadcastMeetingStateSync(session.MeetingID())
 }
 
@@ -140,7 +150,12 @@ func (h *MediaHandler) HandleScreenShare(session *server.Session, payload []byte
 		return
 	}
 
-	_ = h.roomState.SetParticipantSharing(context.Background(), session.MeetingID(), session.UserID(), req.Sharing)
+	if h.roomState != nil {
+		_ = h.roomState.SetParticipantSharing(context.Background(), session.MeetingID(), session.UserID(), req.Sharing)
+	}
+	if stateStore, ok := h.meetingStore.(participantMediaStateStore); ok {
+		_ = stateStore.SetParticipantSharing(session.MeetingID(), session.UserID(), req.Sharing)
+	}
 	h.broadcastMeetingStateSync(session.MeetingID())
 }
 
