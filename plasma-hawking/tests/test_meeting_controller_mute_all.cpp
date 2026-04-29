@@ -255,6 +255,20 @@ int main(int argc, char* argv[]) {
     assert(controller.activeShareUserId() == QStringLiteral("u1002"));
     assert(controller.activeShareDisplayName() == QStringLiteral("sharer-a"));
 
+    stateSync.mutable_participants(0)->set_video_ssrc(8888);
+    stateSync.mutable_participants(0)->set_is_video_on(true);
+    assert(emitProtoMessage(signalingClient, kMeetStateSync, stateSync));
+    const quint32 remoteSsrcWithLocalCameraOn = controller.remoteVideoSsrcForUser(QStringLiteral("u1002"));
+    assert(remoteSsrcWithLocalCameraOn == 8888U);
+
+    stateSync.mutable_participants(0)->set_is_video_on(false);
+    assert(emitProtoMessage(signalingClient, kMeetStateSync, stateSync));
+    assert(controller.remoteVideoSsrcForUser(QStringLiteral("u1002")) == remoteSsrcWithLocalCameraOn);
+
+    stateSync.mutable_participants(0)->set_is_video_on(true);
+    assert(emitProtoMessage(signalingClient, kMeetStateSync, stateSync));
+    assert(controller.remoteVideoSsrcForUser(QStringLiteral("u1002")) == remoteSsrcWithLocalCameraOn);
+
     auto* remoteSharerB = stateSync.add_participants();
     remoteSharerB->set_user_id("u1003");
     remoteSharerB->set_display_name("sharer-b");
