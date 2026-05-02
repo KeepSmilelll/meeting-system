@@ -74,7 +74,7 @@ func (h *ChatHandler) HandleHistory(session *server.Session, payload []byte) {
 		limit = 50
 	}
 
-	messages, err := h.listMessages(meetingID, limit)
+	messages, err := h.listMessages(meetingID, limit, req.BeforeTimestamp)
 	if err != nil {
 		_ = session.Send(protocol.ChatHistoryRsp, &protocol.ChatHistoryRspBody{Success: false, Error: &protocol.ErrorInfo{Code: protocol.ErrInternal, Message: "load history failed"}})
 		return
@@ -137,10 +137,10 @@ func (h *ChatHandler) saveMessage(session *server.Session, req *protocol.ChatSen
 	}, nil
 }
 
-func (h *ChatHandler) listMessages(meetingID string, limit int) ([]protocol.ChatRecvNotifyBody, error) {
+func (h *ChatHandler) listMessages(meetingID string, limit int, beforeTimestampMs int64) ([]protocol.ChatRecvNotifyBody, error) {
 	numericMeetingID, ok := parseNumericID(meetingID)
 	if h.messageRepo != nil && ok {
-		messages, err := h.messageRepo.ListByMeeting(context.Background(), numericMeetingID, limit)
+		messages, err := h.messageRepo.ListByMeeting(context.Background(), numericMeetingID, limit, beforeTimestampMs)
 		if err != nil {
 			return nil, err
 		}
@@ -167,7 +167,7 @@ func (h *ChatHandler) listMessages(meetingID string, limit int) ([]protocol.Chat
 	if h.store == nil {
 		return nil, fmt.Errorf("chat handler: no message store")
 	}
-	messages := h.store.ListMessages(meetingID, limit)
+	messages := h.store.ListMessages(meetingID, limit, beforeTimestampMs)
 	out := make([]protocol.ChatRecvNotifyBody, 0, len(messages))
 	for _, msg := range messages {
 		out = append(out, protocol.ChatRecvNotifyBody{

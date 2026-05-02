@@ -328,6 +328,7 @@ qt_add_qml_module(meeting_client
 
 add_executable(test_database
     tests/test_database.cpp
+    src/app/ChatMessageListModel.cpp
     src/storage/DatabaseManager.cpp
     src/storage/SettingsRepository.cpp
     src/storage/UserRepository.cpp

@@ -7,11 +7,14 @@
 #include <QSet>
 #include <QString>
 #include <QStringList>
+#include <QVariantList>
 
 #include <cstdint>
 #include <deque>
 #include <functional>
 #include <memory>
+
+#include "storage/MessageRepository.h"
 
 class QMediaDevices;
 class QTimer;
@@ -20,7 +23,6 @@ class ChatMessageListModel;
 class ParticipantListModel;
 class MeetingRepository;
 class CallLogRepository;
-class MessageRepository;
 class MediaSessionManager;
 namespace av::session {
 class AudioCallSession;
@@ -66,6 +68,8 @@ class MeetingController : public QObject {
     Q_PROPERTY(QString meetingTitle READ meetingTitle NOTIFY meetingTitleChanged)
     Q_PROPERTY(QAbstractItemModel* participantModel READ participantModel CONSTANT)
     Q_PROPERTY(QAbstractItemModel* chatMessageModel READ chatMessageModel CONSTANT)
+    Q_PROPERTY(bool chatHistoryLoading READ chatHistoryLoading NOTIFY chatHistoryStateChanged)
+    Q_PROPERTY(bool chatHistoryHasOlder READ chatHistoryHasOlder NOTIFY chatHistoryStateChanged)
     Q_PROPERTY(QStringList participants READ participants NOTIFY participantsChanged)
     Q_PROPERTY(QString statusText READ statusText NOTIFY statusTextChanged)
 
@@ -105,6 +109,8 @@ public:
     QString meetingTitle() const;
     QAbstractItemModel* participantModel() const;
     QAbstractItemModel* chatMessageModel() const;
+    bool chatHistoryLoading() const;
+    bool chatHistoryHasOlder() const;
     QStringList participants() const;
     QString statusText() const;
     quint64 audioSentPacketCount() const;
@@ -145,6 +151,10 @@ public:
     Q_INVOKABLE void toggleVideo();
     Q_INVOKABLE void toggleScreenSharing();
     Q_INVOKABLE void sendChat(const QString& content);
+    Q_INVOKABLE void loadOlderChatHistory();
+    Q_INVOKABLE QVariantList searchLocalChat(const QString& keyword) const;
+    Q_INVOKABLE bool runtimeSmokeRequiresChatBubbleLayoutEvidence() const;
+    Q_INVOKABLE void reportChatBubbleLayoutEvidence(bool stable, const QString& details);
     Q_INVOKABLE bool setPreferredCameraDevice(const QString& deviceName);
     Q_INVOKABLE bool setPreferredMicrophoneDevice(const QString& deviceName);
     Q_INVOKABLE bool setPreferredSpeakerDevice(const QString& deviceName);
@@ -175,9 +185,11 @@ signals:
     void sessionChanged();
     void meetingIdChanged();
     void meetingTitleChanged();
+    void chatHistoryStateChanged();
     void participantsChanged();
     void statusTextChanged();
     void infoMessage(const QString& message);
+    void chatBubbleLayoutEvidence(bool stable, const QString& details);
     void mediaEndpointReady(const QString& peerUserId,
                             const QString& host,
                             quint16 port,
@@ -251,7 +263,7 @@ private:
     void refreshAvailableCameraDevices();
     void refreshAvailableAudioDevices();
     void loadLocalChatHistory();
-    void requestRemoteChatHistory();
+    void requestRemoteChatHistory(qint64 beforeTimestamp = 0);
     void appendAndPersistChatMessage(const QString& messageId,
                                      const QString& senderId,
                                      const QString& senderName,
@@ -260,6 +272,7 @@ private:
                                      const QString& replyToId,
                                      qint64 timestamp,
                                      bool isLocal);
+    void persistChatRecord(const MessageRepository::MessageRecord& record);
     QString effectiveIcePolicyName() const;
 
     UserManager* m_userManager{nullptr};
@@ -364,6 +377,12 @@ private:
         int type{0};
     };
     std::deque<PendingChatMessage> m_pendingChatMessages;
+    QVector<MessageRepository::MessageRecord> m_pendingChatHistoryRecords;
+    bool m_chatHistoryLoading{false};
+    bool m_chatHistoryLoadingOlder{false};
+    bool m_chatHistoryHasOlder{true};
+    qint64 m_chatHistoryRequestBeforeTimestamp{0};
+    int m_chatHistoryPageSize{50};
     bool m_shouldStayConnected{false};
     bool m_waitingLogin{false};
     bool m_loginRequestSent{false};

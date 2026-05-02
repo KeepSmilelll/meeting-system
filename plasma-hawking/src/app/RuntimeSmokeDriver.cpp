@@ -369,6 +369,8 @@ RuntimeSmokeDriver::RuntimeSmokeDriver(MeetingController* controller, QObject* p
     , m_requireAudioEvidence(envFlag("MEETING_SMOKE_REQUIRE_AUDIO"))
     , m_requireAvSyncEvidence(envFlag("MEETING_SMOKE_REQUIRE_AVSYNC"))
     , m_requireChatEvidence(envFlag("MEETING_SMOKE_REQUIRE_CHAT"))
+    , m_requireChatHistoryPagingEvidence(envFlag("MEETING_SMOKE_REQUIRE_CHAT_HISTORY_PAGING"))
+    , m_requireChatBubbleLayoutEvidence(envFlag("MEETING_SMOKE_REQUIRE_CHAT_BUBBLE_LAYOUT_STABLE"))
     , m_requireMediaStateSyncEvidence(envFlag("MEETING_SMOKE_REQUIRE_MEDIA_STATE_SYNC") ||
                                       envFlag("MEETING_SMOKE_REQUIRE_CAMERA_TOGGLE_RECOVERY"))
     , m_disableLocalAudio(envFlag("MEETING_SMOKE_DISABLE_LOCAL_AUDIO"))
@@ -388,6 +390,9 @@ RuntimeSmokeDriver::RuntimeSmokeDriver(MeetingController* controller, QObject* p
     , m_mediaStateStepDelayMs(std::max(500, envInt("MEETING_SMOKE_MEDIA_STATE_STEP_DELAY_MS", 2000)))
     , m_mediaStatePeerUserId(envValue("MEETING_SMOKE_MEDIA_STATE_PEER_USER_ID").trimmed())
     , m_mediaStatePeerUserIdExplicit(!envValue("MEETING_SMOKE_MEDIA_STATE_PEER_USER_ID").trimmed().isEmpty())
+    , m_chatHistorySeedCount(std::max(1, envInt("MEETING_SMOKE_CHAT_HISTORY_SEED_COUNT", 55)))
+    , m_chatHistorySeedIntervalMs(std::max(0, envInt("MEETING_SMOKE_CHAT_HISTORY_SEED_INTERVAL_MS", 20)))
+    , m_chatHistorySeedPrefix(envValue("MEETING_SMOKE_CHAT_HISTORY_SEED_PREFIX", QStringLiteral("phase71-history")).trimmed())
     , m_expectedCameraSource([]() {
         const QString configured = normalizeExpectedCameraSource(envValue("MEETING_SMOKE_EXPECT_CAMERA_SOURCE"));
         if (!configured.isEmpty()) {
@@ -423,6 +428,12 @@ RuntimeSmokeDriver::RuntimeSmokeDriver(MeetingController* controller, QObject* p
 
     const int defaultChatSendDelayMs = isHostRole() ? 1000 : 3000;
     m_chatSendDelayMs = std::max(0, envInt("MEETING_SMOKE_CHAT_SEND_DELAY_MS", defaultChatSendDelayMs));
+    if (m_requireChatHistoryPagingEvidence || m_requireChatBubbleLayoutEvidence) {
+        m_requireChatEvidence = true;
+    }
+    if (m_chatHistorySeedPrefix.isEmpty()) {
+        m_chatHistorySeedPrefix = QStringLiteral("phase71-history");
+    }
     if (m_requireMediaStateSyncEvidence && !m_mediaStateToggleLocal && m_mediaStatePeerUserId.isEmpty()) {
         m_mediaStatePeerUserId = isJoinerRole() ? QStringLiteral("demo") : QStringLiteral("alice");
     }
@@ -458,13 +469,34 @@ void RuntimeSmokeDriver::start() {
             QObject::connect(chatModel,
                              &QAbstractItemModel::rowsInserted,
                              this,
-                             [this]() { maybeUpdateChatEvidence(); });
+                             [this]() {
+                                 maybeUpdateChatEvidence();
+                                 maybeUpdateChatHistoryPagingEvidence();
+                             });
             QObject::connect(chatModel,
                              &QAbstractItemModel::modelReset,
                              this,
-                             [this]() { maybeUpdateChatEvidence(); });
+                             [this]() {
+                                 maybeUpdateChatEvidence();
+                                 maybeUpdateChatHistoryPagingEvidence();
+                             });
         }
         QTimer::singleShot(100, this, &RuntimeSmokeDriver::maybeUpdateChatEvidence);
+    }
+
+    if (m_requireChatHistoryPagingEvidence) {
+        QObject::connect(m_controller,
+                         &MeetingController::chatHistoryStateChanged,
+                         this,
+                         &RuntimeSmokeDriver::maybeUpdateChatHistoryPagingEvidence);
+        QTimer::singleShot(100, this, &RuntimeSmokeDriver::maybeUpdateChatHistoryPagingEvidence);
+    }
+
+    if (m_requireChatBubbleLayoutEvidence) {
+        QObject::connect(m_controller,
+                         &MeetingController::chatBubbleLayoutEvidence,
+                         this,
+                         &RuntimeSmokeDriver::handleChatBubbleLayoutEvidence);
     }
 
     if (m_requireMediaStateSyncEvidence && !m_mediaStateToggleLocal) {
@@ -573,6 +605,14 @@ QString RuntimeSmokeDriver::currentStageTag() const {
 
     if (m_requireChatEvidence && !m_chatEvidenceReady) {
         return QStringLiteral("chat_evidence");
+    }
+
+    if (m_requireChatHistoryPagingEvidence && !m_chatHistoryPagingReady) {
+        return QStringLiteral("chat_history_paging_evidence");
+    }
+
+    if (m_requireChatBubbleLayoutEvidence && !m_chatBubbleLayoutReady) {
+        return QStringLiteral("chat_bubble_layout_evidence");
     }
 
     if (m_requireMediaStateSyncEvidence && !m_mediaStateEvidenceReady) {
@@ -726,6 +766,19 @@ QString RuntimeSmokeDriver::withStageTag(const QString& reason) const {
     if (!mediaStatePipeline.isEmpty()) {
         annotated += QStringLiteral("; %1").arg(mediaStatePipeline);
     }
+    if (m_requireChatHistoryPagingEvidence || m_chatHistoryPagingReady || m_chatHistoryOlderLoadRequested) {
+        annotated += QStringLiteral("; chat_history=seeded:%1,initial_page:%2,load_older:%3,evidence:%4,detail:%5")
+                         .arg(m_chatHistorySeedSent ? 1 : 0)
+                         .arg(m_chatHistoryInitialPageObserved ? 1 : 0)
+                         .arg(m_chatHistoryOlderLoadRequested ? 1 : 0)
+                         .arg(m_chatHistoryPagingReady ? 1 : 0)
+                         .arg(m_chatHistoryPagingDetail.trimmed().isEmpty() ? QStringLiteral("<none>") : m_chatHistoryPagingDetail.trimmed());
+    }
+    if (m_requireChatBubbleLayoutEvidence || m_chatBubbleLayoutReady) {
+        annotated += QStringLiteral("; chat_bubble_layout=evidence:%1,detail:%2")
+                         .arg(m_chatBubbleLayoutReady ? 1 : 0)
+                         .arg(m_chatBubbleLayoutDetail.trimmed().isEmpty() ? QStringLiteral("<none>") : m_chatBubbleLayoutDetail.trimmed());
+    }
     if (!m_videoEncodeDetail.trimmed().isEmpty()) {
         annotated += QStringLiteral("; video_encode_detail=%1").arg(m_videoEncodeDetail.trimmed());
     }
@@ -875,6 +928,10 @@ void RuntimeSmokeDriver::handleInMeetingChanged() {
     if (m_requireChatEvidence) {
         maybeScheduleChatSend();
         maybeUpdateChatEvidence();
+    }
+    if (m_requireChatHistoryPagingEvidence) {
+        maybeScheduleChatHistorySeed();
+        maybeUpdateChatHistoryPagingEvidence();
     }
     if (isHostRole() && !m_meetingIdPath.isEmpty()) {
         if (!writeMeetingId(m_controller->meetingId())) {
@@ -1165,6 +1222,126 @@ void RuntimeSmokeDriver::maybeUpdateChatEvidence() {
     QTimer::singleShot(100, this, &RuntimeSmokeDriver::maybeUpdateChatEvidence);
 }
 
+void RuntimeSmokeDriver::maybeScheduleChatHistorySeed() {
+    if (m_reportedResult || !m_requireChatHistoryPagingEvidence || !isHostRole() ||
+        m_chatHistorySeedScheduled || m_chatHistorySeedSent || !m_controller || !m_controller->inMeeting()) {
+        return;
+    }
+
+    m_chatHistorySeedScheduled = true;
+    QTimer::singleShot(200, this, &RuntimeSmokeDriver::sendNextChatHistorySeedMessage);
+}
+
+void RuntimeSmokeDriver::sendNextChatHistorySeedMessage() {
+    if (m_reportedResult || !m_controller || !m_controller->inMeeting()) {
+        return;
+    }
+
+    if (m_chatHistorySeedIndex >= m_chatHistorySeedCount) {
+        m_chatHistorySeedSent = true;
+        m_chatHistoryPagingReady = true;
+        m_chatHistoryPagingDetail = QStringLiteral("host_seeded=%1 prefix=%2")
+                                        .arg(m_chatHistorySeedCount)
+                                        .arg(m_chatHistorySeedPrefix);
+        maybeCompleteSuccess(m_pendingSuccessReason.isEmpty() ? QStringLiteral("chat history seed complete") : m_pendingSuccessReason);
+        return;
+    }
+
+    const QString text = QStringLiteral("%1-%2 abcdefghijklmnopqrstuvwxyz0123456789")
+                             .arg(m_chatHistorySeedPrefix)
+                             .arg(m_chatHistorySeedIndex, 3, 10, QLatin1Char('0'));
+    ++m_chatHistorySeedIndex;
+    m_controller->sendChat(text);
+    QTimer::singleShot(m_chatHistorySeedIntervalMs, this, &RuntimeSmokeDriver::sendNextChatHistorySeedMessage);
+}
+
+void RuntimeSmokeDriver::maybeUpdateChatHistoryPagingEvidence() {
+    if (m_reportedResult || !m_requireChatHistoryPagingEvidence || m_chatHistoryPagingReady || !m_controller) {
+        return;
+    }
+
+    if (isHostRole()) {
+        maybeScheduleChatHistorySeed();
+        return;
+    }
+
+    auto* model = m_controller->chatMessageModel();
+    if (!model) {
+        QTimer::singleShot(100, this, &RuntimeSmokeDriver::maybeUpdateChatHistoryPagingEvidence);
+        return;
+    }
+
+    const auto roles = model->roleNames();
+    const int contentRole = roles.key(QByteArrayLiteral("content"), -1);
+    if (contentRole < 0) {
+        QTimer::singleShot(100, this, &RuntimeSmokeDriver::maybeUpdateChatHistoryPagingEvidence);
+        return;
+    }
+
+    const QString firstSeed = QStringLiteral("%1-%2").arg(m_chatHistorySeedPrefix).arg(0, 3, 10, QLatin1Char('0'));
+    const QString latestSeed = QStringLiteral("%1-%2")
+                                   .arg(m_chatHistorySeedPrefix)
+                                   .arg(m_chatHistorySeedCount - 1, 3, 10, QLatin1Char('0'));
+    bool firstObserved = false;
+    bool latestObserved = false;
+    for (int row = 0; row < model->rowCount(); ++row) {
+        const QString content = model->data(model->index(row, 0), contentRole).toString();
+        if (content.startsWith(firstSeed)) {
+            firstObserved = true;
+        }
+        if (content.startsWith(latestSeed)) {
+            latestObserved = true;
+        }
+    }
+
+    if (!m_chatHistoryInitialPageObserved) {
+        if (model->rowCount() >= 50 && latestObserved && !firstObserved) {
+            m_chatHistoryInitialPageObserved = true;
+            m_chatHistoryInitialRowCount = model->rowCount();
+        }
+        QTimer::singleShot(100, this, &RuntimeSmokeDriver::maybeUpdateChatHistoryPagingEvidence);
+        return;
+    }
+
+    if (!m_chatHistoryOlderLoadRequested) {
+        if (m_controller->chatHistoryLoading()) {
+            QTimer::singleShot(100, this, &RuntimeSmokeDriver::maybeUpdateChatHistoryPagingEvidence);
+            return;
+        }
+        m_chatHistoryOlderLoadRequested = true;
+        m_controller->loadOlderChatHistory();
+        QTimer::singleShot(100, this, &RuntimeSmokeDriver::maybeUpdateChatHistoryPagingEvidence);
+        return;
+    }
+
+    if (firstObserved) {
+        m_chatHistoryPagingReady = true;
+        m_chatHistoryPagingDetail = QStringLiteral("older_page_rows=%1 initial_rows=%2 prefix=%3")
+                                        .arg(model->rowCount())
+                                        .arg(m_chatHistoryInitialRowCount)
+                                        .arg(m_chatHistorySeedPrefix);
+        maybeCompleteSuccess(m_pendingSuccessReason.isEmpty() ? QStringLiteral("chat history paging evidence observed") : m_pendingSuccessReason);
+        return;
+    }
+
+    QTimer::singleShot(100, this, &RuntimeSmokeDriver::maybeUpdateChatHistoryPagingEvidence);
+}
+
+void RuntimeSmokeDriver::handleChatBubbleLayoutEvidence(bool stable, const QString& details) {
+    if (m_reportedResult || !m_requireChatBubbleLayoutEvidence || m_chatBubbleLayoutReady) {
+        return;
+    }
+
+    m_chatBubbleLayoutDetail = details.trimmed();
+    if (!stable) {
+        fail(QStringLiteral("chat bubble layout unstable: %1").arg(m_chatBubbleLayoutDetail));
+        return;
+    }
+
+    m_chatBubbleLayoutReady = true;
+    maybeCompleteSuccess(m_pendingSuccessReason.isEmpty() ? QStringLiteral("chat bubble layout evidence observed") : m_pendingSuccessReason);
+}
+
 void RuntimeSmokeDriver::maybeStartMediaStateValidation(const QString& reason) {
     if (m_reportedResult || !m_requireMediaStateSyncEvidence || m_mediaStateEvidenceReady) {
         return;
@@ -1381,6 +1558,20 @@ void RuntimeSmokeDriver::maybeCompleteSuccess(const QString& reason) {
         return;
     }
 
+    if (m_requireChatHistoryPagingEvidence && !m_chatHistoryPagingReady) {
+        m_pendingSuccessReason = normalizedReason;
+        writeResult(QStringLiteral("WAITING_CHAT_HISTORY"), withStageTag(QStringLiteral("chat history paging evidence pending")));
+        maybeScheduleChatHistorySeed();
+        maybeUpdateChatHistoryPagingEvidence();
+        return;
+    }
+
+    if (m_requireChatBubbleLayoutEvidence && !m_chatBubbleLayoutReady) {
+        m_pendingSuccessReason = normalizedReason;
+        writeResult(QStringLiteral("WAITING_CHAT_LAYOUT"), withStageTag(QStringLiteral("chat bubble layout evidence pending")));
+        return;
+    }
+
     if (!m_expectedCameraSource.isEmpty() && !m_cameraSourceObserved) {
         m_pendingSuccessReason = normalizedReason;
         writeResult(QStringLiteral("WAITING_CAMERA_SOURCE"),
@@ -1518,8 +1709,9 @@ void RuntimeSmokeDriver::completeSuccess(const QString& reason) {
     }
 
     m_reportedResult = true;
-    writeResult(QStringLiteral("SUCCESS"), reason);
-    qInfo().noquote() << "[runtime-smoke]" << m_role << "success:" << reason;
+    const QString annotatedReason = withStageTag(reason);
+    writeResult(QStringLiteral("SUCCESS"), annotatedReason);
+    qInfo().noquote() << "[runtime-smoke]" << m_role << "success:" << annotatedReason;
     requestExit(0);
 }
 

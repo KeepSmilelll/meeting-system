@@ -2052,6 +2052,67 @@ func TestChatHandlerHistoryReturnsLatestFiftyAscending(t *testing.T) {
 	}
 }
 
+func TestChatHandlerHistoryBeforeTimestampReturnsOlderPageAscending(t *testing.T) {
+	cfg := config.Load()
+	sessions := server.NewSessionManager()
+	memStore := store.NewMemoryStore()
+	repo := store.NewInMemoryMessageRepo()
+	h := NewChatHandler(cfg, sessions, memStore, repo)
+
+	sess, conn, cleanup := newRunningSession(t, 35, cfg)
+	defer cleanup()
+	sessions.Add(sess)
+	sessions.BindUser(sess, "u1001")
+	sess.SetMeetingID("123456")
+	sess.SetState(server.StateInMeeting)
+
+	var firstPageCursor int64
+	for i := 0; i < 55; i++ {
+		content := fmt.Sprintf("page-msg-%02d", i)
+		payload, err := proto.Marshal(&protocol.ChatSendReqBody{Type: 0, Content: content})
+		if err != nil {
+			t.Fatalf("marshal send request failed: %v", err)
+		}
+		h.HandleSend(sess, payload)
+		msgType, rspPayload := readFrame(t, conn, cfg.MaxPayloadBytes)
+		if msgType != protocol.ChatSendRsp {
+			t.Fatalf("unexpected send rsp type at %d: got %v want %v", i, msgType, protocol.ChatSendRsp)
+		}
+		if i == 5 {
+			var sendRsp protocol.ChatSendRspBody
+			if err := proto.Unmarshal(rspPayload, &sendRsp); err != nil {
+				t.Fatalf("unmarshal send rsp failed: %v", err)
+			}
+			firstPageCursor = sendRsp.Timestamp
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if firstPageCursor == 0 {
+		t.Fatalf("expected first page cursor")
+	}
+
+	historyPayload, err := proto.Marshal(&protocol.ChatHistoryReqBody{Limit: 50, BeforeTimestamp: firstPageCursor})
+	if err != nil {
+		t.Fatalf("marshal history request failed: %v", err)
+	}
+	h.HandleHistory(sess, historyPayload)
+
+	msgType, rspPayload := readFrame(t, conn, cfg.MaxPayloadBytes)
+	if msgType != protocol.ChatHistoryRsp {
+		t.Fatalf("unexpected history rsp type: got %v want %v", msgType, protocol.ChatHistoryRsp)
+	}
+	var rsp protocol.ChatHistoryRspBody
+	if err := proto.Unmarshal(rspPayload, &rsp); err != nil {
+		t.Fatalf("unmarshal history rsp failed: %v", err)
+	}
+	if !rsp.Success || len(rsp.Messages) != 5 {
+		t.Fatalf("expected five older history messages, got %+v", rsp)
+	}
+	if rsp.Messages[0].Content != "page-msg-00" || rsp.Messages[4].Content != "page-msg-04" {
+		t.Fatalf("expected older page ascending, first=%q last=%q", rsp.Messages[0].Content, rsp.Messages[4].Content)
+	}
+}
+
 func TestChatHandlerRejectsOversizedMessage(t *testing.T) {
 	cfg := config.Load()
 	cfg.MaxMessageLen = 4

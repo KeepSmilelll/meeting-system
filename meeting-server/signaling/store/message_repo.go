@@ -80,7 +80,7 @@ func (r *MessageRepo) Save(ctx context.Context, message *model.Message) error {
 	return nil
 }
 
-func (r *MessageRepo) ListByMeeting(ctx context.Context, meetingID uint64, limit int) ([]model.Message, error) {
+func (r *MessageRepo) ListByMeeting(ctx context.Context, meetingID uint64, limit int, beforeTimestampMs ...int64) ([]model.Message, error) {
 	if ctx != nil {
 		if err := ctx.Err(); err != nil {
 			return nil, fmt.Errorf("message repo: list canceled: %w", err)
@@ -96,11 +96,18 @@ func (r *MessageRepo) ListByMeeting(ctx context.Context, meetingID uint64, limit
 	if limit <= 0 {
 		limit = 100
 	}
+	before := int64(0)
+	if len(beforeTimestampMs) > 0 {
+		before = beforeTimestampMs[0]
+	}
 
 	if r.db != nil {
 		out := make([]model.Message, 0, limit)
-		err := r.db.WithContext(ctx).
-			Where("meeting_id = ?", meetingID).
+		query := r.db.WithContext(ctx).Where("meeting_id = ?", meetingID)
+		if before > 0 {
+			query = query.Where("created_at < ?", time.UnixMilli(before).UTC())
+		}
+		err := query.
 			Order("created_at DESC, id DESC").
 			Limit(limit).
 			Find(&out).Error
@@ -124,14 +131,28 @@ func (r *MessageRepo) ListByMeeting(ctx context.Context, meetingID uint64, limit
 		return nil, nil
 	}
 
-	start := 0
-	if len(messages) > limit {
-		start = len(messages) - limit
+	filtered := messages
+	if before > 0 {
+		beforeTime := time.UnixMilli(before).UTC()
+		filtered = make([]model.Message, 0, len(messages))
+		for _, message := range messages {
+			if message.CreatedAt.Before(beforeTime) {
+				filtered = append(filtered, message)
+			}
+		}
+	}
+	if len(filtered) == 0 {
+		return nil, nil
 	}
 
-	out := make([]model.Message, 0, len(messages)-start)
-	for i := start; i < len(messages); i++ {
-		out = append(out, messages[i])
+	start := 0
+	if len(filtered) > limit {
+		start = len(filtered) - limit
+	}
+
+	out := make([]model.Message, 0, len(filtered)-start)
+	for i := start; i < len(filtered); i++ {
+		out = append(out, filtered[i])
 	}
 	return out, nil
 }

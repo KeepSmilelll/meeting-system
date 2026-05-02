@@ -33,8 +33,8 @@ public:
                      const QString& replyToId = QString(),
                      bool isLocal = false,
                      const QString& remoteMessageId = QString());
-    QVector<MessageRecord> listByMeeting(const QString& meetingId, int limit = 50) const;
-    QVector<MessageRecord> searchMessages(const QString& keyword, int limit = 20) const;
+    QVector<MessageRecord> listByMeeting(const QString& meetingId, int limit = 50, qint64 beforeTimestamp = 0) const;
+    QVector<MessageRecord> searchMessages(const QString& meetingId, const QString& keyword, int limit = 20) const;
 
 private:
     bool ensureOpen();

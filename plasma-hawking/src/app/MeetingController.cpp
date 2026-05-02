@@ -28,6 +28,7 @@
 #include <QNetworkInterface>
 #include <QProcessEnvironment>
 #include <QRandomGenerator>
+#include <QVariantMap>
 #include <QtMultimedia/QMediaDevices>
 #include <QTimer>
 #include <QtGlobal>
@@ -852,6 +853,10 @@ MeetingController::MeetingController(const QString& databasePath, QObject* paren
         setScreenSharing(false);
         m_waitingLeaveResponse = false;
         m_currentMeetingHost = true;
+        m_chatHistoryLoading = false;
+        m_chatHistoryLoadingOlder = false;
+        m_chatHistoryHasOlder = true;
+        m_pendingChatHistoryRecords.clear();
         m_participantModel->clearParticipants();
         ensureLocalParticipant(true);
         persistMeetingSessionStart(true);
@@ -892,6 +897,10 @@ MeetingController::MeetingController(const QString& databasePath, QObject* paren
         m_waitingLeaveResponse = false;
         const bool isHost = !hostUserId.isEmpty() && hostUserId == m_userId;
         m_currentMeetingHost = isHost;
+        m_chatHistoryLoading = false;
+        m_chatHistoryLoadingOlder = false;
+        m_chatHistoryHasOlder = true;
+        m_pendingChatHistoryRecords.clear();
         m_participantModel->replaceParticipantsFromDisplayList(participants);
         if (!hostUserId.isEmpty()) {
             m_participantModel->setHostUserId(hostUserId);
@@ -974,6 +983,67 @@ MeetingController::MeetingController(const QString& databasePath, QObject* paren
                    qint64 timestamp) {
         appendAndPersistChatMessage(messageId, senderId, senderName, type, content, replyToId, timestamp, senderId == m_userId);
         emit infoMessage(QStringLiteral("[%1] %2").arg(senderName, content));
+    });
+
+    connect(m_signaling, &signaling::SignalingClient::chatHistoryReceived, this,
+            [this](const QString& messageId,
+                   const QString& senderId,
+                   const QString& senderName,
+                   int type,
+                   const QString& content,
+                   const QString& replyToId,
+                   qint64 timestamp) {
+        if (m_meetingId.trimmed().isEmpty() || content.trimmed().isEmpty()) {
+            return;
+        }
+        MessageRepository::MessageRecord record;
+        record.meetingId = m_meetingId;
+        record.senderId = senderId.trimmed();
+        record.senderName = senderName.trimmed().isEmpty() ? record.senderId : senderName.trimmed();
+        record.content = content;
+        record.remoteMessageId = messageId.trimmed();
+        record.messageType = type;
+        record.replyToId = replyToId.trimmed();
+        record.sentAt = timestamp > 0 ? timestamp : QDateTime::currentMSecsSinceEpoch();
+        record.isLocal = record.senderId == m_userId;
+        m_pendingChatHistoryRecords.append(record);
+    });
+
+    connect(m_signaling, &signaling::SignalingClient::chatHistoryFinished, this,
+            [this](bool success, int count, const QString& error) {
+        if (!m_chatHistoryLoading) {
+            return;
+        }
+
+        if (!success) {
+            m_pendingChatHistoryRecords.clear();
+            m_chatHistoryLoading = false;
+            m_chatHistoryLoadingOlder = false;
+            emit chatHistoryStateChanged();
+            if (!error.isEmpty()) {
+                emit infoMessage(error);
+            }
+            return;
+        }
+
+        for (const auto& record : m_pendingChatHistoryRecords) {
+            persistChatRecord(record);
+        }
+        if (m_chatMessageModel) {
+            if (m_chatHistoryLoadingOlder) {
+                (void)m_chatMessageModel->prependMessages(m_pendingChatHistoryRecords);
+            } else {
+                (void)m_chatMessageModel->appendMessages(m_pendingChatHistoryRecords);
+            }
+        }
+
+        if (count < m_chatHistoryPageSize) {
+            m_chatHistoryHasOlder = false;
+        }
+        m_pendingChatHistoryRecords.clear();
+        m_chatHistoryLoading = false;
+        m_chatHistoryLoadingOlder = false;
+        emit chatHistoryStateChanged();
     });
 
     connect(m_signaling, &signaling::SignalingClient::mediaTransportAnswerReceived, this,
@@ -1118,6 +1188,14 @@ QAbstractItemModel* MeetingController::participantModel() const {
 
 QAbstractItemModel* MeetingController::chatMessageModel() const {
     return m_chatMessageModel;
+}
+
+bool MeetingController::chatHistoryLoading() const {
+    return m_chatHistoryLoading;
+}
+
+bool MeetingController::chatHistoryHasOlder() const {
+    return m_chatHistoryHasOlder;
 }
 
 QStringList MeetingController::participants() const {
@@ -1508,11 +1586,60 @@ void MeetingController::loadLocalChatHistory() {
     m_chatMessageModel->replaceMessages(m_messageRepository->listByMeeting(m_meetingId, 50));
 }
 
-void MeetingController::requestRemoteChatHistory() {
+void MeetingController::requestRemoteChatHistory(qint64 beforeTimestamp) {
     if (!m_signaling || !m_signaling->isConnected() || m_meetingId.trimmed().isEmpty()) {
         return;
     }
-    m_signaling->requestChatHistory(m_meetingId, 50);
+    if (m_chatHistoryLoading) {
+        return;
+    }
+    m_pendingChatHistoryRecords.clear();
+    m_chatHistoryLoading = true;
+    m_chatHistoryLoadingOlder = beforeTimestamp > 0;
+    m_chatHistoryRequestBeforeTimestamp = beforeTimestamp;
+    emit chatHistoryStateChanged();
+    m_signaling->requestChatHistory(m_meetingId, m_chatHistoryPageSize, beforeTimestamp);
+}
+
+void MeetingController::loadOlderChatHistory() {
+    if (!m_chatMessageModel || m_chatHistoryLoading || !m_chatHistoryHasOlder) {
+        return;
+    }
+    const qint64 beforeTimestamp = m_chatMessageModel->oldestMessageTimestamp();
+    if (beforeTimestamp <= 0) {
+        return;
+    }
+    requestRemoteChatHistory(beforeTimestamp);
+}
+
+QVariantList MeetingController::searchLocalChat(const QString& keyword) const {
+    QVariantList out;
+    if (!m_messageRepository || m_meetingId.trimmed().isEmpty() || keyword.trimmed().isEmpty()) {
+        return out;
+    }
+    const auto records = m_messageRepository->searchMessages(m_meetingId, keyword, 20);
+    for (const auto& record : records) {
+        QVariantMap item;
+        item.insert(QStringLiteral("messageId"), record.remoteMessageId.isEmpty() ? QString::number(record.id) : record.remoteMessageId);
+        item.insert(QStringLiteral("senderId"), record.senderId);
+        item.insert(QStringLiteral("senderName"), record.senderName);
+        item.insert(QStringLiteral("content"), record.content);
+        item.insert(QStringLiteral("sentAt"), record.sentAt);
+        item.insert(QStringLiteral("local"), record.isLocal);
+        out.append(item);
+    }
+    return out;
+}
+
+bool MeetingController::runtimeSmokeRequiresChatBubbleLayoutEvidence() const {
+    return qEnvironmentVariableIntValue("MEETING_RUNTIME_SMOKE") != 0
+        && qEnvironmentVariableIntValue("MEETING_SMOKE_REQUIRE_CHAT_BUBBLE_LAYOUT_STABLE") != 0;
+}
+
+void MeetingController::reportChatBubbleLayoutEvidence(bool stable, const QString& details) {
+    emit chatBubbleLayoutEvidence(stable, details);
+    emit infoMessage(QStringLiteral("Chat bubble layout evidence: %1 %2")
+                         .arg(stable ? QStringLiteral("stable") : QStringLiteral("unstable"), details));
 }
 
 void MeetingController::appendAndPersistChatMessage(const QString& messageId,
@@ -1539,19 +1666,26 @@ void MeetingController::appendAndPersistChatMessage(const QString& messageId,
     record.isLocal = isLocal;
 
     if (m_messageRepository) {
-        (void)m_messageRepository->saveMessage(record.meetingId,
-                                               record.senderId,
-                                               record.senderName,
-                                               record.content,
-                                               record.sentAt,
-                                               record.messageType,
-                                               record.replyToId,
-                                               record.isLocal,
-                                               record.remoteMessageId);
+        persistChatRecord(record);
     }
     if (m_chatMessageModel) {
         (void)m_chatMessageModel->appendMessage(record);
     }
+}
+
+void MeetingController::persistChatRecord(const MessageRepository::MessageRecord& record) {
+    if (!m_messageRepository) {
+        return;
+    }
+    (void)m_messageRepository->saveMessage(record.meetingId,
+                                           record.senderId,
+                                           record.senderName,
+                                           record.content,
+                                           record.sentAt,
+                                           record.messageType,
+                                           record.replyToId,
+                                           record.isLocal,
+                                           record.remoteMessageId);
 }
 
 QString MeetingController::effectiveIcePolicyName() const {
@@ -1849,6 +1983,11 @@ void MeetingController::resetMeetingState(const QString& leaveReason) {
     if (m_chatMessageModel) {
         m_chatMessageModel->clear();
     }
+    m_pendingChatHistoryRecords.clear();
+    m_chatHistoryLoading = false;
+    m_chatHistoryLoadingOlder = false;
+    m_chatHistoryHasOlder = true;
+    m_chatHistoryRequestBeforeTimestamp = 0;
     if (m_localVideoFrameStore) {
         m_localVideoFrameStore->clear();
     }

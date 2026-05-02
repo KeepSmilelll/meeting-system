@@ -84,6 +84,67 @@ void ChatMessageListModel::replaceMessages(const QVector<MessageRepository::Mess
     endResetModel();
 }
 
+qint64 ChatMessageListModel::oldestMessageTimestamp() const {
+    if (m_messages.isEmpty()) {
+        return 0;
+    }
+    return m_messages.first().sentAt;
+}
+
+int ChatMessageListModel::appendMessages(const QVector<MessageRepository::MessageRecord>& records) {
+    QVector<MessageRepository::MessageRecord> pending;
+    pending.reserve(records.size());
+    for (const auto& record : records) {
+        const QString key = stableMessageKey(record);
+        if (!key.isEmpty() && m_seenMessageKeys.contains(key)) {
+            continue;
+        }
+        pending.append(record);
+    }
+    if (pending.isEmpty()) {
+        return 0;
+    }
+
+    const int first = m_messages.size();
+    const int last = first + pending.size() - 1;
+    beginInsertRows(QModelIndex(), first, last);
+    for (const auto& record : pending) {
+        m_messages.append(record);
+        const QString key = stableMessageKey(record);
+        if (!key.isEmpty()) {
+            m_seenMessageKeys.insert(key);
+        }
+    }
+    endInsertRows();
+    return pending.size();
+}
+
+int ChatMessageListModel::prependMessages(const QVector<MessageRepository::MessageRecord>& records) {
+    QVector<MessageRepository::MessageRecord> pending;
+    pending.reserve(records.size());
+    for (const auto& record : records) {
+        const QString key = stableMessageKey(record);
+        if (!key.isEmpty() && m_seenMessageKeys.contains(key)) {
+            continue;
+        }
+        pending.append(record);
+    }
+    if (pending.isEmpty()) {
+        return 0;
+    }
+
+    beginInsertRows(QModelIndex(), 0, pending.size() - 1);
+    for (int i = pending.size() - 1; i >= 0; --i) {
+        m_messages.prepend(pending.at(i));
+        const QString key = stableMessageKey(pending.at(i));
+        if (!key.isEmpty()) {
+            m_seenMessageKeys.insert(key);
+        }
+    }
+    endInsertRows();
+    return pending.size();
+}
+
 bool ChatMessageListModel::appendMessage(const MessageRepository::MessageRecord& record) {
     const QString key = stableMessageKey(record);
     if (!key.isEmpty() && m_seenMessageKeys.contains(key)) {

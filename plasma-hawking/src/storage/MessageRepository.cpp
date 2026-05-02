@@ -91,20 +91,25 @@ bool MessageRepository::saveMessage(const QString& meetingId,
     return true;
 }
 
-QVector<MessageRepository::MessageRecord> MessageRepository::listByMeeting(const QString& meetingId, int limit) const {
+QVector<MessageRepository::MessageRecord> MessageRepository::listByMeeting(const QString& meetingId, int limit, qint64 beforeTimestamp) const {
     QVector<MessageRecord> records;
     if (!m_db.isValid() || !m_db.isOpen() || meetingId.trimmed().isEmpty()) {
         return records;
     }
 
     QSqlQuery query(m_db);
+    const bool hasBefore = beforeTimestamp > 0;
     query.prepare(QStringLiteral(
-        "SELECT id, meeting_id, sender_id, sender_name, content, remote_message_id, message_type, reply_to_id, sent_at, is_local "
-        "FROM ("
-        "SELECT id, meeting_id, sender_id, sender_name, content, remote_message_id, message_type, reply_to_id, sent_at, is_local "
-        "FROM message WHERE meeting_id = ? ORDER BY sent_at DESC, id DESC LIMIT ?"
-        ") ORDER BY sent_at ASC, id ASC"));
+                      "SELECT id, meeting_id, sender_id, sender_name, content, remote_message_id, message_type, reply_to_id, sent_at, is_local "
+                      "FROM ("
+                      "SELECT id, meeting_id, sender_id, sender_name, content, remote_message_id, message_type, reply_to_id, sent_at, is_local "
+                      "FROM message WHERE meeting_id = ? %1 ORDER BY sent_at DESC, id DESC LIMIT ?"
+                      ") ORDER BY sent_at ASC, id ASC")
+                      .arg(hasBefore ? QStringLiteral("AND sent_at < ?") : QString()));
     query.addBindValue(meetingId.trimmed());
+    if (hasBefore) {
+        query.addBindValue(beforeTimestamp);
+    }
     query.addBindValue(qMax(1, limit));
     if (!query.exec()) {
         return records;
@@ -116,10 +121,10 @@ QVector<MessageRepository::MessageRecord> MessageRepository::listByMeeting(const
     return records;
 }
 
-QVector<MessageRepository::MessageRecord> MessageRepository::searchMessages(const QString& keyword, int limit) const {
+QVector<MessageRepository::MessageRecord> MessageRepository::searchMessages(const QString& meetingId, const QString& keyword, int limit) const {
     QVector<MessageRecord> records;
     const QString trimmed = keyword.trimmed();
-    if (!m_db.isValid() || !m_db.isOpen() || trimmed.isEmpty()) {
+    if (!m_db.isValid() || !m_db.isOpen() || meetingId.trimmed().isEmpty() || trimmed.isEmpty()) {
         return records;
     }
 
@@ -127,7 +132,8 @@ QVector<MessageRepository::MessageRecord> MessageRepository::searchMessages(cons
     query.prepare(QStringLiteral(
         "SELECT m.id, m.meeting_id, m.sender_id, m.sender_name, m.content, m.remote_message_id, m.message_type, m.reply_to_id, m.sent_at, m.is_local "
         "FROM message_fts f JOIN message m ON m.id = f.rowid "
-        "WHERE message_fts MATCH ? ORDER BY m.sent_at DESC, m.id DESC LIMIT ?"));
+        "WHERE m.meeting_id = ? AND message_fts MATCH ? ORDER BY m.sent_at DESC, m.id DESC LIMIT ?"));
+    query.addBindValue(meetingId.trimmed());
     query.addBindValue(trimmed);
     query.addBindValue(qMax(1, limit));
     if (!query.exec()) {

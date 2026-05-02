@@ -5,6 +5,7 @@
 #include <QStringList>
 
 #include "../src/storage/DatabaseManager.h"
+#include "../src/app/ChatMessageListModel.h"
 #include "../src/storage/MeetingRepository.h"
 #include "../src/storage/MessageRepository.h"
 #include "../src/storage/SettingsRepository.h"
@@ -89,9 +90,38 @@ int main(int argc, char* argv[]) {
     const auto meetingMessages = messages.listByMeeting(QStringLiteral("123456"));
     assert(meetingMessages.size() == 1);
     assert(meetingMessages.first().remoteMessageId == QStringLiteral("remote-1"));
-    const auto searchResults = messages.searchMessages(QStringLiteral("sqlite"));
+    const auto searchResults = messages.searchMessages(QStringLiteral("123456"), QStringLiteral("sqlite"));
     assert(!searchResults.isEmpty());
     assert(searchResults.first().content.contains(QStringLiteral("sqlite"), Qt::CaseInsensitive));
+
+    for (int i = 0; i < 55; ++i) {
+        assert(messages.saveMessage(QStringLiteral("123456"),
+                                    QStringLiteral("user-2"),
+                                    QStringLiteral("Bob"),
+                                    QStringLiteral("paged message %1").arg(i, 2, 10, QLatin1Char('0')),
+                                    4000 + i,
+                                    0,
+                                    QString(),
+                                    false,
+                                    QStringLiteral("page-%1").arg(i, 2, 10, QLatin1Char('0'))));
+    }
+    const auto latestPage = messages.listByMeeting(QStringLiteral("123456"), 50);
+    assert(latestPage.size() == 50);
+    assert(latestPage.first().remoteMessageId == QStringLiteral("page-05"));
+    assert(latestPage.last().remoteMessageId == QStringLiteral("page-54"));
+    const auto olderPage = messages.listByMeeting(QStringLiteral("123456"), 50, latestPage.first().sentAt);
+    assert(olderPage.size() == 6);
+    assert(olderPage.first().remoteMessageId == QStringLiteral("remote-1"));
+    assert(olderPage.last().remoteMessageId == QStringLiteral("page-04"));
+
+    ChatMessageListModel model;
+    assert(model.appendMessages(latestPage) == 50);
+    assert(model.rowCount() == 50);
+    assert(model.oldestMessageTimestamp() == latestPage.first().sentAt);
+    assert(model.prependMessages(olderPage) == 6);
+    assert(model.rowCount() == 56);
+    assert(model.prependMessages(olderPage) == 0);
+    assert(model.rowCount() == 56);
 
     db.close();
     return 0;

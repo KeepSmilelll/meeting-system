@@ -31,8 +31,11 @@ public:
     QHash<int, QByteArray> roleNames() const override;
 
     Q_INVOKABLE void clear();
+    Q_INVOKABLE qint64 oldestMessageTimestamp() const;
 
     void replaceMessages(const QVector<MessageRepository::MessageRecord>& records);
+    int appendMessages(const QVector<MessageRepository::MessageRecord>& records);
+    int prependMessages(const QVector<MessageRepository::MessageRecord>& records);
     bool appendMessage(const MessageRepository::MessageRecord& record);
 
 private:

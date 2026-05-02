@@ -215,10 +215,13 @@ void SignalingClient::sendChat(int type, const QString& content, const QString& 
     sendRawFrame(kChatSendReq, payload);
 }
 
-void SignalingClient::requestChatHistory(const QString& meetingId, int limit) {
+void SignalingClient::requestChatHistory(const QString& meetingId, int limit, qint64 beforeTimestamp) {
     meeting::ChatHistoryReq req;
     req.set_meeting_id(meetingId.toStdString());
     req.set_limit(limit <= 0 ? 50 : limit);
+    if (beforeTimestamp > 0) {
+        req.set_before_timestamp(beforeTimestamp);
+    }
 
     std::string payload;
     if (!req.SerializeToString(&payload)) {
@@ -487,19 +490,22 @@ void SignalingClient::handlePayload(quint16 signalType, const QByteArray& payloa
         }
 
         if (!rsp.success()) {
-            emit protocolError(rsp.has_error() ? protobufError(rsp.error()) : QStringLiteral("Load chat history failed"));
+            const QString error = rsp.has_error() ? protobufError(rsp.error()) : QStringLiteral("Load chat history failed");
+            emit chatHistoryFinished(false, 0, error);
+            emit protocolError(error);
             return;
         }
 
         for (const auto& message : rsp.messages()) {
-            emit chatReceived(toQtString(message.message_id()),
-                              toQtString(message.sender_id()),
-                              toQtString(message.sender_name()),
-                              message.type(),
-                              toQtString(message.content()),
-                              toQtString(message.reply_to_id()),
-                              static_cast<qint64>(message.timestamp()));
+            emit chatHistoryReceived(toQtString(message.message_id()),
+                                     toQtString(message.sender_id()),
+                                     toQtString(message.sender_name()),
+                                     message.type(),
+                                     toQtString(message.content()),
+                                     toQtString(message.reply_to_id()),
+                                     static_cast<qint64>(message.timestamp()));
         }
+        emit chatHistoryFinished(true, rsp.messages_size(), {});
         return;
     }
     default:

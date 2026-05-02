@@ -13,6 +13,8 @@ param(
     [switch]$RequireVideo,
     [switch]$RequireAvSync,
     [switch]$RequireChat,
+    [switch]$RequireChatHistoryPaging,
+    [switch]$RequireChatBubbleLayoutStable,
     [switch]$RequireMediaStateSync,
     [switch]$RequireCameraToggleRecovery,
     [switch]$ExpectRealCamera,
@@ -67,6 +69,9 @@ if ([string]::IsNullOrWhiteSpace($GuestAudioInputDevice) -and -not [string]::IsN
 }
 if ([string]::IsNullOrWhiteSpace($GuestAudioOutputDevice) -and -not [string]::IsNullOrWhiteSpace($GuestAudioDevice)) {
     $GuestAudioOutputDevice = $GuestAudioDevice
+}
+if ($RequireChatHistoryPaging -and $GuestLaunchDelayMs -le 0) {
+    $GuestLaunchDelayMs = 5000
 }
 
 function Get-FreeTcpPort {
@@ -530,8 +535,17 @@ if ($RequireAvSync) {
         $clientBaseEnv["MEETING_VIDEO_FPS"] = "24"
     }
 }
-    if ($RequireChat) {
+    if ($RequireChat -or $RequireChatHistoryPaging -or $RequireChatBubbleLayoutStable) {
         $clientBaseEnv["MEETING_SMOKE_REQUIRE_CHAT"] = "1"
+    }
+    if ($RequireChatHistoryPaging) {
+        $clientBaseEnv["MEETING_SMOKE_REQUIRE_CHAT_HISTORY_PAGING"] = "1"
+        $clientBaseEnv["MEETING_SMOKE_CHAT_HISTORY_SEED_COUNT"] = "55"
+        $clientBaseEnv["MEETING_SMOKE_CHAT_HISTORY_SEED_INTERVAL_MS"] = "20"
+        $clientBaseEnv["MEETING_SMOKE_CHAT_HISTORY_SEED_PREFIX"] = "phase71-history"
+    }
+    if ($RequireChatBubbleLayoutStable) {
+        $clientBaseEnv["MEETING_SMOKE_REQUIRE_CHAT_BUBBLE_LAYOUT_STABLE"] = "1"
     }
     if ($RequireMediaStateSync -or $RequireCameraToggleRecovery) {
         $clientBaseEnv["MEETING_SMOKE_REQUIRE_MEDIA_STATE_SYNC"] = "1"
@@ -588,9 +602,15 @@ try {
     $hostEnv["MEETING_DB_PATH"] = (Join-Path $tempRoot "host.sqlite")
     $hostEnv["MEETING_SMOKE_RESULT_PATH"] = $hostResultPath
     $hostEnv["MEETING_SMOKE_PEER_RESULT_PATH"] = $guestResultPath
-    if ($RequireChat) {
-        $hostEnv["MEETING_SMOKE_CHAT_SEND_TEXT"] = "cloud-chat-host-to-guest"
-        $hostEnv["MEETING_SMOKE_CHAT_EXPECT_TEXTS"] = "cloud-chat-guest-to-host"
+    if ($RequireChat -or $RequireChatBubbleLayoutStable) {
+        $hostChatText = "cloud-chat-host-to-guest"
+        $guestChatText = "cloud-chat-guest-to-host"
+        if ($RequireChatBubbleLayoutStable) {
+            $hostChatText = "phase71-bubble-host-" + ("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" * 4)
+            $guestChatText = "phase71-bubble-guest-" + ("abcdefghijklmnopqrstuvwxyz0123456789" * 4)
+        }
+        $hostEnv["MEETING_SMOKE_CHAT_SEND_TEXT"] = $hostChatText
+        $hostEnv["MEETING_SMOKE_CHAT_EXPECT_TEXTS"] = $guestChatText
         $hostEnv["MEETING_SMOKE_CHAT_SEND_DELAY_MS"] = "1000"
     }
     if ($RequireMediaStateSync -or $RequireCameraToggleRecovery) {
@@ -629,9 +649,15 @@ try {
     $guestEnv["MEETING_DB_PATH"] = (Join-Path $tempRoot "guest.sqlite")
     $guestEnv["MEETING_SMOKE_RESULT_PATH"] = $guestResultPath
     $guestEnv["MEETING_SMOKE_PEER_RESULT_PATH"] = $hostResultPath
-    if ($RequireChat) {
-        $guestEnv["MEETING_SMOKE_CHAT_SEND_TEXT"] = "cloud-chat-guest-to-host"
-        $guestEnv["MEETING_SMOKE_CHAT_EXPECT_TEXTS"] = "cloud-chat-host-to-guest"
+    if ($RequireChat -or $RequireChatBubbleLayoutStable) {
+        $hostChatText = "cloud-chat-host-to-guest"
+        $guestChatText = "cloud-chat-guest-to-host"
+        if ($RequireChatBubbleLayoutStable) {
+            $hostChatText = "phase71-bubble-host-" + ("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" * 4)
+            $guestChatText = "phase71-bubble-guest-" + ("abcdefghijklmnopqrstuvwxyz0123456789" * 4)
+        }
+        $guestEnv["MEETING_SMOKE_CHAT_SEND_TEXT"] = $guestChatText
+        $guestEnv["MEETING_SMOKE_CHAT_EXPECT_TEXTS"] = $hostChatText
         $guestEnv["MEETING_SMOKE_CHAT_SEND_DELAY_MS"] = "3000"
     }
     if ($RequireMediaStateSync -or $RequireCameraToggleRecovery) {

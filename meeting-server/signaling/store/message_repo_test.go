@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"testing"
+	"time"
 
 	"meeting-server/signaling/model"
 )
@@ -41,6 +42,46 @@ func TestMessageRepoSaveListAndSearchInMemory(t *testing.T) {
 	}
 	if len(matched) != 2 {
 		t.Fatalf("unexpected search size: got %d want 2", len(matched))
+	}
+}
+
+func TestMessageRepoListByMeetingBeforeTimestamp(t *testing.T) {
+	repo := NewInMemoryMessageRepo()
+	base := time.UnixMilli(1_700_000_000_000).UTC()
+
+	for i := 0; i < 55; i++ {
+		message := &model.Message{
+			MeetingID: 1001,
+			SenderID:  2001,
+			Type:      1,
+			Content:   "page message",
+			CreatedAt: base.Add(time.Duration(i) * time.Millisecond),
+		}
+		if err := repo.Save(context.Background(), message); err != nil {
+			t.Fatalf("save message %d failed: %v", i, err)
+		}
+	}
+
+	latest, err := repo.ListByMeeting(context.Background(), 1001, 50)
+	if err != nil {
+		t.Fatalf("list latest failed: %v", err)
+	}
+	if len(latest) != 50 {
+		t.Fatalf("unexpected latest size: got %d want 50", len(latest))
+	}
+	if latest[0].CreatedAt != base.Add(5*time.Millisecond) || latest[49].CreatedAt != base.Add(54*time.Millisecond) {
+		t.Fatalf("unexpected latest page bounds: first=%s last=%s", latest[0].CreatedAt, latest[49].CreatedAt)
+	}
+
+	older, err := repo.ListByMeeting(context.Background(), 1001, 50, latest[0].CreatedAt.UnixMilli())
+	if err != nil {
+		t.Fatalf("list older failed: %v", err)
+	}
+	if len(older) != 5 {
+		t.Fatalf("unexpected older size: got %d want 5", len(older))
+	}
+	if older[0].CreatedAt != base || older[4].CreatedAt != base.Add(4*time.Millisecond) {
+		t.Fatalf("unexpected older page bounds: first=%s last=%s", older[0].CreatedAt, older[4].CreatedAt)
 	}
 }
 

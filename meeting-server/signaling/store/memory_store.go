@@ -539,9 +539,13 @@ func (s *MemoryStore) SaveMessage(meetingID, senderID string, msgType int32, con
 	return msg
 }
 
-func (s *MemoryStore) ListMessages(meetingID string, limit int) []Message {
+func (s *MemoryStore) ListMessages(meetingID string, limit int, beforeTimestampMs ...int64) []Message {
 	if limit <= 0 {
 		limit = 100
+	}
+	before := int64(0)
+	if len(beforeTimestampMs) > 0 {
+		before = beforeTimestampMs[0]
 	}
 
 	s.mu.RLock()
@@ -552,14 +556,27 @@ func (s *MemoryStore) ListMessages(meetingID string, limit int) []Message {
 		return nil
 	}
 
-	start := 0
-	if len(messages) > limit {
-		start = len(messages) - limit
+	filtered := messages
+	if before > 0 {
+		filtered = make([]Message, 0, len(messages))
+		for _, message := range messages {
+			if message.Timestamp < before {
+				filtered = append(filtered, message)
+			}
+		}
+	}
+	if len(filtered) == 0 {
+		return nil
 	}
 
-	out := make([]Message, 0, len(messages)-start)
-	for i := start; i < len(messages); i++ {
-		out = append(out, messages[i])
+	start := 0
+	if len(filtered) > limit {
+		start = len(filtered) - limit
+	}
+
+	out := make([]Message, 0, len(filtered)-start)
+	for i := start; i < len(filtered); i++ {
+		out = append(out, filtered[i])
 	}
 	return out
 }
