@@ -7,6 +7,7 @@ param(
     [string]$Mode = "both",
     [ValidateRange(10, 300)]
     [int]$TimeoutSeconds = 150,
+    [string]$VideoPreset = "360p",
     [string]$ServerSshTarget = "",
     [string]$ServerComposeDir = "/opt/meeting/meeting-server",
     [switch]$Headless
@@ -59,6 +60,8 @@ foreach ($icePolicy in $runs) {
         SyntheticCamera = $true
         RequireAudio = $true
         RequireVideo = $true
+        RequireMediaStateSync = $true
+        RequireCameraToggleRecovery = $true
         HostAudioSource = "synthetic"
         SubscriberAAudioSource = "synthetic"
         SubscriberBAudioSource = "synthetic"
@@ -74,7 +77,7 @@ foreach ($icePolicy in $runs) {
         ExpectRealCamera = $false
         IcePolicy = $icePolicy
         TimeoutSeconds = $TimeoutSeconds
-        SoakMs = 25000
+        SoakMs = 90000
         SubscriberMediaSoakMs = 25000
         RequireChat = $true
         SubscriberBLaunchDelayMs = 5000
@@ -83,10 +86,24 @@ foreach ($icePolicy in $runs) {
         $params.Headless = $true
     }
 
-    Write-Host "[cloud-triple] >>> ice_policy=$icePolicy server=${ServerHost}:$ServerPort"
-    & $uiScript @params
-    if ($LASTEXITCODE -ne 0) {
-        throw "cloud triple validation failed for ice_policy=$icePolicy, exit_code=$LASTEXITCODE"
+    $previousVideoPreset = [Environment]::GetEnvironmentVariable("MEETING_VIDEO_PRESET", "Process")
+    $hadVideoPreset = $null -ne $previousVideoPreset
+    if (-not [string]::IsNullOrWhiteSpace($VideoPreset)) {
+        $env:MEETING_VIDEO_PRESET = $VideoPreset
+    }
+
+    Write-Host "[cloud-triple] >>> ice_policy=$icePolicy server=${ServerHost}:$ServerPort video_preset=$VideoPreset"
+    try {
+        & $uiScript @params
+        if ($LASTEXITCODE -ne 0) {
+            throw "cloud triple validation failed for ice_policy=$icePolicy, exit_code=$LASTEXITCODE"
+        }
+    } finally {
+        if ($hadVideoPreset) {
+            $env:MEETING_VIDEO_PRESET = $previousVideoPreset
+        } else {
+            Remove-Item Env:\MEETING_VIDEO_PRESET -ErrorAction SilentlyContinue
+        }
     }
     Write-CloudOpsSnapshot -Label "triple-$icePolicy"
     Write-Host "[cloud-triple] <<< ice_policy=$icePolicy passed"

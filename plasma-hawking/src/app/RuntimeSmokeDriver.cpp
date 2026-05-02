@@ -129,6 +129,51 @@ bool hasDecodedVideoFrame(av::render::VideoFrameStore* frameStore) {
     return frame.hasRenderableData();
 }
 
+int modelRoleForName(const QAbstractItemModel* model, const QByteArray& roleName) {
+    if (model == nullptr) {
+        return -1;
+    }
+
+    const auto roles = model->roleNames();
+    for (auto it = roles.constBegin(); it != roles.constEnd(); ++it) {
+        if (it.value() == roleName) {
+            return it.key();
+        }
+    }
+    return -1;
+}
+
+bool participantMediaState(const QAbstractItemModel* model,
+                           const QString& userId,
+                           bool* audioOn,
+                           bool* videoOn) {
+    if (model == nullptr || userId.trimmed().isEmpty()) {
+        return false;
+    }
+
+    const int userIdRole = modelRoleForName(model, QByteArrayLiteral("userId"));
+    const int audioOnRole = modelRoleForName(model, QByteArrayLiteral("audioOn"));
+    const int videoOnRole = modelRoleForName(model, QByteArrayLiteral("videoOn"));
+    if (userIdRole < 0 || audioOnRole < 0 || videoOnRole < 0) {
+        return false;
+    }
+
+    for (int row = 0; row < model->rowCount(); ++row) {
+        const QModelIndex index = model->index(row, 0);
+        if (model->data(index, userIdRole).toString().trimmed() != userId.trimmed()) {
+            continue;
+        }
+        if (audioOn != nullptr) {
+            *audioOn = model->data(index, audioOnRole).toBool();
+        }
+        if (videoOn != nullptr) {
+            *videoOn = model->data(index, videoOnRole).toBool();
+        }
+        return true;
+    }
+    return false;
+}
+
 struct AudioSmokeSnapshot {
     quint64 sentPackets{0};
     quint64 receivedPackets{0};
@@ -324,6 +369,8 @@ RuntimeSmokeDriver::RuntimeSmokeDriver(MeetingController* controller, QObject* p
     , m_requireAudioEvidence(envFlag("MEETING_SMOKE_REQUIRE_AUDIO"))
     , m_requireAvSyncEvidence(envFlag("MEETING_SMOKE_REQUIRE_AVSYNC"))
     , m_requireChatEvidence(envFlag("MEETING_SMOKE_REQUIRE_CHAT"))
+    , m_requireMediaStateSyncEvidence(envFlag("MEETING_SMOKE_REQUIRE_MEDIA_STATE_SYNC") ||
+                                      envFlag("MEETING_SMOKE_REQUIRE_CAMERA_TOGGLE_RECOVERY"))
     , m_disableLocalAudio(envFlag("MEETING_SMOKE_DISABLE_LOCAL_AUDIO"))
     , m_disableLocalVideo(envFlag("MEETING_SMOKE_DISABLE_LOCAL_VIDEO"))
     , m_chatSendText(envValue("MEETING_SMOKE_CHAT_SEND_TEXT").trimmed())
@@ -336,6 +383,11 @@ RuntimeSmokeDriver::RuntimeSmokeDriver(MeetingController* controller, QObject* p
     , m_soakPollIntervalMs(std::max(200, envInt("MEETING_SMOKE_SOAK_POLL_INTERVAL_MS", 1000)))
     , m_cameraStartMaxRetries(std::max(0, envInt("MEETING_SMOKE_CAMERA_START_MAX_RETRIES", 6)))
     , m_cameraStartRetryDelayMs(std::max(100, envInt("MEETING_SMOKE_CAMERA_START_RETRY_DELAY_MS", 500)))
+    , m_mediaStateToggleLocal(envFlag("MEETING_SMOKE_MEDIA_STATE_TOGGLE_LOCAL"))
+    , m_mediaStateInitialDelayMs(std::max(0, envInt("MEETING_SMOKE_MEDIA_STATE_INITIAL_DELAY_MS", 3000)))
+    , m_mediaStateStepDelayMs(std::max(500, envInt("MEETING_SMOKE_MEDIA_STATE_STEP_DELAY_MS", 2000)))
+    , m_mediaStatePeerUserId(envValue("MEETING_SMOKE_MEDIA_STATE_PEER_USER_ID").trimmed())
+    , m_mediaStatePeerUserIdExplicit(!envValue("MEETING_SMOKE_MEDIA_STATE_PEER_USER_ID").trimmed().isEmpty())
     , m_expectedCameraSource([]() {
         const QString configured = normalizeExpectedCameraSource(envValue("MEETING_SMOKE_EXPECT_CAMERA_SOURCE"));
         if (!configured.isEmpty()) {
@@ -371,6 +423,9 @@ RuntimeSmokeDriver::RuntimeSmokeDriver(MeetingController* controller, QObject* p
 
     const int defaultChatSendDelayMs = isHostRole() ? 1000 : 3000;
     m_chatSendDelayMs = std::max(0, envInt("MEETING_SMOKE_CHAT_SEND_DELAY_MS", defaultChatSendDelayMs));
+    if (m_requireMediaStateSyncEvidence && !m_mediaStateToggleLocal && m_mediaStatePeerUserId.isEmpty()) {
+        m_mediaStatePeerUserId = isJoinerRole() ? QStringLiteral("demo") : QStringLiteral("alice");
+    }
 }
 
 bool RuntimeSmokeDriver::isHostRole() const {
@@ -410,6 +465,31 @@ void RuntimeSmokeDriver::start() {
                              [this]() { maybeUpdateChatEvidence(); });
         }
         QTimer::singleShot(100, this, &RuntimeSmokeDriver::maybeUpdateChatEvidence);
+    }
+
+    if (m_requireMediaStateSyncEvidence && !m_mediaStateToggleLocal) {
+        if (auto* participantModel = m_controller->participantModel()) {
+            QObject::connect(participantModel,
+                             &QAbstractItemModel::dataChanged,
+                             this,
+                             [this]() { maybeUpdateMediaStateEvidence(); });
+            QObject::connect(participantModel,
+                             &QAbstractItemModel::rowsInserted,
+                             this,
+                             [this]() { maybeUpdateMediaStateEvidence(); });
+            QObject::connect(participantModel,
+                             &QAbstractItemModel::modelReset,
+                             this,
+                             [this]() { maybeUpdateMediaStateEvidence(); });
+        }
+        QObject::connect(m_controller,
+                         &MeetingController::remoteVideoFrameSourceChanged,
+                         this,
+                         &RuntimeSmokeDriver::maybeUpdateMediaStateEvidence);
+        QObject::connect(m_controller,
+                         &MeetingController::activeVideoPeerUserIdChanged,
+                         this,
+                         &RuntimeSmokeDriver::maybeUpdateMediaStateEvidence);
     }
 
     if (m_requireVideoEvidence) {
@@ -493,6 +573,10 @@ QString RuntimeSmokeDriver::currentStageTag() const {
 
     if (m_requireChatEvidence && !m_chatEvidenceReady) {
         return QStringLiteral("chat_evidence");
+    }
+
+    if (m_requireMediaStateSyncEvidence && !m_mediaStateEvidenceReady) {
+        return QStringLiteral("media_state_evidence");
     }
 
     if (!m_expectedCameraSource.isEmpty() && !m_cameraSourceObserved) {
@@ -598,12 +682,34 @@ QString RuntimeSmokeDriver::avSyncSummary() const {
                                 m_avSyncMaxAbsSkewMs);
 }
 
+QString RuntimeSmokeDriver::mediaStateSummary() const {
+    if (!m_requireMediaStateSyncEvidence && !m_mediaStateValidationStarted && !m_mediaStateEvidenceReady) {
+        return {};
+    }
+
+    return QStringLiteral(
+               "media_state=toggle_local:%1,peer:%2,initial_audio_on:%3,audio_off:%4,audio_restored:%5,initial_video_on:%6,video_off:%7,video_restored:%8,initial_frame:%9,frame_cleared:%10,frame_restored:%11,evidence:%12")
+        .arg(m_mediaStateToggleLocal ? 1 : 0)
+        .arg(m_mediaStatePeerUserId.isEmpty() ? QStringLiteral("<local>") : m_mediaStatePeerUserId)
+        .arg(m_mediaStateInitialAudioOnObserved ? 1 : 0)
+        .arg(m_mediaStateAudioOffObserved ? 1 : 0)
+        .arg(m_mediaStateAudioOnRestored ? 1 : 0)
+        .arg(m_mediaStateInitialVideoOnObserved ? 1 : 0)
+        .arg(m_mediaStateVideoOffObserved ? 1 : 0)
+        .arg(m_mediaStateVideoOnRestored ? 1 : 0)
+        .arg(m_mediaStateInitialVideoFrameObserved ? 1 : 0)
+        .arg(m_mediaStateVideoFrameCleared ? 1 : 0)
+        .arg(m_mediaStateVideoFrameRestored ? 1 : 0)
+        .arg(m_mediaStateEvidenceReady ? 1 : 0);
+}
+
 QString RuntimeSmokeDriver::withStageTag(const QString& reason) const {
     const QString normalizedReason = reason.trimmed().isEmpty() ? QStringLiteral("unknown") : reason.trimmed();
     const QString videoPipeline = videoPipelineSummary();
     const QString audioPipeline = audioPipelineSummary();
     const QString transportPipeline = transportPipelineSummary();
     const QString avSyncPipeline = avSyncSummary();
+    const QString mediaStatePipeline = mediaStateSummary();
     QString annotated = QStringLiteral("stage=%1; reason=%2").arg(currentStageTag(), normalizedReason);
     if (!transportPipeline.isEmpty()) {
         annotated += QStringLiteral("; %1").arg(transportPipeline);
@@ -616,6 +722,9 @@ QString RuntimeSmokeDriver::withStageTag(const QString& reason) const {
     }
     if (!avSyncPipeline.isEmpty()) {
         annotated += QStringLiteral("; %1").arg(avSyncPipeline);
+    }
+    if (!mediaStatePipeline.isEmpty()) {
+        annotated += QStringLiteral("; %1").arg(mediaStatePipeline);
     }
     if (!m_videoEncodeDetail.trimmed().isEmpty()) {
         annotated += QStringLiteral("; video_encode_detail=%1").arg(m_videoEncodeDetail.trimmed());
@@ -819,6 +928,9 @@ void RuntimeSmokeDriver::applyLocalVideoPolicy() {
 }
 
 void RuntimeSmokeDriver::handleStatusTextChanged() {
+    if (m_reportedResult) {
+        return;
+    }
     if (!m_controller) {
         return;
     }
@@ -1053,6 +1165,164 @@ void RuntimeSmokeDriver::maybeUpdateChatEvidence() {
     QTimer::singleShot(100, this, &RuntimeSmokeDriver::maybeUpdateChatEvidence);
 }
 
+void RuntimeSmokeDriver::maybeStartMediaStateValidation(const QString& reason) {
+    if (m_reportedResult || !m_requireMediaStateSyncEvidence || m_mediaStateEvidenceReady) {
+        return;
+    }
+
+    m_pendingSuccessReason = reason.trimmed().isEmpty() ? QStringLiteral("success") : reason.trimmed();
+    if (m_mediaStateValidationStarted) {
+        return;
+    }
+
+    m_mediaStateValidationStarted = true;
+    writeResult(QStringLiteral("WAITING_MEDIA_STATE"),
+                withStageTag(m_mediaStateToggleLocal
+                                 ? QStringLiteral("media state local toggle sequence starting")
+                                 : QStringLiteral("media state observer waiting for peer toggles")));
+
+    if (m_mediaStateToggleLocal) {
+        QTimer::singleShot(m_mediaStateInitialDelayMs, this, &RuntimeSmokeDriver::runMediaStateToggleStep);
+        return;
+    }
+
+    if (m_mediaStatePeerUserIdExplicit && !m_mediaStatePeerUserId.isEmpty() && m_controller) {
+        m_controller->setActiveVideoPeerUserId(m_mediaStatePeerUserId);
+    }
+    maybeUpdateMediaStateEvidence();
+}
+
+void RuntimeSmokeDriver::runMediaStateToggleStep() {
+    if (m_reportedResult || !m_controller || !m_controller->inMeeting()) {
+        return;
+    }
+
+    switch (m_mediaStateToggleStep) {
+    case 0:
+        if (!m_controller->audioMuted()) {
+            m_controller->toggleAudio();
+        }
+        m_mediaStateAudioOffObserved = true;
+        writeResult(QStringLiteral("MEDIA_STATE_TOGGLE"), withStageTag(QStringLiteral("local audio muted")));
+        break;
+    case 1:
+        if (m_controller->audioMuted()) {
+            m_controller->toggleAudio();
+        }
+        m_mediaStateAudioOnRestored = true;
+        writeResult(QStringLiteral("MEDIA_STATE_TOGGLE"), withStageTag(QStringLiteral("local audio unmuted")));
+        break;
+    case 2:
+        if (!m_controller->videoMuted()) {
+            m_controller->toggleVideo();
+        }
+        m_mediaStateVideoOffObserved = true;
+        m_mediaStateVideoFrameCleared = true;
+        writeResult(QStringLiteral("MEDIA_STATE_TOGGLE"), withStageTag(QStringLiteral("local camera muted")));
+        break;
+    case 3:
+        if (m_controller->videoMuted()) {
+            m_controller->toggleVideo();
+        }
+        m_mediaStateVideoOnRestored = true;
+        m_mediaStateVideoFrameRestored = true;
+        writeResult(QStringLiteral("MEDIA_STATE_TOGGLE"), withStageTag(QStringLiteral("local camera unmuted")));
+        break;
+    default:
+        m_mediaStateEvidenceReady = true;
+        writeResult(QStringLiteral("MEDIA_STATE_OK"), withStageTag(QStringLiteral("local media state toggle sequence complete")));
+        maybeCompleteSuccess(m_pendingSuccessReason);
+        return;
+    }
+
+    ++m_mediaStateToggleStep;
+    QTimer::singleShot(m_mediaStateStepDelayMs, this, &RuntimeSmokeDriver::runMediaStateToggleStep);
+}
+
+void RuntimeSmokeDriver::maybeUpdateMediaStateEvidence() {
+    if (m_reportedResult ||
+        !m_requireMediaStateSyncEvidence ||
+        m_mediaStateEvidenceReady ||
+        m_mediaStateToggleLocal ||
+        !m_controller ||
+        !m_controller->inMeeting()) {
+        return;
+    }
+
+    bool audioOn = false;
+    bool videoOn = false;
+    bool hasPeerState = participantMediaState(m_controller->participantModel(),
+                                              m_mediaStatePeerUserId,
+                                              &audioOn,
+                                              &videoOn);
+    if (!hasPeerState && !m_mediaStatePeerUserIdExplicit) {
+        const QString activeVideoPeerUserId = m_controller->activeVideoPeerUserId().trimmed();
+        if (!activeVideoPeerUserId.isEmpty()) {
+            bool activeAudioOn = false;
+            bool activeVideoOn = false;
+            if (participantMediaState(m_controller->participantModel(),
+                                      activeVideoPeerUserId,
+                                      &activeAudioOn,
+                                      &activeVideoOn)) {
+                m_mediaStatePeerUserId = activeVideoPeerUserId;
+                audioOn = activeAudioOn;
+                videoOn = activeVideoOn;
+                hasPeerState = true;
+            }
+        }
+    }
+    auto* frameStore = qobject_cast<av::render::VideoFrameStore*>(
+        m_controller->remoteVideoFrameSourceForUser(m_mediaStatePeerUserId));
+    const bool hasRemoteFrame = hasDecodedVideoFrame(frameStore);
+
+    if (hasPeerState && audioOn && !m_mediaStateAudioOffObserved) {
+        m_mediaStateInitialAudioOnObserved = true;
+    }
+    if (hasPeerState && m_mediaStateInitialAudioOnObserved && !audioOn) {
+        m_mediaStateAudioOffObserved = true;
+        writeResult(QStringLiteral("MEDIA_STATE_OBSERVED"), withStageTag(QStringLiteral("peer audio muted")));
+    }
+    if (hasPeerState && m_mediaStateAudioOffObserved && audioOn) {
+        m_mediaStateAudioOnRestored = true;
+    }
+
+    if (hasPeerState && videoOn && !m_mediaStateVideoOffObserved) {
+        m_mediaStateInitialVideoOnObserved = true;
+    }
+    if (m_mediaStateInitialVideoOnObserved && hasRemoteFrame && !m_mediaStateVideoOffObserved) {
+        m_mediaStateInitialVideoFrameObserved = true;
+    }
+    if (hasPeerState && m_mediaStateInitialVideoOnObserved && !videoOn) {
+        m_mediaStateVideoOffObserved = true;
+        writeResult(QStringLiteral("MEDIA_STATE_OBSERVED"), withStageTag(QStringLiteral("peer camera muted")));
+    }
+    if (m_mediaStateVideoOffObserved && !videoOn && !hasRemoteFrame) {
+        m_mediaStateVideoFrameCleared = true;
+    }
+    if (hasPeerState && m_mediaStateVideoOffObserved && videoOn) {
+        m_mediaStateVideoOnRestored = true;
+    }
+    if (m_mediaStateVideoOnRestored && hasRemoteFrame) {
+        m_mediaStateVideoFrameRestored = true;
+    }
+
+    if (m_mediaStateInitialAudioOnObserved &&
+        m_mediaStateAudioOffObserved &&
+        m_mediaStateAudioOnRestored &&
+        m_mediaStateInitialVideoOnObserved &&
+        m_mediaStateVideoOffObserved &&
+        m_mediaStateVideoOnRestored &&
+        m_mediaStateVideoFrameCleared &&
+        m_mediaStateVideoFrameRestored) {
+        m_mediaStateEvidenceReady = true;
+        writeResult(QStringLiteral("MEDIA_STATE_OK"), withStageTag(QStringLiteral("peer media state sync observed")));
+        maybeCompleteSuccess(m_pendingSuccessReason);
+        return;
+    }
+
+    QTimer::singleShot(200, this, &RuntimeSmokeDriver::maybeUpdateMediaStateEvidence);
+}
+
 void RuntimeSmokeDriver::maybeCompleteSuccess(const QString& reason) {
     if (m_reportedResult) {
         return;
@@ -1115,6 +1385,11 @@ void RuntimeSmokeDriver::maybeCompleteSuccess(const QString& reason) {
         m_pendingSuccessReason = normalizedReason;
         writeResult(QStringLiteral("WAITING_CAMERA_SOURCE"),
                     withStageTag(QStringLiteral("camera source evidence pending: %1").arg(m_expectedCameraSource)));
+        return;
+    }
+
+    if (m_requireMediaStateSyncEvidence && !m_mediaStateEvidenceReady) {
+        maybeStartMediaStateValidation(normalizedReason);
         return;
     }
 

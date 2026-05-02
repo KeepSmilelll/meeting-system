@@ -229,6 +229,22 @@ uint32_t ScreenShareSession::expectedRemoteVideoSsrc() const {
     return m_expectedRemoteVideoSsrc.load(std::memory_order_acquire);
 }
 
+void ScreenShareSession::resetRemoteVideoStream(uint32_t ssrc) {
+    if (ssrc == 0U) {
+        return;
+    }
+
+    {
+        QMutexLocker locker(&m_mutex);
+        if (std::find(m_remoteVideoStreamResetRequests.begin(),
+                      m_remoteVideoStreamResetRequests.end(),
+                      ssrc) == m_remoteVideoStreamResetRequests.end()) {
+            m_remoteVideoStreamResetRequests.push_back(ssrc);
+        }
+    }
+    m_mediaSocket.interruptWaiters();
+}
+
 void ScreenShareSession::setPeer(const std::string& address, uint16_t port) {
     QMutexLocker locker(&m_mutex);
     const bool hadPeerValid = m_mediaSocket.hasPeer();

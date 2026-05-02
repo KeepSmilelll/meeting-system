@@ -150,6 +150,46 @@ QStringList availableAudioInputDevicesForSmoke() {
     return names;
 }
 
+QStringList availableAudioOutputDevicesForSmoke() {
+    QStringList names;
+    const auto outputs = QMediaDevices::audioOutputs();
+    names.reserve(outputs.size());
+    for (const auto& output : outputs) {
+        const QString description = output.description().trimmed();
+        names.push_back(description.isEmpty() ? QString::fromUtf8(output.id()).trimmed() : description);
+    }
+    names.removeDuplicates();
+    return names;
+}
+
+bool containsDeviceName(const QStringList& devices, const QString& preferredDeviceName) {
+    const QString preferred = preferredDeviceName.trimmed();
+    if (preferred.isEmpty()) {
+        return true;
+    }
+
+    for (const QString& device : devices) {
+        if (device.compare(preferred, Qt::CaseInsensitive) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool explicitAudioDeviceMissing(const QString& label,
+                                const QString& preferredDeviceName,
+                                const QStringList& availableDevices) {
+    if (containsDeviceName(availableDevices, preferredDeviceName)) {
+        return false;
+    }
+
+    std::cout << "SKIP explicit audio " << label.toStdString()
+              << " device not found; requested=" << preferredDeviceName.toStdString()
+              << " available=" << availableDevices.join(QStringLiteral(", ")).toStdString()
+              << std::endl;
+    return true;
+}
+
 bool hasVideoInputDevices() {
     if (!QMediaDevices::videoInputs().isEmpty()) {
         return true;
@@ -683,6 +723,18 @@ int main(int argc, char* argv[]) {
     const int runtimeTimeoutForClientMs = runtimeSmokeTimeoutMs(soakDurationMs);
     const int maxWorkingSetGrowthMb = processSmokeMaxWorkingSetGrowthMb(soakDurationMs);
     const int memoryBaselineDelayMs = (std::max)(0, envIntValue("MEETING_PROCESS_SMOKE_MEMORY_BASELINE_DELAY_MS", soakDurationMs > 0 ? 15000 : 0));
+
+    if (!syntheticAudio) {
+        const QStringList availableInputs = availableAudioInputDevicesForSmoke();
+        const QStringList availableOutputs = availableAudioOutputDevicesForSmoke();
+        if (explicitAudioDeviceMissing(QStringLiteral("host input"), hostAudioInputDevice, availableInputs) ||
+            explicitAudioDeviceMissing(QStringLiteral("guest input"), guestAudioInputDevice, availableInputs) ||
+            explicitAudioDeviceMissing(QStringLiteral("host output"), hostAudioOutputDevice, availableOutputs) ||
+            explicitAudioDeviceMissing(QStringLiteral("guest output"), guestAudioOutputDevice, availableOutputs)) {
+            return finishProcessSmoke(tempDir, 77);
+        }
+    }
+
     if (!syntheticAudio && !hasDefaultAudioDevices()) {
         std::cout << "SKIP no default audio input/output available" << std::endl;
         return finishProcessSmoke(tempDir, 77);

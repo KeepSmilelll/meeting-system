@@ -12,6 +12,8 @@ param(
     [bool]$SyntheticCamera = $false,
     [bool]$RequireVideo = $true,
     [switch]$RequireChat,
+    [switch]$RequireMediaStateSync,
+    [switch]$RequireCameraToggleRecovery,
     [bool]$ExpectRealCamera = $true,
     [string]$HostCameraDevice = "",
     [string]$SubscriberACameraDevice = "",
@@ -616,9 +618,9 @@ if ($SoakMs -gt 0) {
 if ($SubscriberMediaSoakMs -gt 0) {
     $clientBaseEnv["MEETING_SMOKE_GUEST_MEDIA_SOAK_MS"] = "$SubscriberMediaSoakMs"
 }
-if ($RequireChat) {
-    $clientBaseEnv["MEETING_SMOKE_REQUIRE_CHAT"] = "1"
-}
+    if ($RequireChat) {
+        $clientBaseEnv["MEETING_SMOKE_REQUIRE_CHAT"] = "1"
+    }
 if ($Headless) {
     $clientBaseEnv["QT_QPA_PLATFORM"] = "offscreen"
 }
@@ -657,6 +659,9 @@ function New-ClientEnv {
         [bool]$UseSyntheticAudio,
         [bool]$UseSyntheticCamera,
         [bool]$ExpectCameraSource,
+        [bool]$RequireMediaStateEvidence,
+        [bool]$ToggleMediaState,
+        [string]$MediaStatePeerUserId,
         [string]$CameraDeviceName,
         [string]$AudioInputDeviceName,
         [string]$AudioOutputDeviceName
@@ -687,6 +692,17 @@ function New-ClientEnv {
         if ($UseSyntheticCamera) { "synthetic-fallback" } else { "real-device" }
     } else {
         ""
+    }
+    if ($RequireMediaStateEvidence) {
+        $envTable["MEETING_SMOKE_REQUIRE_MEDIA_STATE_SYNC"] = "1"
+        $envTable["MEETING_SMOKE_REQUIRE_CAMERA_TOGGLE_RECOVERY"] = "1"
+        if ($ToggleMediaState) {
+            $envTable["MEETING_SMOKE_MEDIA_STATE_TOGGLE_LOCAL"] = "1"
+            $envTable["MEETING_SMOKE_MEDIA_STATE_INITIAL_DELAY_MS"] = "3000"
+            $envTable["MEETING_SMOKE_MEDIA_STATE_STEP_DELAY_MS"] = "2000"
+        } elseif (-not [string]::IsNullOrWhiteSpace($MediaStatePeerUserId)) {
+            $envTable["MEETING_SMOKE_MEDIA_STATE_PEER_USER_ID"] = $MediaStatePeerUserId
+        }
     }
 
     $envTable["MEETING_CAMERA_DEVICE_NAME"] = if (-not [string]::IsNullOrWhiteSpace($CameraDeviceName)) {
@@ -739,15 +755,23 @@ try {
         }
     }
 
-    $hostEnv = New-ClientEnv -Role "host" -Username "demo" -Password "demo" -DbPath (Join-Path $tempRoot "host.sqlite") -ResultPath $hostResultPath -PeerResultPaths "$subscriberAResultPath;$subscriberBResultPath" -ObservedRemoteVideoUserId "" -EnableLocalAudio $HostPublishAudio -DisableLocalAudio (-not $HostPublishAudio) -EnableLocalVideo $HostPublishVideo -DisableLocalVideo (-not $HostPublishVideo) -RequireAudioEvidence ($RequireAudio -and $HostPublishAudio) -RequireVideoEvidence $false -UseSyntheticAudio $hostUsesSyntheticAudio -UseSyntheticCamera $hostUsesSyntheticCamera -ExpectCameraSource ($HostPublishVideo -and $ExpectRealCamera) -CameraDeviceName $HostCameraDevice -AudioInputDeviceName $HostAudioInputDevice -AudioOutputDeviceName $HostAudioOutputDevice
+$requireMediaStateEvidence = $RequireMediaStateSync -or $RequireCameraToggleRecovery
+$hostPeerResultPaths = if ($requireMediaStateEvidence) { "" } else { "$subscriberAResultPath;$subscriberBResultPath" }
+$hostEnv = New-ClientEnv -Role "host" -Username "demo" -Password "demo" -DbPath (Join-Path $tempRoot "host.sqlite") -ResultPath $hostResultPath -PeerResultPaths $hostPeerResultPaths -ObservedRemoteVideoUserId "" -EnableLocalAudio $HostPublishAudio -DisableLocalAudio (-not $HostPublishAudio) -EnableLocalVideo $HostPublishVideo -DisableLocalVideo (-not $HostPublishVideo) -RequireAudioEvidence ($RequireAudio -and $HostPublishAudio) -RequireVideoEvidence $false -UseSyntheticAudio $hostUsesSyntheticAudio -UseSyntheticCamera $hostUsesSyntheticCamera -ExpectCameraSource ($HostPublishVideo -and $ExpectRealCamera) -RequireMediaStateEvidence $requireMediaStateEvidence -ToggleMediaState $requireMediaStateEvidence -MediaStatePeerUserId "" -CameraDeviceName $HostCameraDevice -AudioInputDeviceName $HostAudioInputDevice -AudioOutputDeviceName $HostAudioOutputDevice
     if ($RequireChat) {
         $hostEnv["MEETING_SMOKE_CHAT_SEND_TEXT"] = "cloud-chat-host-history"
         $hostEnv["MEETING_SMOKE_CHAT_EXPECT_TEXTS"] = "cloud-chat-subscriber-a-to-host"
         $hostEnv["MEETING_SMOKE_CHAT_SEND_DELAY_MS"] = "1000"
     }
 
-    $subscriberAEnv = New-ClientEnv -Role "subscriber_a" -Username "alice" -Password "alice" -DbPath (Join-Path $tempRoot "subscriber_a.sqlite") -ResultPath $subscriberAResultPath -PeerResultPaths "" -ObservedRemoteVideoUserId $SubscriberAObservedRemoteVideoUserId -EnableLocalAudio $SubscriberAPublishAudio -DisableLocalAudio (-not $SubscriberAPublishAudio) -EnableLocalVideo $SubscriberAPublishVideo -DisableLocalVideo (-not $SubscriberAPublishVideo) -RequireAudioEvidence ($RequireAudio -and $SubscriberAPublishAudio) -RequireVideoEvidence $RequireVideo -UseSyntheticAudio $subscriberAUsesSyntheticAudio -UseSyntheticCamera $subscriberAUsesSyntheticCamera -ExpectCameraSource ($SubscriberAPublishVideo -and $ExpectRealCamera) -CameraDeviceName $SubscriberACameraDevice -AudioInputDeviceName $SubscriberAAudioInputDevice -AudioOutputDeviceName $SubscriberAAudioOutputDevice
-    $subscriberBEnv = New-ClientEnv -Role "subscriber_b" -Username "bob" -Password "bob" -DbPath (Join-Path $tempRoot "subscriber_b.sqlite") -ResultPath $subscriberBResultPath -PeerResultPaths "" -ObservedRemoteVideoUserId $SubscriberBObservedRemoteVideoUserId -EnableLocalAudio $SubscriberBPublishAudio -DisableLocalAudio (-not $SubscriberBPublishAudio) -EnableLocalVideo $SubscriberBPublishVideo -DisableLocalVideo (-not $SubscriberBPublishVideo) -RequireAudioEvidence ($RequireAudio -and $SubscriberBPublishAudio) -RequireVideoEvidence $RequireVideo -UseSyntheticAudio $subscriberBUsesSyntheticAudio -UseSyntheticCamera $subscriberBUsesSyntheticCamera -ExpectCameraSource ($SubscriberBPublishVideo -and $ExpectRealCamera) -CameraDeviceName $SubscriberBCameraDevice -AudioInputDeviceName $SubscriberBAudioInputDevice -AudioOutputDeviceName $SubscriberBAudioOutputDevice
+$subscriberAEnv = New-ClientEnv -Role "subscriber_a" -Username "alice" -Password "alice" -DbPath (Join-Path $tempRoot "subscriber_a.sqlite") -ResultPath $subscriberAResultPath -PeerResultPaths "" -ObservedRemoteVideoUserId $SubscriberAObservedRemoteVideoUserId -EnableLocalAudio $SubscriberAPublishAudio -DisableLocalAudio (-not $SubscriberAPublishAudio) -EnableLocalVideo $SubscriberAPublishVideo -DisableLocalVideo (-not $SubscriberAPublishVideo) -RequireAudioEvidence ($RequireAudio -and $SubscriberAPublishAudio) -RequireVideoEvidence $RequireVideo -UseSyntheticAudio $subscriberAUsesSyntheticAudio -UseSyntheticCamera $subscriberAUsesSyntheticCamera -ExpectCameraSource ($SubscriberAPublishVideo -and $ExpectRealCamera) -RequireMediaStateEvidence $requireMediaStateEvidence -ToggleMediaState $false -MediaStatePeerUserId "u1001" -CameraDeviceName $SubscriberACameraDevice -AudioInputDeviceName $SubscriberAAudioInputDevice -AudioOutputDeviceName $SubscriberAAudioOutputDevice
+$subscriberBEnv = New-ClientEnv -Role "subscriber_b" -Username "bob" -Password "bob" -DbPath (Join-Path $tempRoot "subscriber_b.sqlite") -ResultPath $subscriberBResultPath -PeerResultPaths "" -ObservedRemoteVideoUserId $SubscriberBObservedRemoteVideoUserId -EnableLocalAudio $SubscriberBPublishAudio -DisableLocalAudio (-not $SubscriberBPublishAudio) -EnableLocalVideo $SubscriberBPublishVideo -DisableLocalVideo (-not $SubscriberBPublishVideo) -RequireAudioEvidence ($RequireAudio -and $SubscriberBPublishAudio) -RequireVideoEvidence $RequireVideo -UseSyntheticAudio $subscriberBUsesSyntheticAudio -UseSyntheticCamera $subscriberBUsesSyntheticCamera -ExpectCameraSource ($SubscriberBPublishVideo -and $ExpectRealCamera) -RequireMediaStateEvidence $requireMediaStateEvidence -ToggleMediaState $false -MediaStatePeerUserId "u1001" -CameraDeviceName $SubscriberBCameraDevice -AudioInputDeviceName $SubscriberBAudioInputDevice -AudioOutputDeviceName $SubscriberBAudioOutputDevice
+    if ($requireMediaStateEvidence) {
+        $subscriberAEnv["MEETING_SMOKE_SOAK_MS"] = "0"
+        $subscriberAEnv["MEETING_SMOKE_GUEST_MEDIA_SOAK_MS"] = "0"
+        $subscriberBEnv["MEETING_SMOKE_SOAK_MS"] = "0"
+        $subscriberBEnv["MEETING_SMOKE_GUEST_MEDIA_SOAK_MS"] = "0"
+    }
     if ($RequireChat) {
         $subscriberAEnv["MEETING_SMOKE_CHAT_SEND_TEXT"] = "cloud-chat-subscriber-a-to-host"
         $subscriberAEnv["MEETING_SMOKE_CHAT_EXPECT_TEXTS"] = "cloud-chat-host-history"

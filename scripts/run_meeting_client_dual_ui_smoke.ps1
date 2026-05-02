@@ -13,6 +13,8 @@ param(
     [switch]$RequireVideo,
     [switch]$RequireAvSync,
     [switch]$RequireChat,
+    [switch]$RequireMediaStateSync,
+    [switch]$RequireCameraToggleRecovery,
     [switch]$ExpectRealCamera,
     [string]$HostCameraDevice = "",
     [string]$GuestCameraDevice = "",
@@ -528,9 +530,13 @@ if ($RequireAvSync) {
         $clientBaseEnv["MEETING_VIDEO_FPS"] = "24"
     }
 }
-if ($RequireChat) {
-    $clientBaseEnv["MEETING_SMOKE_REQUIRE_CHAT"] = "1"
-}
+    if ($RequireChat) {
+        $clientBaseEnv["MEETING_SMOKE_REQUIRE_CHAT"] = "1"
+    }
+    if ($RequireMediaStateSync -or $RequireCameraToggleRecovery) {
+        $clientBaseEnv["MEETING_SMOKE_REQUIRE_MEDIA_STATE_SYNC"] = "1"
+        $clientBaseEnv["MEETING_SMOKE_REQUIRE_CAMERA_TOGGLE_RECOVERY"] = "1"
+    }
 if ($ExpectRealCamera) {
     $clientBaseEnv["MEETING_SMOKE_EXPECT_CAMERA_SOURCE"] = "real-device"
 }
@@ -587,6 +593,11 @@ try {
         $hostEnv["MEETING_SMOKE_CHAT_EXPECT_TEXTS"] = "cloud-chat-guest-to-host"
         $hostEnv["MEETING_SMOKE_CHAT_SEND_DELAY_MS"] = "1000"
     }
+    if ($RequireMediaStateSync -or $RequireCameraToggleRecovery) {
+        $hostEnv["MEETING_SMOKE_MEDIA_STATE_TOGGLE_LOCAL"] = "1"
+        $hostEnv["MEETING_SMOKE_MEDIA_STATE_INITIAL_DELAY_MS"] = "3000"
+        $hostEnv["MEETING_SMOKE_MEDIA_STATE_STEP_DELAY_MS"] = "2000"
+    }
     if ($SyntheticCamera) {
         $hostEnv["MEETING_SYNTHETIC_CAMERA"] = "1"
         $hostEnv["MEETING_SMOKE_EXPECT_CAMERA_SOURCE"] = "synthetic-fallback"
@@ -622,6 +633,9 @@ try {
         $guestEnv["MEETING_SMOKE_CHAT_SEND_TEXT"] = "cloud-chat-guest-to-host"
         $guestEnv["MEETING_SMOKE_CHAT_EXPECT_TEXTS"] = "cloud-chat-host-to-guest"
         $guestEnv["MEETING_SMOKE_CHAT_SEND_DELAY_MS"] = "3000"
+    }
+    if ($RequireMediaStateSync -or $RequireCameraToggleRecovery) {
+        $guestEnv["MEETING_SMOKE_MEDIA_STATE_PEER_USER_ID"] = "u1001"
     }
     if ($SyntheticCamera -or $SingleRealCamera) {
         $guestEnv["MEETING_SYNTHETIC_CAMERA"] = "1"

@@ -1,7 +1,9 @@
 param(
     [string]$BuildDir = "D:\meeting\plasma-hawking\build",
     [switch]$UseSyntheticCamera,
-    [switch]$UseSingleRealAudio
+    [switch]$RequireRealCamera,
+    [switch]$UseSingleRealAudio,
+    [switch]$RequireDualRealAudio
 )
 
 Set-StrictMode -Version Latest
@@ -29,8 +31,8 @@ $cases = @(
 
 $baseEnv = @{
     "MEETING_PROCESS_SMOKE_SYNTHETIC_AUDIO" = "0"
-    "MEETING_PROCESS_SMOKE_SYNTHETIC_CAMERA" = $(if ($UseSyntheticCamera.IsPresent) { "1" } else { "0" })
-    "MEETING_PROCESS_SMOKE_SINGLE_REAL_AUDIO" = $(if ($UseSingleRealAudio.IsPresent) { "1" } else { "0" })
+    "MEETING_PROCESS_SMOKE_SYNTHETIC_CAMERA" = $(if ($UseSyntheticCamera.IsPresent -or -not $RequireRealCamera.IsPresent) { "1" } else { "0" })
+    "MEETING_PROCESS_SMOKE_SINGLE_REAL_AUDIO" = $(if ($UseSingleRealAudio.IsPresent -or -not $RequireDualRealAudio.IsPresent) { "1" } else { "0" })
 }
 
 $allKnownKeys = @(
@@ -66,6 +68,8 @@ try {
         Write-Host ("[audio-device-matrix] ===== case={0} =====" -f $case.Name)
         Write-Host ("[audio-device-matrix]   host_input={0}" -f $case.HostInput)
         Write-Host ("[audio-device-matrix]   host_output={0}" -f $case.HostOutput)
+        Write-Host ("[audio-device-matrix]   synthetic_camera={0}" -f $baseEnv["MEETING_PROCESS_SMOKE_SYNTHETIC_CAMERA"])
+        Write-Host ("[audio-device-matrix]   single_real_audio={0}" -f $baseEnv["MEETING_PROCESS_SMOKE_SINGLE_REAL_AUDIO"])
 
         $sw = [System.Diagnostics.Stopwatch]::StartNew()
         & $smokeExe
@@ -113,4 +117,3 @@ if ($failCount -gt 0) {
 }
 
 exit 0
-

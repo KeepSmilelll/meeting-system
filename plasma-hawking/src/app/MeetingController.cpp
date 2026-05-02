@@ -2261,6 +2261,9 @@ void MeetingController::updateRemoteVideoSsrcMappings() {
             continue;
         }
 
+        if (m_screenShareSession) {
+            m_screenShareSession->resetRemoteVideoStream(it.value());
+        }
         if (auto storeIt = m_remoteVideoFrameStoresByPeer.find(it.key()); storeIt != m_remoteVideoFrameStoresByPeer.end() && storeIt.value() != nullptr) {
             storeIt.value()->clear();
         }

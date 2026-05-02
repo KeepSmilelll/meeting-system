@@ -609,6 +609,25 @@ void ScreenShareSession::recvLoop() {
         }
     };
 
+    const auto resetRequestedRecvPeerWorkers = [this, &recvPeerWorkers]() {
+        std::vector<uint32_t> resetRequests;
+        {
+            QMutexLocker locker(&m_mutex);
+            resetRequests.swap(m_remoteVideoStreamResetRequests);
+        }
+
+        for (const uint32_t remoteMediaSsrc : resetRequests) {
+            const auto it = recvPeerWorkers.find(remoteMediaSsrc);
+            if (it == recvPeerWorkers.end()) {
+                continue;
+            }
+            if (it->second) {
+                it->second->stop();
+            }
+            recvPeerWorkers.erase(it);
+        }
+    };
+
     const auto enqueueKeyFrameRequest = [&pendingKeyFrameMutex, &pendingKeyFrameRequests](
                                             uint32_t remoteMediaSsrc,
                                             std::string reason) {
@@ -803,6 +822,7 @@ void ScreenShareSession::recvLoop() {
 
     while (m_running.load(std::memory_order_acquire)) {
         flushPendingKeyFrameRequests();
+        resetRequestedRecvPeerWorkers();
         const uint32_t expectedRemoteSsrc =
             m_expectedRemoteVideoSsrc.load(std::memory_order_acquire);
         pruneRecvPeerWorkers(steadyNowMs(), expectedRemoteSsrc);

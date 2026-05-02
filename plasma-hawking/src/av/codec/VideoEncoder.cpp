@@ -139,6 +139,37 @@ bool annexBPayloadHasParameterSets(const std::vector<uint8_t>& payload) {
     return hasSps && hasPps;
 }
 
+bool annexBPayloadHasIdr(const std::vector<uint8_t>& payload) {
+    if (payload.empty()) {
+        return false;
+    }
+
+    std::size_t start = 0;
+    std::size_t prefixSize = 0;
+    std::size_t cursor = 0;
+    while (findAnnexBStartCode(payload.data(), payload.size(), cursor, start, prefixSize)) {
+        const std::size_t naluStart = start + prefixSize;
+        if (naluStart < payload.size()) {
+            const uint8_t nalType = static_cast<uint8_t>(payload[naluStart] & 0x1FU);
+            if (nalType == 5U) {
+                return true;
+            }
+        }
+
+        if (naluStart >= payload.size()) {
+            break;
+        }
+        cursor = naluStart + 1U;
+    }
+
+    if (!hasAnnexBStartCode(payload)) {
+        const uint8_t nalType = static_cast<uint8_t>(payload[0] & 0x1FU);
+        return nalType == 5U;
+    }
+
+    return false;
+}
+
 std::vector<uint8_t> buildAnnexBParameterSetsFromExtradata(const uint8_t* extradata, int extradataSize) {
     std::vector<uint8_t> parameterSets;
     if (extradata == nullptr || extradataSize <= 0) {
@@ -853,7 +884,9 @@ bool VideoEncoder::receivePacket(int64_t fallbackPts, EncodedVideoFrame& outFram
         if (!receivedPacket && packet->pts != AV_NOPTS_VALUE) {
             outFrame.pts = packet->pts;
         }
-        outFrame.keyFrame = outFrame.keyFrame || ((packet->flags & AV_PKT_FLAG_KEY) != 0);
+        outFrame.keyFrame = outFrame.keyFrame ||
+                            ((packet->flags & AV_PKT_FLAG_KEY) != 0) ||
+                            annexBPayloadHasIdr(annexBPayload);
         accessUnit.insert(accessUnit.end(), annexBPayload.begin(), annexBPayload.end());
         receivedPacket = true;
     }

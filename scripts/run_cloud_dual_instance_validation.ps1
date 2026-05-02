@@ -63,6 +63,8 @@ foreach ($icePolicy in $runs) {
         RequireVideo = $true
         RequireAvSync = $true
         RequireChat = $true
+        RequireMediaStateSync = $true
+        RequireCameraToggleRecovery = $true
         IcePolicy = $icePolicy
         TimeoutSeconds = $TimeoutSeconds
         GuestLaunchDelayMs = $GuestLaunchDelayMs

@@ -67,6 +67,7 @@ public:
     std::string preferredCameraDeviceName() const;
     void setExpectedRemoteVideoSsrc(uint32_t ssrc);
     uint32_t expectedRemoteVideoSsrc() const;
+    void resetRemoteVideoStream(uint32_t ssrc);
 
     void setPeer(const std::string& address, uint16_t port);
     bool configureTurnRelay(const std::string& turnAddress,
@@ -150,6 +151,7 @@ private:
     std::atomic<uint64_t> m_targetBitrateUpdatedAtMs{0};
     std::atomic<bool> m_forceKeyFramePending{false};
     std::atomic<uint32_t> m_expectedRemoteVideoSsrc{0};
+    std::vector<uint32_t> m_remoteVideoStreamResetRequests;
     std::atomic<uint32_t> m_configuredVideoSsrc{0};
     std::atomic<bool> m_dtlsStarted{false};
     std::atomic<bool> m_iceConnected{false};
