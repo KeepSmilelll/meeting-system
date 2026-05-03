@@ -16,6 +16,26 @@ bool VideoRtcpFeedbackPipeline::parseFeedback(const uint8_t* data,
     }
 
     for (const auto& slice : slices) {
+        if (m_rtcpHandler.isReceiverReport(slice.header)) {
+            media::RTCPReceiverReport rr{};
+            if (!m_rtcpHandler.parseReceiverReport(data + slice.offset, slice.size, rr)) {
+                continue;
+            }
+            for (const auto& block : rr.reportBlocks) {
+                if (localSsrc == 0U || block.sourceSsrc != localSsrc) {
+                    continue;
+                }
+                VideoRtcpFeedbackEvent event{};
+                event.kind = VideoRtcpFeedbackEventKind::ReceiverReport;
+                event.mediaSsrc = block.sourceSsrc;
+                event.fractionLost = block.fractionLost;
+                event.lastSenderReport = block.lastSenderReport;
+                event.delaySinceLastSenderReport = block.delaySinceLastSenderReport;
+                outEvents.push_back(event);
+            }
+            continue;
+        }
+
         if (!m_rtcpHandler.isFeedbackPacket(slice.header)) {
             continue;
         }

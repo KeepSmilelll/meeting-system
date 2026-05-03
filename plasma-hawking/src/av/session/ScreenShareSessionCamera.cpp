@@ -267,6 +267,25 @@ bool ScreenShareSession::setCameraSendingEnabled(bool enabled) {
                                  m_targetBitrateUpdatedAtMs,
                                  static_cast<uint32_t>(m_config.bitrate),
                                  steadyNowMs());
+            {
+                QMutexLocker locker(&m_mutex);
+                const uint64_t nowMs = steadyNowMs();
+                m_videoBwePolicy.reset(VideoBwePolicyConfig{
+                                           m_config.width,
+                                           m_config.height,
+                                           m_config.frameRate,
+                                           static_cast<uint32_t>((std::max)(1000, m_config.bitrate)),
+                                       },
+                                       nowMs);
+                const VideoBwePolicyTarget& target = m_videoBwePolicy.target();
+                m_adaptiveVideoWidth.store(target.width, std::memory_order_release);
+                m_adaptiveVideoHeight.store(target.height, std::memory_order_release);
+                m_adaptiveVideoFrameRate.store(target.frameRate, std::memory_order_release);
+                m_adaptiveVideoSuspended.store(target.videoSuspended, std::memory_order_release);
+                m_adaptiveJitterTargetMs.store(target.jitterTargetMs, std::memory_order_release);
+                m_adaptiveTurnRelayRequested.store(false, std::memory_order_release);
+                m_adaptiveProfileVersion.store(target.version, std::memory_order_release);
+            }
             const auto sendStartPlan = VideoThreadLifecycleStateMachine::planSendThreadStart(
                 startSendThread, m_threadRuntime.sendJoinable());
             if (sendStartPlan.shouldStartSendThread) {

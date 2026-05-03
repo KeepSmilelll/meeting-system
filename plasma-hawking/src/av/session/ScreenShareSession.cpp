@@ -44,10 +44,21 @@ uint64_t steadyNowMs() {
 ScreenShareSession::ScreenShareSession(ScreenShareSessionConfig config)
     : m_config(std::move(config)),
       m_cameraRelay(std::make_shared<CameraFrameRelay>(m_config.width, m_config.height, m_config.frameRate)),
+      m_videoBwePolicy(VideoBwePolicyConfig{
+          m_config.width,
+          m_config.height,
+          m_config.frameRate,
+          static_cast<uint32_t>((std::max)(1000, m_config.bitrate)),
+      }),
       m_sender(0, 0) {
-    m_targetBitrateBps.store(static_cast<uint32_t>((std::max)(1000, m_config.bitrate)), std::memory_order_release);
-    m_appliedBitrateBps.store(static_cast<uint32_t>((std::max)(1000, m_config.bitrate)), std::memory_order_release);
+    const uint32_t initialBitrate =
+        static_cast<uint32_t>((std::max)(1000, m_config.bitrate));
+    m_targetBitrateBps.store(initialBitrate, std::memory_order_release);
+    m_appliedBitrateBps.store(initialBitrate, std::memory_order_release);
     m_targetBitrateUpdatedAtMs.store(steadyNowMs(), std::memory_order_release);
+    m_adaptiveVideoWidth.store(m_config.width, std::memory_order_release);
+    m_adaptiveVideoHeight.store(m_config.height, std::memory_order_release);
+    m_adaptiveVideoFrameRate.store(m_config.frameRate, std::memory_order_release);
 }
 
 ScreenShareSession::~ScreenShareSession() {
@@ -169,6 +180,25 @@ bool ScreenShareSession::setSharingEnabled(bool enabled) {
                                  m_targetBitrateUpdatedAtMs,
                                  static_cast<uint32_t>(m_config.bitrate),
                                  steadyNowMs());
+            {
+                QMutexLocker locker(&m_mutex);
+                const uint64_t nowMs = steadyNowMs();
+                m_videoBwePolicy.reset(VideoBwePolicyConfig{
+                                           m_config.width,
+                                           m_config.height,
+                                           m_config.frameRate,
+                                           static_cast<uint32_t>((std::max)(1000, m_config.bitrate)),
+                                       },
+                                       nowMs);
+                const VideoBwePolicyTarget& target = m_videoBwePolicy.target();
+                m_adaptiveVideoWidth.store(target.width, std::memory_order_release);
+                m_adaptiveVideoHeight.store(target.height, std::memory_order_release);
+                m_adaptiveVideoFrameRate.store(target.frameRate, std::memory_order_release);
+                m_adaptiveVideoSuspended.store(target.videoSuspended, std::memory_order_release);
+                m_adaptiveJitterTargetMs.store(target.jitterTargetMs, std::memory_order_release);
+                m_adaptiveTurnRelayRequested.store(false, std::memory_order_release);
+                m_adaptiveProfileVersion.store(target.version, std::memory_order_release);
+            }
             const auto sendStartPlan = VideoThreadLifecycleStateMachine::planSendThreadStart(
                 startSendThread, m_threadRuntime.sendJoinable());
             if (sendStartPlan.shouldStartSendThread) {
@@ -585,6 +615,11 @@ void ScreenShareSession::setStatusCallback(std::function<void(std::string)> call
     m_statusCallback = std::move(callback);
 }
 
+void ScreenShareSession::setAdaptiveTurnRelayRequestCallback(std::function<void()> callback) {
+    QMutexLocker locker(&m_mutex);
+    m_adaptiveTurnRelayRequestCallback = std::move(callback);
+}
+
 uint16_t ScreenShareSession::localPort() const {
     QMutexLocker locker(&m_mutex);
     return m_mediaSocket.localPort();
@@ -633,6 +668,30 @@ uint32_t ScreenShareSession::targetBitrateBps() const {
 
 uint32_t ScreenShareSession::appliedBitrateBps() const {
     return m_appliedBitrateBps.load(std::memory_order_acquire);
+}
+
+int ScreenShareSession::adaptiveVideoWidth() const {
+    return m_adaptiveVideoWidth.load(std::memory_order_acquire);
+}
+
+int ScreenShareSession::adaptiveVideoHeight() const {
+    return m_adaptiveVideoHeight.load(std::memory_order_acquire);
+}
+
+int ScreenShareSession::adaptiveVideoFrameRate() const {
+    return m_adaptiveVideoFrameRate.load(std::memory_order_acquire);
+}
+
+bool ScreenShareSession::adaptiveVideoSuspended() const {
+    return m_adaptiveVideoSuspended.load(std::memory_order_acquire);
+}
+
+uint32_t ScreenShareSession::adaptiveJitterTargetMs() const {
+    return m_adaptiveJitterTargetMs.load(std::memory_order_acquire);
+}
+
+bool ScreenShareSession::adaptiveTurnRelayRequested() const {
+    return m_adaptiveTurnRelayRequested.load(std::memory_order_acquire);
 }
 
 }  // namespace av::session

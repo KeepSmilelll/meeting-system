@@ -15,6 +15,7 @@
 #include "VideoSendTelemetryPipeline.h"
 #include "VideoSessionStateMachine.h"
 
+#include "net/media/RTCPHandler.h"
 #include "net/media/SocketAddressUtils.h"
 
 #include <QDebug>
@@ -31,6 +32,7 @@
 #include <functional>
 #include <memory>
 #include <limits>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -67,6 +69,40 @@ constexpr uint64_t kRecvPeerWorkerIdleTimeoutMs = 30 * 1000U;
 constexpr std::size_t kRecvWorkerPollBudgetAfterPacket = 2U;
 constexpr std::size_t kRecvWorkerPollBudgetWhenIdle = 2U;
 constexpr std::size_t kRecvWorkerPollBudgetOnStop = 8U;
+constexpr uint64_t kVideoSenderReportIntervalMs = 1000U;
+
+uint64_t ntpNow() {
+    constexpr uint64_t kNtpUnixEpochOffsetSeconds = 2208988800ULL;
+    const auto now = std::chrono::system_clock::now();
+    const auto sinceEpoch = now.time_since_epoch();
+    const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(sinceEpoch);
+    const auto nanoseconds =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(sinceEpoch - seconds);
+    const uint64_t ntpSeconds =
+        static_cast<uint64_t>(seconds.count()) + kNtpUnixEpochOffsetSeconds;
+    const uint64_t ntpFraction =
+        (static_cast<uint64_t>(nanoseconds.count()) << 32U) / 1000000000ULL;
+    return (ntpSeconds << 32U) | ntpFraction;
+}
+
+uint32_t compactNtp(uint64_t ntpTimestamp) {
+    return static_cast<uint32_t>((ntpTimestamp >> 16U) & 0xFFFFFFFFU);
+}
+
+bool computeRttFromReceiverReport(uint32_t lastSenderReport,
+                                  uint32_t delaySinceLastSenderReport,
+                                  uint32_t* outRttMs) {
+    if (lastSenderReport == 0U || outRttMs == nullptr) {
+        return false;
+    }
+    const uint32_t arrival = compactNtp(ntpNow());
+    const uint32_t rttUnits = arrival - lastSenderReport - delaySinceLastSenderReport;
+    const uint64_t rttMs = (static_cast<uint64_t>(rttUnits) * 1000ULL) / 65536ULL;
+    *outRttMs = rttMs > static_cast<uint64_t>(std::numeric_limits<uint32_t>::max())
+        ? std::numeric_limits<uint32_t>::max()
+        : static_cast<uint32_t>(rttMs);
+    return true;
+}
 
 class VideoRecvPeerRuntime final {
 public:
@@ -78,10 +114,13 @@ public:
 
     VideoRecvPeerRuntime(uint32_t remoteMediaSsrc,
                          VideoRecvPipelineConfig recvPipelineConfig,
+                         std::atomic<uint32_t>& adaptiveJitterTargetMs,
                          PacketOutcomeCallback packetOutcomeCallback,
                          PollOutcomeCallback pollOutcomeCallback)
         : m_remoteMediaSsrc(remoteMediaSsrc),
+          m_expectedFrameRate(std::max(1, recvPipelineConfig.frameRate)),
           m_recvPipeline(std::move(recvPipelineConfig)),
+          m_adaptiveJitterTargetMs(adaptiveJitterTargetMs),
           m_packetOutcomeCallback(std::move(packetOutcomeCallback)),
           m_pollOutcomeCallback(std::move(pollOutcomeCallback)),
           m_lastActiveAtMs(steadyNowMs()) {}
@@ -154,6 +193,19 @@ private:
                     !m_stopping.load(std::memory_order_acquire)) {
                     m_waitCondition.wait(&m_mutex, 20);
                 }
+                const uint32_t jitterTargetMs = m_adaptiveJitterTargetMs.load(std::memory_order_acquire);
+                const std::size_t minBufferedPackets =
+                    jitterTargetMs >= 100U
+                        ? std::max<std::size_t>(1U, static_cast<std::size_t>(
+                                                       (m_expectedFrameRate * jitterTargetMs + 999U) /
+                                                       1000U))
+                        : 0U;
+                if (!m_stopping.load(std::memory_order_acquire) &&
+                    minBufferedPackets > 0U &&
+                    !m_pendingPackets.empty() &&
+                    m_pendingPackets.size() < minBufferedPackets) {
+                    m_waitCondition.wait(&m_mutex, jitterTargetMs);
+                }
                 if (m_stopping.load(std::memory_order_acquire) &&
                     m_pendingPackets.empty()) {
                     break;
@@ -211,8 +263,10 @@ private:
     }
 
     const uint32_t m_remoteMediaSsrc{0U};
+    const int m_expectedFrameRate{5};
     VideoRecvConsumePipeline m_recvConsumePipeline;
     VideoRecvPipeline m_recvPipeline;
+    std::atomic<uint32_t>& m_adaptiveJitterTargetMs;
     PacketOutcomeCallback m_packetOutcomeCallback;
     PollOutcomeCallback m_pollOutcomeCallback;
 
@@ -264,6 +318,32 @@ bool ScreenShareSession::applyRtcpDispatchPlanLocked(
     }
 
     bool handled = false;
+    const auto publishAdaptiveTarget = [this]() {
+        const VideoBwePolicyTarget& target = m_videoBwePolicy.target();
+        const uint32_t previousTarget =
+            m_targetBitrateBps.exchange(target.bitrateBps, std::memory_order_acq_rel);
+        if (previousTarget != target.bitrateBps) {
+            m_targetBitrateUpdatedAtMs.store(steadyNowMs(), std::memory_order_release);
+        }
+
+        const bool wasSuspended = m_adaptiveVideoSuspended.exchange(
+            target.videoSuspended, std::memory_order_acq_rel);
+        m_adaptiveVideoWidth.store(target.width, std::memory_order_release);
+        m_adaptiveVideoHeight.store(target.height, std::memory_order_release);
+        m_adaptiveVideoFrameRate.store(target.frameRate, std::memory_order_release);
+        m_adaptiveJitterTargetMs.store(target.jitterTargetMs, std::memory_order_release);
+        m_adaptiveProfileVersion.store(target.version, std::memory_order_release);
+        if (wasSuspended && !target.videoSuspended) {
+            m_forceKeyFramePending.store(true, std::memory_order_release);
+        }
+
+        if (target.requestTurnRelay) {
+            m_adaptiveTurnRelayRequested.store(true, std::memory_order_release);
+            if (m_adaptiveTurnRelayRequestCallback) {
+                m_adaptiveTurnRelayRequestCallback();
+            }
+        }
+    };
     for (const uint16_t sequenceNumber : dispatchPlan.retransmitSequenceNumbers) {
         std::string retransmitError;
         if (!m_rtcpActionPipeline.retransmitPacket(sequenceNumber, m_mediaSocket, &retransmitError)) {
@@ -283,11 +363,20 @@ bool ScreenShareSession::applyRtcpDispatchPlanLocked(
     }
 
     if (dispatchPlan.hasTargetBitrate) {
-        const uint32_t previousTarget =
-            m_targetBitrateBps.exchange(dispatchPlan.targetBitrateBps, std::memory_order_acq_rel);
-        if (previousTarget != dispatchPlan.targetBitrateBps) {
-            m_targetBitrateUpdatedAtMs.store(steadyNowMs(), std::memory_order_release);
-        }
+        (void)m_videoBwePolicy.onRembTarget(dispatchPlan.targetBitrateBps, steadyNowMs());
+        publishAdaptiveTarget();
+        handled = true;
+    }
+
+    for (const auto& report : dispatchPlan.receiverReports) {
+        VideoBwePolicySample sample{};
+        sample.fractionLost = report.fractionLost;
+        sample.nowMs = steadyNowMs();
+        sample.hasRtt = computeRttFromReceiverReport(report.lastSenderReport,
+                                                     report.delaySinceLastSenderReport,
+                                                     &sample.rttMs);
+        (void)m_videoBwePolicy.onReceiverReport(sample);
+        publishAdaptiveTarget();
         handled = true;
     }
 
@@ -399,7 +488,7 @@ void ScreenShareSession::captureLoop() {
 
 void ScreenShareSession::sendLoop() {
     av::codec::VideoEncoder encoder;
-    const VideoSendPipeline sendPipeline(
+    VideoSendPipeline sendPipeline(
         VideoSendPipelineConfig{m_config.frameRate, m_config.maxPayloadBytes});
     if (!encoder.configure(m_config.width,
                            m_config.height,
@@ -422,6 +511,11 @@ void ScreenShareSession::sendLoop() {
 
     VideoSendTelemetryPipeline sendTelemetryPipeline;
     VideoSendTelemetryState sendTelemetryState;
+    media::RTCPHandler rtcpHandler;
+    uint64_t lastSenderReportAtMs = 0U;
+    uint32_t lastRtpTimestamp = 0U;
+    uint32_t rtpPacketCount = 0U;
+    uint32_t rtpOctetCount = 0U;
     const auto statusCallback = [this]() {
         QMutexLocker locker(&m_mutex);
         return m_statusCallback;
@@ -472,28 +566,105 @@ void ScreenShareSession::sendLoop() {
             continue;
         }
 
-        std::string bitrateError;
-        if (!maybeApplyTargetBitrate(encoder,
-                                     m_targetBitrateBps,
-                                     m_appliedBitrateBps,
-                                     m_bitrateReconfigureCount,
-                                     m_targetBitrateUpdatedAtMs,
-                                     m_lastBitrateApplyDelayMs,
-                                     steadyNowMs(),
-                                     &bitrateError)) {
-            QMutexLocker locker(&m_mutex);
-            setErrorLocked(bitrateError.empty() ? "video encoder bitrate update failed" : bitrateError);
+        const uint8_t payloadType = source == VideoSendSource::Screen ? m_config.payloadType
+                                                                      : m_config.cameraPayloadType;
+        const int targetWidth = m_adaptiveVideoWidth.load(std::memory_order_acquire) > 0
+            ? m_adaptiveVideoWidth.load(std::memory_order_acquire)
+            : m_config.width;
+        const int targetHeight = m_adaptiveVideoHeight.load(std::memory_order_acquire) > 0
+            ? m_adaptiveVideoHeight.load(std::memory_order_acquire)
+            : m_config.height;
+        const int targetFrameRate = m_adaptiveVideoFrameRate.load(std::memory_order_acquire) > 0
+            ? m_adaptiveVideoFrameRate.load(std::memory_order_acquire)
+            : m_config.frameRate;
+        const uint32_t targetBitrate = m_targetBitrateBps.load(std::memory_order_acquire);
+        const bool videoSuspended = m_adaptiveVideoSuspended.load(std::memory_order_acquire);
+
+        const auto maybeSendSenderReport = [&]() {
+            const uint64_t nowMs = steadyNowMs();
+            if (lastSenderReportAtMs != 0U &&
+                nowMs - lastSenderReportAtMs < kVideoSenderReportIntervalMs) {
+                return;
+            }
+            media::RTCPSenderReport report{};
+            report.senderSsrc = m_sender.ssrc();
+            if (report.senderSsrc == 0U) {
+                return;
+            }
+            report.ntpTimestamp = ntpNow();
+            report.rtpTimestamp = lastRtpTimestamp;
+            report.packetCount = rtpPacketCount;
+            report.octetCount = rtpOctetCount;
+            std::vector<uint8_t> senderReport = rtcpHandler.buildSenderReport(report);
+            if (senderReport.empty()) {
+                return;
+            }
+            {
+                QMutexLocker locker(&m_mutex);
+                if (!protectRtcpLocked(&senderReport)) {
+                    return;
+                }
+            }
+            const int sent = m_mediaSocket.sendTo(senderReport.data(), senderReport.size(), peer);
+            if (sent == static_cast<int>(senderReport.size())) {
+                lastSenderReportAtMs = nowMs;
+            }
+        };
+
+        if (videoSuspended) {
+            maybeSendSenderReport();
             continue;
         }
+
+        std::string bitrateError;
+        if (!maybeApplyAdaptiveEncoderProfile(encoder,
+                                              targetWidth,
+                                              targetHeight,
+                                              targetFrameRate,
+                                              targetBitrate,
+                                              payloadType,
+                                              m_config.encoderPreset,
+                                              m_appliedBitrateBps,
+                                              m_bitrateReconfigureCount,
+                                              m_targetBitrateUpdatedAtMs,
+                                              m_lastBitrateApplyDelayMs,
+                                              steadyNowMs(),
+                                              &bitrateError)) {
+            QMutexLocker locker(&m_mutex);
+            setErrorLocked(bitrateError.empty() ? "video encoder adaptive profile update failed" : bitrateError);
+            continue;
+        }
+        sendPipeline = VideoSendPipeline(VideoSendPipelineConfig{targetFrameRate, m_config.maxPayloadBytes});
 
         const bool forceKeyFrame = m_forceKeyFramePending.exchange(false, std::memory_order_acq_rel);
         std::vector<VideoSendPipelinePacket> packets;
         std::string pipelineError;
         bool encodedKeyFrame = false;
-        const uint8_t payloadType = source == VideoSendSource::Screen ? m_config.payloadType
-                                                                      : m_config.cameraPayloadType;
+        VideoSendPipelineInputFrame adaptedFrame;
+        const VideoSendPipelineInputFrame* frameForEncode = &capturedFrame.inputFrame;
+        const bool frameAlreadyMatches =
+            (capturedFrame.inputFrame.hasAvFrame() &&
+             capturedFrame.inputFrame.avFrame->width == encoder.width() &&
+             capturedFrame.inputFrame.avFrame->height == encoder.height()) ||
+            (capturedFrame.inputFrame.hasScreenFrame() &&
+             capturedFrame.inputFrame.screenFrame.width == encoder.width() &&
+             capturedFrame.inputFrame.screenFrame.height == encoder.height());
+        if (!frameAlreadyMatches) {
+            std::string adaptError;
+            if (!adaptVideoSendInputFrame(capturedFrame.inputFrame,
+                                          encoder.width(),
+                                          encoder.height(),
+                                          adaptedFrame,
+                                          &adaptError)) {
+                sendTelemetryPipeline.onEncodeError(sendTelemetryState, adaptError, statusCallback);
+                QMutexLocker locker(&m_mutex);
+                setErrorLocked(adaptError.empty() ? "video adaptive frame prepare failed" : adaptError);
+                continue;
+            }
+            frameForEncode = &adaptedFrame;
+        }
         if (!sendPipeline.encodeAndPacketize(encoder,
-                                             capturedFrame.inputFrame,
+                                             *frameForEncode,
                                              payloadType,
                                              forceKeyFrame,
                                              m_sender,
@@ -538,12 +709,19 @@ void ScreenShareSession::sendLoop() {
                 break;
             }
             m_sentPacketCount.fetch_add(1, std::memory_order_acq_rel);
+            ++rtpPacketCount;
+            const uint32_t payloadOctets = packet.bytes.size() > media::kRtpMinHeaderSize
+                ? static_cast<uint32_t>(packet.bytes.size() - media::kRtpMinHeaderSize)
+                : 0U;
+            rtpOctetCount += payloadOctets;
+            lastRtpTimestamp = packet.timestamp;
             {
                 QMutexLocker locker(&m_mutex);
                 m_rtcpActionPipeline.cacheSentPacket(packet.sequenceNumber, outboundPacket);
             }
             sendTelemetryPipeline.onPacketSent(sendTelemetryState, packet, statusCallback);
         }
+        maybeSendSenderReport();
     }
 }
 
@@ -796,6 +974,7 @@ void ScreenShareSession::recvLoop() {
             auto worker = std::make_unique<VideoRecvPeerRuntime>(
                 remoteMediaSsrc,
                 recvPipelineConfig,
+                m_adaptiveJitterTargetMs,
                 [this, &recvTelemetryPipeline, &telemetryMutex, &loggedFirstPacket, &statusCallback, &handleConsumeOutcome](
                     const media::RTPPacket& packet,
                     const VideoRecvConsumeOutcome& consumeOutcome,

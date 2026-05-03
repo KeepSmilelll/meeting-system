@@ -237,6 +237,7 @@ qt_add_executable(meeting_client
     src/av/session/VideoRtcpActionPipeline.cpp
     src/av/session/VideoRtcpFeedbackPipeline.cpp
     src/av/session/VideoRtcpFeedbackDispatchPipeline.cpp
+    src/av/session/VideoBwePolicy.cpp
     src/av/session/VideoSessionStateMachine.cpp
     src/av/session/VideoThreadLifecycleStateMachine.cpp
     src/av/session/VideoThreadRuntime.cpp
@@ -363,6 +364,21 @@ target_link_libraries(test_media_session_manager PRIVATE
 
 add_test(NAME test_media_session_manager COMMAND test_media_session_manager)
 
+add_executable(test_video_bwe_policy
+    tests/test_video_bwe_policy.cpp
+    src/av/session/VideoBwePolicy.cpp
+)
+
+target_include_directories(test_video_bwe_policy PRIVATE
+    src
+)
+
+target_link_libraries(test_video_bwe_policy PRIVATE
+    Qt6::Core
+)
+
+add_test(NAME test_video_bwe_policy COMMAND test_video_bwe_policy)
+
 add_executable(test_screen_share_session
     tests/test_screen_share_session.cpp
     src/security/CryptoUtils.cpp
@@ -388,6 +404,7 @@ add_executable(test_screen_share_session
     src/av/session/VideoRtcpActionPipeline.cpp
     src/av/session/VideoRtcpFeedbackPipeline.cpp
     src/av/session/VideoRtcpFeedbackDispatchPipeline.cpp
+    src/av/session/VideoBwePolicy.cpp
     src/av/session/VideoSessionStateMachine.cpp
     src/av/session/VideoThreadLifecycleStateMachine.cpp
     src/av/session/VideoThreadRuntime.cpp
@@ -451,6 +468,7 @@ add_executable(test_screen_share_session_camera_smoke
     src/av/session/VideoRtcpActionPipeline.cpp
     src/av/session/VideoRtcpFeedbackPipeline.cpp
     src/av/session/VideoRtcpFeedbackDispatchPipeline.cpp
+    src/av/session/VideoBwePolicy.cpp
     src/av/session/VideoSessionStateMachine.cpp
     src/av/session/VideoThreadLifecycleStateMachine.cpp
     src/av/session/VideoThreadRuntime.cpp
@@ -769,6 +787,7 @@ add_executable(test_meeting_controller_mute_all
     src/av/session/VideoRtcpActionPipeline.cpp
     src/av/session/VideoRtcpFeedbackPipeline.cpp
     src/av/session/VideoRtcpFeedbackDispatchPipeline.cpp
+    src/av/session/VideoBwePolicy.cpp
     src/av/session/VideoSessionStateMachine.cpp
     src/av/session/VideoThreadLifecycleStateMachine.cpp
     src/av/session/VideoThreadRuntime.cpp
@@ -862,6 +881,7 @@ add_executable(test_meeting_runtime_smoke
     src/av/session/VideoRtcpActionPipeline.cpp
     src/av/session/VideoRtcpFeedbackPipeline.cpp
     src/av/session/VideoRtcpFeedbackDispatchPipeline.cpp
+    src/av/session/VideoBwePolicy.cpp
     src/av/session/VideoSessionStateMachine.cpp
     src/av/session/VideoThreadLifecycleStateMachine.cpp
     src/av/session/VideoThreadRuntime.cpp

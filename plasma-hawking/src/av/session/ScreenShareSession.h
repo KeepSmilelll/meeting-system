@@ -5,6 +5,7 @@
 #include "VideoRtcpFeedbackPipeline.h"
 #include "VideoRtcpFeedbackDispatchPipeline.h"
 #include "VideoRtcpActionPipeline.h"
+#include "VideoBwePolicy.h"
 #include "VideoSendFrameRingBuffer.h"
 
 #include "av/capture/ScreenCapture.h"
@@ -90,6 +91,7 @@ public:
     void setErrorCallback(std::function<void(std::string)> callback);
     void setCameraSourceCallback(std::function<void(bool syntheticFallback)> callback);
     void setStatusCallback(std::function<void(std::string)> callback);
+    void setAdaptiveTurnRelayRequestCallback(std::function<void()> callback);
     uint16_t localPort() const;
     uint32_t videoSsrc() const;
     bool isRunning() const;
@@ -103,6 +105,12 @@ public:
     uint32_t lastBitrateApplyDelayMs() const;
     uint32_t targetBitrateBps() const;
     uint32_t appliedBitrateBps() const;
+    int adaptiveVideoWidth() const;
+    int adaptiveVideoHeight() const;
+    int adaptiveVideoFrameRate() const;
+    bool adaptiveVideoSuspended() const;
+    uint32_t adaptiveJitterTargetMs() const;
+    bool adaptiveTurnRelayRequested() const;
 
 private:
     bool openSocketLocked();
@@ -136,6 +144,7 @@ private:
     std::function<void(std::string)> m_errorCallback;
     std::function<void(bool)> m_cameraSourceCallback;
     std::function<void(std::string)> m_statusCallback;
+    std::function<void()> m_adaptiveTurnRelayRequestCallback;
     std::atomic<bool> m_running{false};
     std::atomic<bool> m_sharingEnabled{false};
     std::atomic<bool> m_cameraSendingEnabled{false};
@@ -149,6 +158,13 @@ private:
     std::atomic<uint32_t> m_appliedBitrateBps{0};
     std::atomic<uint32_t> m_lastBitrateApplyDelayMs{0};
     std::atomic<uint64_t> m_targetBitrateUpdatedAtMs{0};
+    std::atomic<int> m_adaptiveVideoWidth{0};
+    std::atomic<int> m_adaptiveVideoHeight{0};
+    std::atomic<int> m_adaptiveVideoFrameRate{0};
+    std::atomic<bool> m_adaptiveVideoSuspended{false};
+    std::atomic<uint32_t> m_adaptiveJitterTargetMs{0};
+    std::atomic<bool> m_adaptiveTurnRelayRequested{false};
+    std::atomic<uint64_t> m_adaptiveProfileVersion{0};
     std::atomic<bool> m_forceKeyFramePending{false};
     std::atomic<uint32_t> m_expectedRemoteVideoSsrc{0};
     std::vector<uint32_t> m_remoteVideoStreamResetRequests;
@@ -166,6 +182,7 @@ private:
     VideoRtcpActionPipeline m_rtcpActionPipeline;
     VideoRtcpFeedbackPipeline m_rtcpFeedbackPipeline;
     VideoRtcpFeedbackDispatchPipeline m_rtcpFeedbackDispatchPipeline;
+    VideoBwePolicy m_videoBwePolicy;
     VideoSendFrameRingBuffer m_sendFrameRingBuffer{4U};
 
     media::UdpPeerSocket m_mediaSocket;

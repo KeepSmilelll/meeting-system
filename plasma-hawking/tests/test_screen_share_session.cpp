@@ -3,6 +3,7 @@
 #include <functional>
 #include <iostream>
 #include <string>
+#include <chrono>
 #include <vector>
 
 #include <QByteArray>
@@ -90,6 +91,54 @@ std::vector<uint8_t> buildNackPacket(uint32_t senderSsrc, uint32_t mediaSsrc, ui
     };
 }
 
+uint32_t compactNtpNow() {
+    constexpr uint64_t kNtpUnixEpochOffsetSeconds = 2208988800ULL;
+    const auto now = std::chrono::system_clock::now();
+    const auto sinceEpoch = now.time_since_epoch();
+    const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(sinceEpoch);
+    const auto nanoseconds =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(sinceEpoch - seconds);
+    const uint64_t ntpSeconds =
+        static_cast<uint64_t>(seconds.count()) + kNtpUnixEpochOffsetSeconds;
+    const uint64_t ntpFraction =
+        (static_cast<uint64_t>(nanoseconds.count()) << 32U) / 1000000000ULL;
+    return static_cast<uint32_t>((((ntpSeconds << 32U) | ntpFraction) >> 16U) & 0xFFFFFFFFU);
+}
+
+uint8_t fractionForLossPercent(double percent) {
+    return static_cast<uint8_t>((percent * 256.0) / 100.0 + 0.5);
+}
+
+std::vector<uint8_t> buildReceiverReportPacket(uint32_t receiverSsrc,
+                                               uint32_t mediaSsrc,
+                                               uint8_t fractionLost,
+                                               uint32_t lastSenderReport = 0U,
+                                               uint32_t delaySinceLastSenderReport = 0U) {
+    return std::vector<uint8_t>{
+        0x81, 0xC9, 0x00, 0x07,
+        static_cast<uint8_t>((receiverSsrc >> 24) & 0xFF),
+        static_cast<uint8_t>((receiverSsrc >> 16) & 0xFF),
+        static_cast<uint8_t>((receiverSsrc >> 8) & 0xFF),
+        static_cast<uint8_t>(receiverSsrc & 0xFF),
+        static_cast<uint8_t>((mediaSsrc >> 24) & 0xFF),
+        static_cast<uint8_t>((mediaSsrc >> 16) & 0xFF),
+        static_cast<uint8_t>((mediaSsrc >> 8) & 0xFF),
+        static_cast<uint8_t>(mediaSsrc & 0xFF),
+        fractionLost,
+        0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        static_cast<uint8_t>((lastSenderReport >> 24) & 0xFF),
+        static_cast<uint8_t>((lastSenderReport >> 16) & 0xFF),
+        static_cast<uint8_t>((lastSenderReport >> 8) & 0xFF),
+        static_cast<uint8_t>(lastSenderReport & 0xFF),
+        static_cast<uint8_t>((delaySinceLastSenderReport >> 24) & 0xFF),
+        static_cast<uint8_t>((delaySinceLastSenderReport >> 16) & 0xFF),
+        static_cast<uint8_t>((delaySinceLastSenderReport >> 8) & 0xFF),
+        static_cast<uint8_t>(delaySinceLastSenderReport & 0xFF),
+    };
+}
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -124,6 +173,10 @@ int main(int argc, char* argv[]) {
     assert(receiver.localPort() != 0);
 
     av::session::ScreenShareSession sender(senderConfig);
+    int adaptiveTurnRequests = 0;
+    sender.setAdaptiveTurnRelayRequestCallback([&adaptiveTurnRequests]() {
+        ++adaptiveTurnRequests;
+    });
     assert(sender.start());
     assert(sender.localPort() != 0);
 
@@ -311,6 +364,68 @@ int main(int argc, char* argv[]) {
         assert(sender.bitrateReconfigureCount() > firstReconfigureCount);
         assert(sender.lastBitrateApplyDelayMs() <= 5000U);
     }
+
+    const auto moderateRrPacket = buildReceiverReportPacket(0x55555555U,
+                                                            rtcpFeedbackSsrc,
+                                                            fractionForLossPercent(6.0));
+    const qint64 moderateRrSent = feedbackSocket.writeDatagram(
+        reinterpret_cast<const char*>(moderateRrPacket.data()),
+        static_cast<qint64>(moderateRrPacket.size()),
+        QHostAddress::LocalHost,
+        sender.localPort());
+    assert(moderateRrSent == static_cast<qint64>(moderateRrPacket.size()));
+    const bool moderateRrHandled = waitForCondition(app, [&sender]() {
+        return sender.adaptiveVideoFrameRate() == 15 && !sender.adaptiveVideoSuspended();
+    }, 2000);
+    assert(moderateRrHandled);
+
+    const auto severeRrPacket = buildReceiverReportPacket(0x55555555U,
+                                                          rtcpFeedbackSsrc,
+                                                          fractionForLossPercent(16.0));
+    const qint64 severeRrSent = feedbackSocket.writeDatagram(
+        reinterpret_cast<const char*>(severeRrPacket.data()),
+        static_cast<qint64>(severeRrPacket.size()),
+        QHostAddress::LocalHost,
+        sender.localPort());
+    assert(severeRrSent == static_cast<qint64>(severeRrPacket.size()));
+    const bool severeRrHandled = waitForCondition(app, [&sender]() {
+        return sender.adaptiveVideoHeight() == 360 && sender.targetBitrateBps() <= 300000U;
+    }, 2000);
+    assert(severeRrHandled);
+
+    const auto audioOnlyRrPacket = buildReceiverReportPacket(0x55555555U,
+                                                            rtcpFeedbackSsrc,
+                                                            fractionForLossPercent(31.0));
+    const qint64 audioOnlyRrSent = feedbackSocket.writeDatagram(
+        reinterpret_cast<const char*>(audioOnlyRrPacket.data()),
+        static_cast<qint64>(audioOnlyRrPacket.size()),
+        QHostAddress::LocalHost,
+        sender.localPort());
+    assert(audioOnlyRrSent == static_cast<qint64>(audioOnlyRrPacket.size()));
+    const bool audioOnlyRrHandled = waitForCondition(app, [&sender]() {
+        return sender.adaptiveVideoSuspended() && sender.targetBitrateBps() == 0U;
+    }, 2000);
+    assert(audioOnlyRrHandled);
+
+    const uint32_t rttUnits700Ms = static_cast<uint32_t>((700ULL * 65536ULL) / 1000ULL);
+    const uint32_t syntheticLsr = compactNtpNow() - rttUnits700Ms;
+    const auto highRttRrPacket = buildReceiverReportPacket(0x55555555U,
+                                                           rtcpFeedbackSsrc,
+                                                           fractionForLossPercent(1.0),
+                                                           syntheticLsr,
+                                                           0U);
+    const qint64 highRttRrSent = feedbackSocket.writeDatagram(
+        reinterpret_cast<const char*>(highRttRrPacket.data()),
+        static_cast<qint64>(highRttRrPacket.size()),
+        QHostAddress::LocalHost,
+        sender.localPort());
+    assert(highRttRrSent == static_cast<qint64>(highRttRrPacket.size()));
+    const bool highRttHandled = waitForCondition(app, [&sender, &adaptiveTurnRequests]() {
+        return sender.adaptiveJitterTargetMs() == 100U &&
+               sender.adaptiveTurnRelayRequested() &&
+               adaptiveTurnRequests == 1;
+    }, 2000);
+    assert(highRttHandled);
 
     sender.stop();
     receiver.stop();

@@ -11,7 +11,8 @@ constexpr uint32_t kMaxAdaptiveBitrateBps = 8000000U;
 }  // namespace
 
 bool VideoRtcpFeedbackDispatchPlan::hasActions() const {
-    return requestKeyFrame || hasTargetBitrate || !retransmitSequenceNumbers.empty();
+    return requestKeyFrame || hasTargetBitrate || !retransmitSequenceNumbers.empty() ||
+           !receiverReports.empty();
 }
 
 VideoRtcpFeedbackDispatchPlan VideoRtcpFeedbackDispatchPipeline::buildPlan(
@@ -29,6 +30,13 @@ VideoRtcpFeedbackDispatchPlan VideoRtcpFeedbackDispatchPipeline::buildPlan(
             plan.hasTargetBitrate = true;
             plan.targetBitrateBps =
                 std::clamp(event.bitrateBps, kMinAdaptiveBitrateBps, kMaxAdaptiveBitrateBps);
+            break;
+        case VideoRtcpFeedbackEventKind::ReceiverReport:
+            plan.receiverReports.push_back(VideoRtcpReceiverReportSample{
+                event.fractionLost,
+                event.lastSenderReport,
+                event.delaySinceLastSenderReport,
+            });
             break;
         default:
             break;

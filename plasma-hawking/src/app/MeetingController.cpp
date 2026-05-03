@@ -3619,6 +3619,33 @@ void MeetingController::maybeStartVideoNegotiation() {
                 emit infoMessage(statusText);
             }, Qt::QueuedConnection);
         });
+        m_screenShareSession->setAdaptiveTurnRelayRequestCallback([this]() {
+            QMetaObject::invokeMethod(this, [this]() {
+                if (!m_screenShareSession) {
+                    return;
+                }
+                const TurnRelaySettings turnRelay = firstTurnRelaySettings(m_iceServers);
+                if (!turnRelay.valid) {
+                    emit infoMessage(QStringLiteral("Video adaptive TURN fallback skipped: no usable TURN server"));
+                    return;
+                }
+                QString routeHost;
+                quint16 routePort = 0;
+                if (!resolveSfuEndpoint(&routeHost, &routePort)) {
+                    emit infoMessage(QStringLiteral("Video adaptive TURN fallback skipped: invalid SFU route"));
+                    return;
+                }
+                if (!m_screenShareSession->configureTurnRelay(turnRelay.host.toStdString(),
+                                                              turnRelay.port,
+                                                              turnRelay.username.toStdString(),
+                                                              turnRelay.credential.toStdString(),
+                                                              routeHost.toStdString(),
+                                                              routePort)) {
+                    emit infoMessage(QStringLiteral("Video adaptive TURN fallback failed: %1")
+                                         .arg(QString::fromStdString(m_screenShareSession->lastError())));
+                }
+            }, Qt::QueuedConnection);
+        });
         m_screenShareSession->setErrorCallback([this](std::string errorMessage) {
             const QString errorText = QString::fromStdString(errorMessage);
             QMetaObject::invokeMethod(this, [this, errorText]() {

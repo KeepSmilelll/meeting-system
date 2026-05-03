@@ -12,6 +12,7 @@ enum class VideoRtcpFeedbackEventKind {
     Nack,
     Pli,
     Remb,
+    ReceiverReport,
 };
 
 struct VideoRtcpFeedbackEvent {
@@ -19,6 +20,9 @@ struct VideoRtcpFeedbackEvent {
     uint16_t sequenceNumber{0};
     uint32_t mediaSsrc{0};
     uint32_t bitrateBps{0};
+    uint8_t fractionLost{0};
+    uint32_t lastSenderReport{0};
+    uint32_t delaySinceLastSenderReport{0};
 };
 
 class VideoRtcpFeedbackPipeline {
