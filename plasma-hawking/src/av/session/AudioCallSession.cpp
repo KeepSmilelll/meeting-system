@@ -108,6 +108,7 @@ bool av::session::AudioCallSession::start() {
     av::process::AutoGainControl::Config agcConfig{};
     agcConfig.sampleRate = m_config.sampleRate;
     agcConfig.channels = m_config.channels;
+    agcConfig.frameSamples = captureFrameSamples;
     agcConfig.targetRms = std::clamp(audioProcessFloat("MEETING_AUDIO_AGC_TARGET_RMS", 0.12F), 0.03F, 0.35F);
     agcConfig.minGain = std::clamp(audioProcessFloat("MEETING_AUDIO_AGC_MIN_GAIN", 0.25F), 0.1F, 1.0F);
     agcConfig.maxGain = std::clamp(audioProcessFloat("MEETING_AUDIO_AGC_MAX_GAIN", 8.0F), 1.0F, 12.0F);
@@ -805,6 +806,10 @@ bool av::session::AudioCallSession::handleRtcpPacketLocked(const uint8_t* data, 
 void av::session::AudioCallSession::drainReceivedPackets() {
     media::RTPPacket packet;
     while (m_jitter.pop(packet)) {
+        if (!m_config.allowSelfPlaybackForLoopbackTest && packet.header.ssrc == m_sender.ssrc()) {
+            continue;
+        }
+
         av::codec::EncodedAudioFrame encoded;
         encoded.sampleRate = m_config.sampleRate;
         encoded.channels = m_config.channels;
@@ -1069,6 +1074,7 @@ bool av::session::runAudioCallSessionLoopbackSelfCheck(std::string* error) {
 
     AudioCallSessionConfig config{};
     config.peerAddress = "127.0.0.1";
+    config.allowSelfPlaybackForLoopbackTest = true;
 
     AudioCallSession session(config);
     if (!session.start()) {

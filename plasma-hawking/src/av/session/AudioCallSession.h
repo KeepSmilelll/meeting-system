@@ -43,6 +43,7 @@ struct AudioCallSessionConfig {
     int frameSamples{960};
     int bitrate{32000};
     std::size_t jitterPackets{32};
+    bool allowSelfPlaybackForLoopbackTest{false};
 };
 
 class AudioCallSession {

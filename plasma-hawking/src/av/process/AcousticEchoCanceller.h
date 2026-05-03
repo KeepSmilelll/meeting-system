@@ -4,9 +4,9 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <mutex>
 #include <string>
-#include <vector>
 
 namespace av::process {
 
@@ -20,26 +20,29 @@ public:
         float suppression{0.85F};
     };
 
-    AcousticEchoCanceller() = default;
+    AcousticEchoCanceller();
+    ~AcousticEchoCanceller();
 
     bool configure(const Config& config);
     void reset();
     void setEnabled(bool enabled);
     bool enabled() const;
+    const char* backendName() const;
 
     void pushRenderFrame(const av::capture::AudioFrame& frame);
     bool processCaptureFrame(av::capture::AudioFrame& frame, std::string* error = nullptr);
 
 private:
     bool frameMatchesConfig(const av::capture::AudioFrame& frame) const;
+    bool createBackendLocked();
 
     Config m_config{};
     bool m_configured{false};
     bool m_enabled{true};
 
     mutable std::mutex m_mutex;
-    std::vector<float> m_renderHistory;
-    std::size_t m_maxHistorySamples{0};
+    struct Impl;
+    std::unique_ptr<Impl> m_impl;
 };
 
 }  // namespace av::process

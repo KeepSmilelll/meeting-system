@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(meeting_client LANGUAGES CXX)
+project(meeting_client LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -13,6 +13,8 @@ set(FFMPEG_ROOT_HINT "D:/Setup/ffmpeg-7.1-full_build-shared" CACHE PATH "Local F
 set(OPENSSL_ROOT_HINT "D:/LOL/英雄联盟(26)/Cross/coach/agent/lol_ai_coach/Python311/Library" CACHE PATH "Local OpenSSL 3 root hint")
 set(LIBSRTP_ROOT_DEFAULT "D:/meeting/third_party/libsrtp2")
 set(LIBSRTP_ROOT_HINT "${LIBSRTP_ROOT_DEFAULT}" CACHE PATH "Local libsrtp2 root hint")
+set(SPEEXDSP_ROOT_HINT "D:/meeting/third_party/speexdsp" CACHE PATH "Local SpeexDSP source checkout")
+set(RNNOISE_ROOT_HINT "D:/meeting/third_party/rnnoise" CACHE PATH "Local RNNoise source checkout")
 if(LIBSRTP_ROOT_HINT STREQUAL "" AND EXISTS "${LIBSRTP_ROOT_DEFAULT}")
     set(LIBSRTP_ROOT_HINT "${LIBSRTP_ROOT_DEFAULT}" CACHE PATH "Local libsrtp2 root hint" FORCE)
 endif()
@@ -102,6 +104,134 @@ qt_standard_project_setup()
 if(NOT (FFMPEG_INCLUDE_DIR AND FFMPEG_AVCODEC_LIBRARY AND FFMPEG_AVDEVICE_LIBRARY AND FFMPEG_AVFORMAT_LIBRARY AND FFMPEG_AVUTIL_LIBRARY AND FFMPEG_SWRESAMPLE_LIBRARY AND FFMPEG_SWSCALE_LIBRARY))
     message(FATAL_ERROR "meeting_client requires FFmpeg 7.1 headers/libs under ${FFMPEG_ROOT_HINT}")
 endif()
+
+if(NOT EXISTS "${SPEEXDSP_ROOT_HINT}/include/speex/speex_echo.h")
+    message(FATAL_ERROR "SpeexDSP checkout not found. Clone https://gitlab.xiph.org/xiph/speexdsp.git to ${SPEEXDSP_ROOT_HINT} and checkout 7a158783df74efe7c2d1c6ee8363c1e695c71226.")
+endif()
+if(NOT EXISTS "${RNNOISE_ROOT_HINT}/include/rnnoise.h")
+    message(FATAL_ERROR "RNNoise checkout not found. Clone https://github.com/xiph/rnnoise.git to ${RNNOISE_ROOT_HINT} and checkout 6cbfd53eb348a8d394e0757b4025c6ded34eb2b6.")
+endif()
+
+set(speexdsp_SOURCE_DIR "${SPEEXDSP_ROOT_HINT}")
+set(rnnoise_SOURCE_DIR "${RNNOISE_ROOT_HINT}")
+
+set(MEETING_SPEEXDSP_SOURCES
+    "${speexdsp_SOURCE_DIR}/libspeexdsp/fftwrap.c"
+    "${speexdsp_SOURCE_DIR}/libspeexdsp/filterbank.c"
+    "${speexdsp_SOURCE_DIR}/libspeexdsp/mdf.c"
+    "${speexdsp_SOURCE_DIR}/libspeexdsp/preprocess.c"
+    "${speexdsp_SOURCE_DIR}/libspeexdsp/smallft.c"
+)
+add_library(meeting_speexdsp STATIC ${MEETING_SPEEXDSP_SOURCES})
+target_include_directories(meeting_speexdsp PUBLIC
+    "${speexdsp_SOURCE_DIR}/include"
+    "${speexdsp_SOURCE_DIR}/libspeexdsp"
+)
+target_compile_definitions(meeting_speexdsp PRIVATE
+    FLOATING_POINT
+    USE_SMALLFT
+    EXPORT=
+)
+if(MSVC)
+    target_compile_definitions(meeting_speexdsp PRIVATE inline=__inline)
+endif()
+
+set(MEETING_RNNOISE_CONFIG_DIR "${CMAKE_BINARY_DIR}/rnnoise_config")
+set(MEETING_RNNOISE_PATCH_DIR "${CMAKE_BINARY_DIR}/rnnoise_msvc")
+file(MAKE_DIRECTORY "${MEETING_RNNOISE_CONFIG_DIR}")
+file(MAKE_DIRECTORY "${MEETING_RNNOISE_PATCH_DIR}")
+file(WRITE "${MEETING_RNNOISE_CONFIG_DIR}/config.h" "#pragma once\n")
+configure_file("${rnnoise_SOURCE_DIR}/src/pitch.c" "${MEETING_RNNOISE_PATCH_DIR}/pitch.c" COPYONLY)
+configure_file("${rnnoise_SOURCE_DIR}/src/pitch.h" "${MEETING_RNNOISE_PATCH_DIR}/pitch.h" COPYONLY)
+configure_file("${rnnoise_SOURCE_DIR}/src/celt_lpc.c" "${MEETING_RNNOISE_PATCH_DIR}/celt_lpc.c" COPYONLY)
+configure_file("${rnnoise_SOURCE_DIR}/src/celt_lpc.h" "${MEETING_RNNOISE_PATCH_DIR}/celt_lpc.h" COPYONLY)
+function(meeting_replace_in_file file_path old_text new_text)
+    file(READ "${file_path}" MEETING_FILE_CONTENT)
+    string(FIND "${MEETING_FILE_CONTENT}" "${new_text}" MEETING_NEW_TEXT_POS)
+    if(MEETING_NEW_TEXT_POS EQUAL -1)
+        string(REPLACE "${old_text}" "${new_text}" MEETING_FILE_CONTENT "${MEETING_FILE_CONTENT}")
+        file(WRITE "${file_path}" "${MEETING_FILE_CONTENT}")
+    endif()
+endfunction()
+
+meeting_replace_in_file("${MEETING_RNNOISE_PATCH_DIR}/pitch.h"
+    "#define PITCH_H\n"
+    "#define PITCH_H\n\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n")
+meeting_replace_in_file("${MEETING_RNNOISE_PATCH_DIR}/pitch.h"
+    "void rnn_pitch_xcorr(const opus_val16 *_x, const opus_val16 *_y,\n      opus_val32 *xcorr, int len, int max_pitch);\n\n#endif\n"
+    "void rnn_pitch_xcorr(const opus_val16 *_x, const opus_val16 *_y,\n      opus_val32 *xcorr, int len, int max_pitch);\n\n#ifdef __cplusplus\n}\n#endif\n\n#endif\n")
+meeting_replace_in_file("${MEETING_RNNOISE_PATCH_DIR}/celt_lpc.h"
+    "#define PLC_H\n"
+    "#define PLC_H\n\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n")
+meeting_replace_in_file("${MEETING_RNNOISE_PATCH_DIR}/celt_lpc.h"
+    "#endif /* PLC_H */\n"
+    "#ifdef __cplusplus\n}\n#endif\n\n#endif /* PLC_H */\n")
+meeting_replace_in_file("${MEETING_RNNOISE_PATCH_DIR}/pitch.c"
+    "#include \"pitch.h\"\n"
+    "#include \"pitch.h\"\n#include <vector>\n")
+meeting_replace_in_file("${MEETING_RNNOISE_PATCH_DIR}/pitch.c"
+    "opus_val16 x_lp4[len>>2];\n   opus_val16 y_lp4[lag>>2];\n   opus_val32 xcorr[max_pitch>>1];"
+    "std::vector<opus_val16> x_lp4(static_cast<std::size_t>(len >> 2));\n   std::vector<opus_val16> y_lp4(static_cast<std::size_t>(lag >> 2));\n   std::vector<opus_val32> xcorr(static_cast<std::size_t>(max_pitch >> 1));")
+meeting_replace_in_file("${MEETING_RNNOISE_PATCH_DIR}/pitch.c"
+    "celt_maxabs16(x_lp4, len>>2)"
+    "celt_maxabs16(x_lp4.data(), len>>2)")
+meeting_replace_in_file("${MEETING_RNNOISE_PATCH_DIR}/pitch.c"
+    "celt_maxabs16(y_lp4, lag>>2)"
+    "celt_maxabs16(y_lp4.data(), lag>>2)")
+meeting_replace_in_file("${MEETING_RNNOISE_PATCH_DIR}/pitch.c"
+    "rnn_pitch_xcorr(x_lp4, y_lp4, xcorr, len>>2, max_pitch>>2);"
+    "rnn_pitch_xcorr(x_lp4.data(), y_lp4.data(), xcorr.data(), len>>2, max_pitch>>2);")
+meeting_replace_in_file("${MEETING_RNNOISE_PATCH_DIR}/pitch.c"
+    "find_best_pitch(xcorr, y_lp4, len>>2, max_pitch>>2, best_pitch"
+    "find_best_pitch(xcorr.data(), y_lp4.data(), len>>2, max_pitch>>2, best_pitch")
+meeting_replace_in_file("${MEETING_RNNOISE_PATCH_DIR}/pitch.c"
+    "find_best_pitch(xcorr, y, len>>1, max_pitch>>1, best_pitch"
+    "find_best_pitch(xcorr.data(), y, len>>1, max_pitch>>1, best_pitch")
+meeting_replace_in_file("${MEETING_RNNOISE_PATCH_DIR}/pitch.c"
+    "opus_val32 yy_lookup[maxperiod+1];"
+    "std::vector<opus_val32> yy_lookup(static_cast<std::size_t>(maxperiod + 1));")
+meeting_replace_in_file("${MEETING_RNNOISE_PATCH_DIR}/celt_lpc.c"
+    "#include \"celt_lpc.h\"\n"
+    "#include \"celt_lpc.h\"\n#include <vector>\n")
+meeting_replace_in_file("${MEETING_RNNOISE_PATCH_DIR}/celt_lpc.c"
+    "opus_val16 xx[n];"
+    "std::vector<opus_val16> xx(static_cast<std::size_t>(n));")
+meeting_replace_in_file("${MEETING_RNNOISE_PATCH_DIR}/celt_lpc.c"
+    "xptr = xx;"
+    "xptr = xx.data();")
+
+add_library(meeting_rnnoise STATIC
+    "${rnnoise_SOURCE_DIR}/src/denoise.c"
+    "${rnnoise_SOURCE_DIR}/src/rnn.c"
+    "${MEETING_RNNOISE_PATCH_DIR}/pitch.c"
+    "${rnnoise_SOURCE_DIR}/src/kiss_fft.c"
+    "${MEETING_RNNOISE_PATCH_DIR}/celt_lpc.c"
+    "${rnnoise_SOURCE_DIR}/src/rnn_data.c"
+)
+set_source_files_properties(
+    "${MEETING_RNNOISE_PATCH_DIR}/pitch.c"
+    "${MEETING_RNNOISE_PATCH_DIR}/celt_lpc.c"
+    PROPERTIES LANGUAGE CXX
+)
+target_include_directories(meeting_rnnoise PUBLIC
+    "${rnnoise_SOURCE_DIR}/include"
+)
+target_include_directories(meeting_rnnoise PRIVATE
+    "${MEETING_RNNOISE_PATCH_DIR}"
+    "${rnnoise_SOURCE_DIR}/src"
+    "${MEETING_RNNOISE_CONFIG_DIR}"
+)
+target_compile_definitions(meeting_rnnoise PRIVATE
+    RNNOISE_BUILD
+    _USE_MATH_DEFINES
+)
+
+function(target_link_audio_process_deps target_name)
+    target_link_libraries(${target_name} PRIVATE
+        meeting_speexdsp
+        meeting_rnnoise
+    )
+endfunction()
 
 unset(LIBSRTP_INCLUDE_DIR CACHE)
 unset(LIBSRTP_LIBRARY CACHE)
@@ -293,6 +423,7 @@ target_link_libraries(meeting_client PRIVATE
     ${FFMPEG_SWRESAMPLE_LIBRARY}
     ${FFMPEG_SWSCALE_LIBRARY}
 )
+target_link_audio_process_deps(meeting_client)
 if(LIBSRTP_LIBRARY)
     target_link_libraries(meeting_client PRIVATE
         ${LIBSRTP_LIBRARY}
@@ -832,6 +963,7 @@ target_link_libraries(test_meeting_controller_mute_all PRIVATE
     ${FFMPEG_SWRESAMPLE_LIBRARY}
     ${FFMPEG_SWSCALE_LIBRARY}
 )
+target_link_audio_process_deps(test_meeting_controller_mute_all)
 target_enable_dtls_srtp(test_meeting_controller_mute_all)
 copy_ffmpeg_runtime(test_meeting_controller_mute_all)
 
@@ -926,6 +1058,7 @@ target_link_libraries(test_meeting_runtime_smoke PRIVATE
     ${FFMPEG_SWRESAMPLE_LIBRARY}
     ${FFMPEG_SWSCALE_LIBRARY}
 )
+target_link_audio_process_deps(test_meeting_runtime_smoke)
 target_enable_dtls_srtp(test_meeting_runtime_smoke)
 copy_ffmpeg_runtime(test_meeting_runtime_smoke)
 
@@ -976,6 +1109,7 @@ target_include_directories(test_audio_process PRIVATE
 target_link_libraries(test_audio_process PRIVATE
     Qt6::Core
 )
+target_link_audio_process_deps(test_audio_process)
 
 add_test(NAME test_audio_process COMMAND test_audio_process)
 
@@ -993,6 +1127,7 @@ target_include_directories(test_audio_process_quality PRIVATE
 target_link_libraries(test_audio_process_quality PRIVATE
     Qt6::Core
 )
+target_link_audio_process_deps(test_audio_process_quality)
 
 add_test(NAME test_audio_process_quality COMMAND test_audio_process_quality)
 
@@ -1103,6 +1238,7 @@ if(MEETING_BUILD_AUDIO_CODEC_SMOKE)
             ${FFMPEG_SWRESAMPLE_LIBRARY}
             ${FFMPEG_SWSCALE_LIBRARY}
         )
+        target_link_audio_process_deps(audio_codec_smoke)
         target_enable_dtls_srtp(audio_codec_smoke)
         copy_ffmpeg_runtime(audio_codec_smoke)
 

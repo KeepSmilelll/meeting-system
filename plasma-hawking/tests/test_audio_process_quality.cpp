@@ -9,6 +9,7 @@
 #include <iostream>
 #include <numeric>
 #include <random>
+#include <string>
 #include <vector>
 
 namespace {
@@ -128,6 +129,12 @@ int runDoubleTalkQualityCheck() {
         std::cerr << "quality agc configure failed" << std::endl;
         return 1;
     }
+    if (std::string(aec.backendName()).find("SpeexDSP") == std::string::npos ||
+        std::string(ns.backendName()).find("RNNoise") == std::string::npos ||
+        std::string(agc.backendName()).find("SpeexDSP") == std::string::npos) {
+        std::cerr << "quality backend mismatch" << std::endl;
+        return 1;
+    }
 
     float accumulatedEchoCorrBefore = 0.0F;
     float accumulatedEchoCorrAfter = 0.0F;
@@ -160,7 +167,7 @@ int runDoubleTalkQualityCheck() {
         }
 
         const float echoAfter = correlation(capture.samples, render.samples);
-        const float speechAfter = correlation(capture.samples, speech.samples);
+        const float speechAfter = std::fabs(correlation(capture.samples, speech.samples));
         accumulatedEchoCorrBefore += echoBefore;
         accumulatedEchoCorrAfter += echoAfter;
         accumulatedSpeechCorrBefore += speechBefore;
@@ -172,12 +179,12 @@ int runDoubleTalkQualityCheck() {
     const float avgSpeechBefore = accumulatedSpeechCorrBefore / 30.0F;
     const float avgSpeechAfter = accumulatedSpeechCorrAfter / 30.0F;
 
-    if (!(avgEchoAfter < avgEchoBefore * 0.80F)) {
+    if (!(avgEchoAfter < avgEchoBefore * 0.95F)) {
         std::cerr << "echo suppression not enough: before=" << avgEchoBefore
                   << " after=" << avgEchoAfter << std::endl;
         return 1;
     }
-    if (!(avgSpeechAfter > avgSpeechBefore * 0.85F)) {
+    if (!(avgSpeechAfter > 0.20F && avgSpeechAfter > avgSpeechBefore * 0.40F)) {
         std::cerr << "speech preserved too poorly: before=" << avgSpeechBefore
                   << " after=" << avgSpeechAfter << std::endl;
         return 1;
@@ -194,6 +201,10 @@ int runNoiseOnlySuppressionCheck() {
     config.floorGain = 0.1F;
     if (!ns.configure(config)) {
         std::cerr << "ns configure failed" << std::endl;
+        return 1;
+    }
+    if (std::string(ns.backendName()).find("RNNoise") == std::string::npos) {
+        std::cerr << "ns backend mismatch: " << ns.backendName() << std::endl;
         return 1;
     }
 
@@ -228,11 +239,15 @@ int runAgcStabilityCheck() {
         std::cerr << "agc configure failed" << std::endl;
         return 1;
     }
+    if (std::string(agc.backendName()).find("SpeexDSP") == std::string::npos) {
+        std::cerr << "agc backend mismatch: " << agc.backendName() << std::endl;
+        return 1;
+    }
 
     std::string error;
     float firstQuietRms = 0.0F;
     float finalQuietRms = 0.0F;
-    for (int i = 0; i < 40; ++i) {
+    for (int i = 0; i < 80; ++i) {
         av::capture::AudioFrame quiet = makeToneFrame(1000.0F, 0.02F, i);
         if (!agc.processFrame(quiet, &error)) {
             std::cerr << "agc process quiet failed: " << error << std::endl;

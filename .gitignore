@@ -22,6 +22,8 @@ cmake-build-*/
 *.dll
 *.lib
 *.a
+third_party/speexdsp/
+third_party/rnnoise/
 
 # Go
 bin/
