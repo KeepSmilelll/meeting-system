@@ -112,6 +112,7 @@ bool captureHardwareFrameShareCandidate(const AVFrame& frame, DecodedVideoFrame&
     outFrame.hardwareTextureHandle = frame.data[0];
     outFrame.hardwareSubresourceIndex = static_cast<uint32_t>(
         reinterpret_cast<std::uintptr_t>(frame.data[1]));
+    outFrame.markHardwareFrame(frameKind);
     return true;
 }
 
@@ -130,7 +131,11 @@ bool moveNv12Frame(av::AVFramePtr&& frame, DecodedVideoFrame& outFrame) {
     outFrame.vPlane.clear();
     outFrame.pixelFormat = AV_PIX_FMT_NV12;
     outFrame.avFrame = adoptOwnedFrame(std::move(frame));
-    return static_cast<bool>(outFrame.avFrame);
+    if (!outFrame.avFrame) {
+        return false;
+    }
+    outFrame.markSoftwareFrame(false);
+    return true;
 }
 
 bool moveYuv420pFrame(av::AVFramePtr&& frame, DecodedVideoFrame& outFrame) {
@@ -148,7 +153,11 @@ bool moveYuv420pFrame(av::AVFramePtr&& frame, DecodedVideoFrame& outFrame) {
     outFrame.vPlane.clear();
     outFrame.pixelFormat = static_cast<AVPixelFormat>(frame->format);
     outFrame.avFrame = adoptOwnedFrame(std::move(frame));
-    return static_cast<bool>(outFrame.avFrame);
+    if (!outFrame.avFrame) {
+        return false;
+    }
+    outFrame.markSoftwareFrame(false);
+    return true;
 }
 
 bool copyNv12Frame(const AVFrame& frame, DecodedVideoFrame& outFrame) {
@@ -173,6 +182,7 @@ bool copyNv12Frame(const AVFrame& frame, DecodedVideoFrame& outFrame) {
         const uint8_t* src = frame.data[1] + static_cast<std::ptrdiff_t>(y) * frame.linesize[1];
         std::copy(src, src + frame.width, outFrame.uvPlane.begin() + static_cast<std::ptrdiff_t>(y * frame.width));
     }
+    outFrame.markSoftwareFrame(true);
     return true;
 }
 
@@ -204,10 +214,38 @@ bool copyYuv420pFrame(const AVFrame& frame, DecodedVideoFrame& outFrame) {
                   srcV + (frame.width / 2),
                   outFrame.vPlane.begin() + static_cast<std::ptrdiff_t>(y * (frame.width / 2)));
     }
+    outFrame.markSoftwareFrame(true);
     return true;
 }
 
 }  // namespace
+
+bool makeD3D11HardwarePreviewFrame(const AVFrame& frame, DecodedVideoFrame& outFrame) {
+    outFrame = DecodedVideoFrame{};
+#ifdef _WIN32
+    if (static_cast<AVPixelFormat>(frame.format) != AV_PIX_FMT_D3D11 ||
+        frame.hw_frames_ctx == nullptr ||
+        frame.data[0] == nullptr ||
+        frame.width <= 0 ||
+        frame.height <= 0) {
+        return false;
+    }
+
+    assignFrameMetadata(frame, outFrame);
+    if (!captureHardwareFrameShareCandidate(frame, outFrame)) {
+        outFrame = DecodedVideoFrame{};
+        return false;
+    }
+    outFrame.telemetry.profile = av::VideoPipelineProfile::HardwareE2E;
+    outFrame.telemetry.hardwareDecode = false;
+    outFrame.telemetry.hardwareTextureInterop = true;
+    outFrame.telemetry.backendName = "mf-d3d11-camera-preview";
+    return true;
+#else
+    (void)frame;
+    return false;
+#endif
+}
 
 void VideoDecoder::AvBufferRefDeleter::operator()(AVBufferRef* ref) const {
     if (ref != nullptr) {
@@ -215,9 +253,14 @@ void VideoDecoder::AvBufferRefDeleter::operator()(AVBufferRef* ref) const {
     }
 }
 
-VideoDecoder::VideoDecoder() = default;
+VideoDecoder::VideoDecoder(av::VideoPipelineProfile profile)
+    : m_pipelineProfile(profile) {}
 
 VideoDecoder::~VideoDecoder() = default;
+
+av::VideoPipelineProfile VideoDecoder::pipelineProfile() const {
+    return m_pipelineProfile;
+}
 
 AVPixelFormat VideoDecoder::selectPixelFormat(AVCodecContext* context, const AVPixelFormat* formats) {
     if (formats == nullptr) {
@@ -250,6 +293,15 @@ bool VideoDecoder::configureHardwareDecode(const AVCodec* codec, AVCodecContext&
         if ((hwConfig->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) == 0) {
             continue;
         }
+#ifdef _WIN32
+        if (av::isHardwareE2E(m_pipelineProfile) && hwConfig->device_type != AV_HWDEVICE_TYPE_D3D11VA) {
+            continue;
+        }
+#else
+        if (av::isHardwareE2E(m_pipelineProfile)) {
+            continue;
+        }
+#endif
 
         AVBufferRef* rawDeviceContext = nullptr;
         const int createResult = av_hwdevice_ctx_create(&rawDeviceContext, hwConfig->device_type, nullptr, nullptr, 0);
@@ -291,19 +343,19 @@ bool VideoDecoder::configure() {
     context->thread_type = FF_THREAD_FRAME;
     context->opaque = nullptr;
 
-    // R1 strategy:
-    // - default prefer software decode to avoid GPU->CPU hwframe download without interop path.
-    // - keep hardware decode capability via explicit MEETING_FORCE_HW_VIDEO_DECODE=1.
-    m_enableHardwareTextureShare = envFlag("MEETING_ENABLE_HW_TEXTURE_SHARE", false);
-    const bool disableHardwareDecode = envFlag("MEETING_DISABLE_HW_VIDEO_DECODE", false);
-    const bool forceHardwareDecode = envFlag("MEETING_FORCE_HW_VIDEO_DECODE", false) ||
-                                     m_enableHardwareTextureShare;
-    const bool preferSoftwareDecode = envFlag("MEETING_PREFER_SOFTWARE_VIDEO_DECODE", true);
-    const bool allowHardwareDecode = !m_forceSoftwareDecode &&
-                                     !disableHardwareDecode &&
-                                     (forceHardwareDecode || !preferSoftwareDecode);
-    if (allowHardwareDecode) {
-        (void)configureHardwareDecode(codec, *context);
+    m_enableHardwareTextureShare = false;
+    if (av::isHardwareE2E(m_pipelineProfile)) {
+#ifdef _WIN32
+        if (envFlag("MEETING_DISABLE_HW_VIDEO_DECODE", false)) {
+            return false;
+        }
+        m_enableHardwareTextureShare = true;
+        if (!configureHardwareDecode(codec, *context) || m_hwPixelFormat == AV_PIX_FMT_NONE) {
+            return false;
+        }
+#else
+        return false;
+#endif
     }
 
     if (avcodec_open2(context.get(), codec, nullptr) < 0) {
@@ -326,7 +378,12 @@ bool VideoDecoder::decode(const EncodedVideoFrame& inFrame, DecodedVideoFrame& o
 
     outFrame = DecodedVideoFrame{};
 
+    outFrame.telemetry.profile = m_pipelineProfile;
+
     const auto fallbackToSoftwareDecode = [this]() {
+        if (av::isHardwareE2E(m_pipelineProfile)) {
+            return false;
+        }
         if (m_hwPixelFormat == AV_PIX_FMT_NONE && m_forceSoftwareDecode) {
             return false;
         }
@@ -385,7 +442,20 @@ bool VideoDecoder::decode(const EncodedVideoFrame& inFrame, DecodedVideoFrame& o
         const bool capturedShareCandidate = captureHardwareFrameShareCandidate(*frame, outFrame);
         if (capturedShareCandidate && m_enableHardwareTextureShare) {
             assignFrameMetadata(*frame, outFrame);
+            outFrame.markHardwareFrame(outFrame.hardwareFrameKind);
+            outFrame.telemetry.profile = m_pipelineProfile;
+            outFrame.telemetry.hardwareTextureInterop = true;
+            outFrame.telemetry.backendName = "d3d11va";
             return true;
+        }
+
+        if (av::isHardwareE2E(m_pipelineProfile)) {
+            if (error != nullptr) {
+                *error = capturedShareCandidate
+                    ? "hardware video pipeline requires texture interop"
+                    : "hardware video pipeline decoded a non-shareable hardware frame";
+            }
+            return false;
         }
 
         transferredFrame = av::makeFrame();
@@ -408,35 +478,52 @@ bool VideoDecoder::decode(const EncodedVideoFrame& inFrame, DecodedVideoFrame& o
         }
 
         (void)av_frame_copy_props(transferredFrame.get(), frame.get());
+        outFrame.telemetry.cpuFrameTransfer = true;
     }
 
     if (transferredFrame) {
         const AVPixelFormat transferredFormat = static_cast<AVPixelFormat>(transferredFrame->format);
         if (transferredFormat == AV_PIX_FMT_NV12) {
             if (moveNv12Frame(std::move(transferredFrame), outFrame)) {
+                outFrame.telemetry.profile = m_pipelineProfile;
+                outFrame.telemetry.cpuFrameTransfer = true;
                 return true;
             }
-            return copyNv12Frame(*transferredFrame, outFrame);
+            const bool copied = copyNv12Frame(*transferredFrame, outFrame);
+            outFrame.telemetry.profile = m_pipelineProfile;
+            outFrame.telemetry.cpuFrameTransfer = true;
+            return copied;
         }
         if (transferredFormat == AV_PIX_FMT_YUV420P || transferredFormat == AV_PIX_FMT_YUVJ420P) {
             if (moveYuv420pFrame(std::move(transferredFrame), outFrame)) {
+                outFrame.telemetry.profile = m_pipelineProfile;
+                outFrame.telemetry.cpuFrameTransfer = true;
                 return true;
             }
-            return copyYuv420pFrame(*transferredFrame, outFrame);
+            const bool copied = copyYuv420pFrame(*transferredFrame, outFrame);
+            outFrame.telemetry.profile = m_pipelineProfile;
+            outFrame.telemetry.cpuFrameTransfer = true;
+            return copied;
         }
     } else {
         const AVPixelFormat softwareFormat = static_cast<AVPixelFormat>(frame->format);
         if (softwareFormat == AV_PIX_FMT_NV12) {
             if (moveNv12Frame(std::move(frame), outFrame)) {
+                outFrame.telemetry.profile = m_pipelineProfile;
                 return true;
             }
-            return copyNv12Frame(*frame, outFrame);
+            const bool copied = copyNv12Frame(*frame, outFrame);
+            outFrame.telemetry.profile = m_pipelineProfile;
+            return copied;
         }
         if (softwareFormat == AV_PIX_FMT_YUV420P || softwareFormat == AV_PIX_FMT_YUVJ420P) {
             if (moveYuv420pFrame(std::move(frame), outFrame)) {
+                outFrame.telemetry.profile = m_pipelineProfile;
                 return true;
             }
-            return copyYuv420pFrame(*frame, outFrame);
+            const bool copied = copyYuv420pFrame(*frame, outFrame);
+            outFrame.telemetry.profile = m_pipelineProfile;
+            return copied;
         }
     }
 

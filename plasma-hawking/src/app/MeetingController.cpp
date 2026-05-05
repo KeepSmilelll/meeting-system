@@ -58,7 +58,7 @@ constexpr int kAudioFrameSamples = 960;
 constexpr int kAudioBitrate = 32000;
 constexpr int kDefaultVideoWidth = 1280;
 constexpr int kDefaultVideoHeight = 720;
-constexpr int kDefaultVideoFrameRate = 5;
+constexpr int kDefaultVideoFrameRate = 30;
 constexpr int kDefaultVideoBitrate = 1500 * 1000;
 constexpr int kMaxVideoRenderDelayMsForSync = 40;
 constexpr int kDefaultMaxRemoteVideoRenderQueueDepth = 8;
@@ -177,7 +177,7 @@ void applyVideoPresetDefaults(VideoSessionTuning& tuning, const QString& presetN
     if (presetName == QStringLiteral("1080p")) {
         tuning.width = 1920;
         tuning.height = 1080;
-        tuning.frameRate = 8;
+        tuning.frameRate = kDefaultVideoFrameRate;
         tuning.bitrate = 3000 * 1000;
         tuning.encoderPreset = av::codec::VideoEncoderPreset::Balanced;
         return;
@@ -185,7 +185,7 @@ void applyVideoPresetDefaults(VideoSessionTuning& tuning, const QString& presetN
     if (presetName == QStringLiteral("360p")) {
         tuning.width = 640;
         tuning.height = 360;
-        tuning.frameRate = 8;
+        tuning.frameRate = kDefaultVideoFrameRate;
         tuning.bitrate = 700 * 1000;
         tuning.encoderPreset = av::codec::VideoEncoderPreset::Realtime;
         return;
@@ -3541,15 +3541,38 @@ void MeetingController::maybeStartVideoNegotiation() {
                     renderDelayMs = suggestRemoteVideoRenderDelayMsByAudioClock(frame, clock);
                 }
 
+                const QString framePeerUserId = resolvePeerUserIdForRemoteVideoSsrc(remoteMediaSsrc);
                 bool hasActiveScreenShare = false;
+                QString activeScreenShareUserId;
+                QString activeScreenShareDisplayName;
                 for (const auto& participant : m_participantModel->items()) {
-                    if (participant.userId == m_activeShareUserId && participant.userId != m_userId && participant.sharing) {
+                    if (participant.userId == m_userId || !participant.sharing) {
+                        continue;
+                    }
+                    const bool matchesSelectedShare =
+                        !m_activeShareUserId.isEmpty() && participant.userId == m_activeShareUserId;
+                    const bool matchesDecodedSsrc =
+                        !framePeerUserId.isEmpty() && participant.userId == framePeerUserId;
+                    const bool selectsFirstShare = m_activeShareUserId.isEmpty();
+                    if (matchesSelectedShare || matchesDecodedSsrc || selectsFirstShare) {
                         hasActiveScreenShare = true;
+                        activeScreenShareUserId = participant.userId;
+                        activeScreenShareDisplayName = participant.displayName.trimmed().isEmpty()
+                            ? participant.userId
+                            : participant.displayName;
                         break;
                     }
                 }
 
                 if (hasActiveScreenShare) {
+                    if (!activeScreenShareUserId.isEmpty() &&
+                        (m_activeShareUserId != activeScreenShareUserId ||
+                         m_activeShareDisplayName != activeScreenShareDisplayName)) {
+                        m_activeShareUserId = activeScreenShareUserId;
+                        m_activeShareDisplayName = activeScreenShareDisplayName;
+                        emit activeShareChanged();
+                        updateActiveVideoPeerSelection();
+                    }
                     invalidateRemoteVideoRenderQueue(true);
                     if (m_remoteScreenFrameStore) {
                         m_remoteScreenFrameStore->setFrame(std::move(frame));
@@ -3561,7 +3584,6 @@ void MeetingController::maybeStartVideoNegotiation() {
                     m_remoteScreenFrameStore->clear();
                 }
 
-                const QString framePeerUserId = resolvePeerUserIdForRemoteVideoSsrc(remoteMediaSsrc);
                 auto framePtr = std::make_shared<av::codec::DecodedVideoFrame>(std::move(frame));
                 const int64_t framePts = framePtr->pts;
                 if (!framePeerUserId.isEmpty()) {
@@ -3602,12 +3624,17 @@ void MeetingController::maybeStartVideoNegotiation() {
             QMetaObject::invokeMethod(
                 this,
                 [this, frame = std::move(frame)]() mutable {
-                    if (!m_localVideoFrameStore || !m_inMeeting || m_videoMuted || m_screenSharing) {
+                    if (!m_localVideoFrameStore || !m_inMeeting || (m_videoMuted && !m_screenSharing)) {
                         return;
                     }
-                    if (!m_loggedLocalVideoPreviewFrameStored && frame.hasRenderableData()) {
-                        m_loggedLocalVideoPreviewFrameStored = true;
-                        emit infoMessage(QStringLiteral("Video local preview frame stored"));
+                    if (frame.hasRenderableData()) {
+                        if (m_screenSharing && !m_loggedLocalScreenPreviewFrameStored) {
+                            m_loggedLocalScreenPreviewFrameStored = true;
+                            emit infoMessage(QStringLiteral("Video local screen preview frame stored"));
+                        } else if (!m_screenSharing && !m_loggedLocalVideoPreviewFrameStored) {
+                            m_loggedLocalVideoPreviewFrameStored = true;
+                            emit infoMessage(QStringLiteral("Video local preview frame stored"));
+                        }
                     }
                     m_localVideoFrameStore->setFrame(std::move(frame));
                 },

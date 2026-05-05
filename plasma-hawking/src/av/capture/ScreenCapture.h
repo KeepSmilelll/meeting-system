@@ -20,7 +20,7 @@ struct ScreenFrame {
 struct ScreenCaptureConfig {
     int targetWidth{1280};
     int targetHeight{720};
-    int frameRate{5};
+    int frameRate{30};
     std::size_t ringCapacity{3};
 };
 

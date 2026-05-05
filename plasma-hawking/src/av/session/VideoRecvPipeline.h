@@ -1,5 +1,6 @@
 #pragma once
 
+#include "av/VideoPipelineProfile.h"
 #include "av/codec/VideoDecoder.h"
 #include "net/media/H264RtpPayload.h"
 #include "net/media/RTPReceiver.h"
@@ -17,7 +18,8 @@ class VideoRecvDecodeWorker;
 struct VideoRecvPipelineConfig {
     uint8_t screenPayloadType{97};
     uint8_t cameraPayloadType{96};
-    int frameRate{5};
+    int frameRate{30};
+    av::VideoPipelineProfile profile{av::videoPipelineProfileFromEnvironment()};
 };
 
 enum class VideoRecvPacketResult {

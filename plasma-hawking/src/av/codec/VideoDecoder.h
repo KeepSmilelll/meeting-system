@@ -1,6 +1,7 @@
 #pragma once
 
 #include "av/FFmpegUtils.h"
+#include "av/VideoPipelineProfile.h"
 #include "av/codec/VideoEncoder.h"
 
 #include <cstdint>
@@ -18,6 +19,11 @@ struct DecodedVideoFrame {
         None = 0,
         D3d11Texture2D = 1,
     };
+    enum class StorageKind {
+        Empty = 0,
+        Software = 1,
+        Hardware = 2,
+    };
 
     int width{0};
     int height{0};
@@ -32,13 +38,57 @@ struct DecodedVideoFrame {
     HardwareFrameKind hardwareFrameKind{HardwareFrameKind::None};
     void* hardwareTextureHandle{nullptr};
     uint32_t hardwareSubresourceIndex{0};
+    StorageKind storageKind{StorageKind::Empty};
+    av::VideoPipelineTelemetry telemetry{};
+
+    void markSoftwareFrame(bool copied, bool transferredFromHardware = false) {
+        storageKind = StorageKind::Software;
+        hardwareAvFrame.reset();
+        hardwareFrameKind = HardwareFrameKind::None;
+        hardwareTextureHandle = nullptr;
+        hardwareSubresourceIndex = 0U;
+        telemetry.cpuFrameCopy = telemetry.cpuFrameCopy || copied;
+        telemetry.cpuFrameTransfer = telemetry.cpuFrameTransfer || transferredFromHardware;
+        telemetry.hardwareTextureInterop = false;
+    }
+
+    void markHardwareFrame(HardwareFrameKind kind) {
+        storageKind = StorageKind::Hardware;
+        avFrame.reset();
+        yPlane.clear();
+        uvPlane.clear();
+        uPlane.clear();
+        vPlane.clear();
+        hardwareFrameKind = kind;
+        telemetry.hardwareDecode = true;
+    }
+
+    bool isSoftwareFrame() const {
+        return storageKind == StorageKind::Software ||
+               (storageKind == StorageKind::Empty && containsSoftwarePayload());
+    }
+
+    bool isHardwareFrame() const {
+        return storageKind == StorageKind::Hardware ||
+               (storageKind == StorageKind::Empty && containsHardwarePayload() && !containsSoftwarePayload());
+    }
+
+    bool containsSoftwarePayload() const {
+        return avFrame || !yPlane.empty() || !uvPlane.empty() || !uPlane.empty() || !vPlane.empty();
+    }
+
+    bool containsHardwarePayload() const {
+        return hardwareFrameKind != HardwareFrameKind::None &&
+               hardwareAvFrame &&
+               hardwareTextureHandle != nullptr;
+    }
 
     bool hasCpuNv12Planes() const {
-        return !yPlane.empty() && !uvPlane.empty();
+        return !isHardwareFrame() && !yPlane.empty() && !uvPlane.empty();
     }
 
     bool hasCpuYuv420pPlanes() const {
-        return !yPlane.empty() && !uPlane.empty() && !vPlane.empty();
+        return !isHardwareFrame() && !yPlane.empty() && !uPlane.empty() && !vPlane.empty();
     }
 
     bool hasCpuPlanes() const {
@@ -46,7 +96,7 @@ struct DecodedVideoFrame {
     }
 
     bool hasAvFrameNv12Planes() const {
-        if (!avFrame || pixelFormat != AV_PIX_FMT_NV12) {
+        if (isHardwareFrame() || !avFrame || pixelFormat != AV_PIX_FMT_NV12) {
             return false;
         }
         return avFrame->data[0] != nullptr &&
@@ -56,7 +106,8 @@ struct DecodedVideoFrame {
     }
 
     bool hasAvFrameYuv420pPlanes() const {
-        if (!avFrame ||
+        if (isHardwareFrame() ||
+            !avFrame ||
             (pixelFormat != AV_PIX_FMT_YUV420P && pixelFormat != AV_PIX_FMT_YUVJ420P)) {
             return false;
         }
@@ -76,13 +127,17 @@ struct DecodedVideoFrame {
         if (width <= 0 || height <= 0) {
             return false;
         }
+        if (storageKind == StorageKind::Hardware) {
+            return hasHardwareTextureShareCandidate();
+        }
+        if (storageKind == StorageKind::Software) {
+            return hasAvFramePlanes() || hasCpuPlanes();
+        }
         return hasAvFramePlanes() || hasCpuPlanes() || hasHardwareTextureShareCandidate();
     }
 
     bool hasHardwareTextureShareCandidate() const {
-        return hardwareFrameKind != HardwareFrameKind::None &&
-               hardwareAvFrame &&
-               hardwareTextureHandle != nullptr;
+        return !isSoftwareFrame() && containsHardwarePayload();
     }
 
     const uint8_t* yData() const {
@@ -154,13 +209,16 @@ struct DecodedVideoFrame {
     }
 };
 
+bool makeD3D11HardwarePreviewFrame(const AVFrame& frame, DecodedVideoFrame& outFrame);
+
 class VideoDecoder {
 public:
-    VideoDecoder();
+    explicit VideoDecoder(av::VideoPipelineProfile profile = av::videoPipelineProfileFromEnvironment());
     ~VideoDecoder();
 
     bool configure();
     bool decode(const EncodedVideoFrame& inFrame, DecodedVideoFrame& outFrame, std::string* error = nullptr);
+    av::VideoPipelineProfile pipelineProfile() const;
 
 private:
     struct AvBufferRefDeleter {
@@ -177,6 +235,7 @@ private:
     AVPixelFormat m_hwPixelFormat{AV_PIX_FMT_NONE};
     bool m_forceSoftwareDecode{false};
     bool m_enableHardwareTextureShare{false};
+    av::VideoPipelineProfile m_pipelineProfile{av::VideoPipelineProfile::SoftwareE2E};
 };
 
 }  // namespace av::codec

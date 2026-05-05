@@ -14,7 +14,7 @@ enum class VideoBweDegradationLevel {
 struct VideoBwePolicyConfig {
     int baselineWidth{1280};
     int baselineHeight{720};
-    int baselineFrameRate{5};
+    int baselineFrameRate{30};
     uint32_t baselineBitrateBps{1500U * 1000U};
 };
 
@@ -29,7 +29,7 @@ struct VideoBwePolicyTarget {
     VideoBweDegradationLevel level{VideoBweDegradationLevel::Normal};
     int width{1280};
     int height{720};
-    int frameRate{5};
+    int frameRate{30};
     uint32_t bitrateBps{1500U * 1000U};
     bool videoSuspended{false};
     uint32_t jitterTargetMs{0};

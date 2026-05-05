@@ -337,6 +337,7 @@ qt_add_executable(meeting_client
     src/av/capture/AudioCapture.cpp
     src/av/capture/CameraCapture.cpp
     src/av/capture/ScreenCapture.cpp
+    src/av/capture/WindowsD3D11CameraCapture.cpp
     src/av/codec/AudioEncoder.cpp
     src/av/codec/AudioDecoder.cpp
     src/av/codec/VideoDecoder.cpp
@@ -436,7 +437,7 @@ copy_ffmpeg_runtime(meeting_client)
 copy_openssl_runtime(meeting_client)
 
 if(WIN32)
-    target_link_libraries(meeting_client PRIVATE ws2_32 bcrypt opengl32)
+    target_link_libraries(meeting_client PRIVATE ws2_32 bcrypt opengl32 d3d11 dxgi mf mfplat mfreadwrite mfuuid ole32)
 endif()
 
 qt_add_qml_module(meeting_client
@@ -515,6 +516,7 @@ add_executable(test_screen_share_session
     src/security/CryptoUtils.cpp
     src/av/capture/ScreenCapture.cpp
     src/av/capture/CameraCapture.cpp
+    src/av/capture/WindowsD3D11CameraCapture.cpp
     src/av/codec/VideoDecoder.cpp
     src/av/codec/VideoEncoder.cpp
     src/av/session/ScreenShareSession.cpp
@@ -569,7 +571,7 @@ target_enable_dtls_srtp(test_screen_share_session)
 copy_ffmpeg_runtime(test_screen_share_session)
 
 if(WIN32)
-    target_link_libraries(test_screen_share_session PRIVATE ws2_32)
+    target_link_libraries(test_screen_share_session PRIVATE ws2_32 d3d11 dxgi mf mfplat mfreadwrite mfuuid ole32)
 endif()
 
 add_test(NAME test_screen_share_session COMMAND test_screen_share_session)
@@ -579,6 +581,7 @@ add_executable(test_screen_share_session_camera_smoke
     src/security/CryptoUtils.cpp
     src/av/capture/CameraCapture.cpp
     src/av/capture/ScreenCapture.cpp
+    src/av/capture/WindowsD3D11CameraCapture.cpp
     src/av/codec/VideoDecoder.cpp
     src/av/codec/VideoEncoder.cpp
     src/av/session/ScreenShareSession.cpp
@@ -634,7 +637,7 @@ target_enable_dtls_srtp(test_screen_share_session_camera_smoke)
 copy_ffmpeg_runtime(test_screen_share_session_camera_smoke)
 
 if(WIN32)
-    target_link_libraries(test_screen_share_session_camera_smoke PRIVATE ws2_32)
+    target_link_libraries(test_screen_share_session_camera_smoke PRIVATE ws2_32 d3d11 dxgi mf mfplat mfreadwrite mfuuid ole32)
 endif()
 
 add_test(NAME test_screen_share_session_camera_smoke COMMAND test_screen_share_session_camera_smoke)
@@ -746,6 +749,26 @@ add_test(NAME test_video_send_pipeline_avframe COMMAND test_video_send_pipeline_
 set_tests_properties(test_video_send_pipeline_avframe PROPERTIES
     SKIP_RETURN_CODE 77
 )
+
+add_executable(test_video_pipeline_profile
+    tests/test_video_pipeline_profile.cpp
+    src/av/codec/VideoEncoder.cpp
+    src/av/session/VideoSendPipeline.cpp
+    src/net/media/RTPSender.cpp
+    src/net/media/H264RtpPayload.cpp
+)
+
+target_include_directories(test_video_pipeline_profile PRIVATE
+    src
+    ${FFMPEG_INCLUDE_DIR}
+)
+
+target_link_libraries(test_video_pipeline_profile PRIVATE
+    ${FFMPEG_AVCODEC_LIBRARY}
+    ${FFMPEG_AVUTIL_LIBRARY}
+)
+
+add_test(NAME test_video_pipeline_profile COMMAND test_video_pipeline_profile)
 
 add_executable(test_video_recv_pipeline_multistream
     tests/test_video_recv_pipeline_multistream.cpp
@@ -890,6 +913,7 @@ add_executable(test_meeting_controller_mute_all
     src/av/capture/AudioCapture.cpp
     src/av/capture/CameraCapture.cpp
     src/av/capture/ScreenCapture.cpp
+    src/av/capture/WindowsD3D11CameraCapture.cpp
     src/av/codec/AudioEncoder.cpp
     src/av/codec/AudioDecoder.cpp
     src/av/codec/VideoDecoder.cpp
@@ -968,7 +992,7 @@ target_enable_dtls_srtp(test_meeting_controller_mute_all)
 copy_ffmpeg_runtime(test_meeting_controller_mute_all)
 
 if(WIN32)
-    target_link_libraries(test_meeting_controller_mute_all PRIVATE ws2_32 bcrypt)
+    target_link_libraries(test_meeting_controller_mute_all PRIVATE ws2_32 bcrypt d3d11 dxgi mf mfplat mfreadwrite mfuuid ole32)
 endif()
 
 add_test(NAME test_meeting_controller_mute_all COMMAND test_meeting_controller_mute_all)
@@ -985,6 +1009,7 @@ add_executable(test_meeting_runtime_smoke
     src/av/capture/AudioCapture.cpp
     src/av/capture/CameraCapture.cpp
     src/av/capture/ScreenCapture.cpp
+    src/av/capture/WindowsD3D11CameraCapture.cpp
     src/av/codec/AudioEncoder.cpp
     src/av/codec/AudioDecoder.cpp
     src/av/codec/VideoDecoder.cpp
@@ -1063,7 +1088,7 @@ target_enable_dtls_srtp(test_meeting_runtime_smoke)
 copy_ffmpeg_runtime(test_meeting_runtime_smoke)
 
 if(WIN32)
-    target_link_libraries(test_meeting_runtime_smoke PRIVATE ws2_32 bcrypt)
+    target_link_libraries(test_meeting_runtime_smoke PRIVATE ws2_32 bcrypt d3d11 dxgi mf mfplat mfreadwrite mfuuid ole32)
 endif()
 
 add_test(NAME test_meeting_runtime_smoke COMMAND test_meeting_runtime_smoke)
@@ -1153,6 +1178,10 @@ target_link_libraries(test_meeting_client_process_smoke PRIVATE
     ${FFMPEG_SWSCALE_LIBRARY}
 )
 copy_ffmpeg_runtime(test_meeting_client_process_smoke)
+
+if(WIN32)
+    target_link_libraries(test_meeting_client_process_smoke PRIVATE d3d11 dxgi)
+endif()
 
 add_dependencies(test_meeting_client_process_smoke meeting_client)
 

@@ -74,6 +74,14 @@ bool VideoSendPipeline::encodeAndPacketize(av::codec::VideoEncoder& encoder,
                                            bool* encodedKeyFrame,
                                            std::string* error) const {
     if (inputFrame.hasAvFrame()) {
+        if (av::isHardwareE2E(m_config.profile) &&
+            !inputFrame.hasHardwareD3D11Frame()) {
+            resetEncodeOutput(outPackets, encodedKeyFrame, error);
+            if (error != nullptr) {
+                *error = "hardware video pipeline requires D3D11 GPU AVFrame input; CPU AVFrame input disabled";
+            }
+            return false;
+        }
         return encodeAndPacketize(encoder,
                                   *inputFrame.avFrame,
                                   payloadType,
@@ -84,6 +92,13 @@ bool VideoSendPipeline::encodeAndPacketize(av::codec::VideoEncoder& encoder,
                                   error);
     }
     if (inputFrame.hasScreenFrame()) {
+        if (av::isHardwareE2E(m_config.profile)) {
+            resetEncodeOutput(outPackets, encodedKeyFrame, error);
+            if (error != nullptr) {
+                *error = "hardware video pipeline requires GPU capture/encoder input; CPU screen frame input disabled";
+            }
+            return false;
+        }
         return encodeAndPacketize(encoder,
                                   inputFrame.screenFrame,
                                   payloadType,
@@ -110,6 +125,12 @@ bool VideoSendPipeline::encodeAndPacketize(av::codec::VideoEncoder& encoder,
                                            bool* encodedKeyFrame,
                                            std::string* error) const {
     resetEncodeOutput(outPackets, encodedKeyFrame, error);
+    if (av::isHardwareE2E(m_config.profile)) {
+        if (error != nullptr) {
+            *error = "hardware video pipeline requires GPU capture/encoder input; screen frame path is software-only";
+        }
+        return false;
+    }
 
     encoder.setPayloadType(payloadType);
     if (forceKeyFrame) {
@@ -140,6 +161,14 @@ bool VideoSendPipeline::encodeAndPacketize(av::codec::VideoEncoder& encoder,
                                            bool* encodedKeyFrame,
                                            std::string* error) const {
     resetEncodeOutput(outPackets, encodedKeyFrame, error);
+    if (av::isHardwareE2E(m_config.profile) &&
+        (static_cast<AVPixelFormat>(frame.format) != AV_PIX_FMT_D3D11 ||
+         frame.hw_frames_ctx == nullptr)) {
+        if (error != nullptr) {
+            *error = "hardware video pipeline requires D3D11 GPU AVFrame input; software AVFrame path is disabled";
+        }
+        return false;
+    }
 
     encoder.setPayloadType(payloadType);
     if (forceKeyFrame) {

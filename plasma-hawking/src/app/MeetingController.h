@@ -358,6 +358,7 @@ private:
     quint64 m_remoteVideoRescheduledFrameCount{0};
     quint64 m_remoteVideoQueueResetCount{0};
     bool m_loggedLocalVideoPreviewFrameStored{false};
+    bool m_loggedLocalScreenPreviewFrameStored{false};
     QSet<QString> m_loggedRemoteVideoFrameStorePeers;
 
     QString m_serverHost{QStringLiteral("127.0.0.1")};

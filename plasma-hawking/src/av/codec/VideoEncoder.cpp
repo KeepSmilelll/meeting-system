@@ -8,9 +8,20 @@
 #include <string>
 #include <vector>
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#endif
+
 extern "C" {
+#include <libavutil/hwcontext.h>
 #include <libavutil/opt.h>
+#include <libavutil/pixfmt.h>
 }
+#ifdef _WIN32
+#include <libavutil/hwcontext_d3d11va.h>
+#endif
 
 namespace av::codec {
 namespace {
@@ -26,6 +37,11 @@ constexpr std::array<const char*, 5> kCodecCandidates = {
 constexpr std::array<AVPixelFormat, 2> kPixelCandidates = {
     AV_PIX_FMT_NV12,
     AV_PIX_FMT_YUV420P,
+};
+constexpr std::array<const char*, 3> kHardwareD3D11CodecCandidates = {
+    "h264_nvenc",
+    "h264_amf",
+    "h264_qsv",
 };
 
 std::string describeAvError(int errorCode) {
@@ -376,6 +392,26 @@ std::vector<const char*> orderedCodecCandidates() {
     return ordered;
 }
 
+std::vector<const char*> orderedHardwareD3D11CodecCandidates() {
+    std::vector<const char*> ordered;
+    const auto pushUnique = [&ordered](const char* candidate) {
+        if (candidate == nullptr || *candidate == '\0') {
+            return;
+        }
+        if (std::find_if(ordered.begin(), ordered.end(),
+                         [candidate](const char* existing) { return std::string(existing) == candidate; }) != ordered.end()) {
+            return;
+        }
+        ordered.push_back(candidate);
+    };
+
+    pushUnique(std::getenv("MEETING_VIDEO_ENCODER"));
+    for (const char* candidate : kHardwareD3D11CodecCandidates) {
+        pushUnique(candidate);
+    }
+    return ordered;
+}
+
 uint8_t clampToByte(int value) {
     return static_cast<uint8_t>(std::clamp(value, 0, 255));
 }
@@ -618,6 +654,12 @@ VideoEncoder::VideoEncoder() = default;
 
 VideoEncoder::~VideoEncoder() = default;
 
+void VideoEncoder::AvBufferRefDeleter::operator()(AVBufferRef* ref) const {
+    if (ref != nullptr) {
+        av_buffer_unref(&ref);
+    }
+}
+
 bool VideoEncoder::configure(int width,
                              int height,
                              int frameRate,
@@ -678,12 +720,125 @@ bool VideoEncoder::configure(int width,
             m_preset = preset;
             m_outputPixelFormat = outputFormat;
             m_codecContext = std::move(context);
+            m_hwDeviceContext.reset();
+            m_hwFramesContext.reset();
             m_codecName = candidate;
             return true;
         }
     }
 
     return false;
+}
+
+bool VideoEncoder::configureHardwareD3D11(int width,
+                                          int height,
+                                          int frameRate,
+                                          int bitrate,
+                                          uint8_t payloadType,
+                                          VideoEncoderPreset preset) {
+#ifndef _WIN32
+    (void)width;
+    (void)height;
+    (void)frameRate;
+    (void)bitrate;
+    (void)payloadType;
+    (void)preset;
+    return false;
+#else
+    if (width <= 0 || height <= 0 || frameRate <= 0 || bitrate <= 0) {
+        return false;
+    }
+    if (payloadType == 0) {
+        payloadType = kScreenSharePayloadType;
+    }
+
+    width &= ~1;
+    height &= ~1;
+    width = std::max(2, width);
+    height = std::max(2, height);
+
+    AVBufferRef* rawDeviceContext = nullptr;
+    if (av_hwdevice_ctx_create(&rawDeviceContext,
+                               AV_HWDEVICE_TYPE_D3D11VA,
+                               nullptr,
+                               nullptr,
+                               0) < 0 ||
+        rawDeviceContext == nullptr) {
+        return false;
+    }
+    AVBufferRefPtr deviceContext(rawDeviceContext);
+
+    AVBufferRef* rawFramesContext = av_hwframe_ctx_alloc(deviceContext.get());
+    if (rawFramesContext == nullptr) {
+        return false;
+    }
+    AVBufferRefPtr framesContext(rawFramesContext);
+    auto* frames = reinterpret_cast<AVHWFramesContext*>(framesContext->data);
+    if (frames == nullptr) {
+        return false;
+    }
+    frames->format = AV_PIX_FMT_D3D11;
+    frames->sw_format = AV_PIX_FMT_NV12;
+    frames->width = width;
+    frames->height = height;
+    frames->initial_pool_size = std::max(8, frameRate / 2);
+    auto* d3d11Frames = reinterpret_cast<AVD3D11VAFramesContext*>(frames->hwctx);
+    if (d3d11Frames != nullptr) {
+        d3d11Frames->BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+    }
+    if (av_hwframe_ctx_init(framesContext.get()) < 0) {
+        return false;
+    }
+
+    for (const char* candidate : orderedHardwareD3D11CodecCandidates()) {
+        const AVCodec* codec = avcodec_find_encoder_by_name(candidate);
+        if (codec == nullptr || !codecSupportsPixelFormat(codec, AV_PIX_FMT_D3D11)) {
+            continue;
+        }
+
+        av::AVCodecContextPtr context = av::makeCodecContext(codec);
+        if (!context) {
+            continue;
+        }
+
+        context->codec_id = codec->id;
+        context->codec_type = AVMEDIA_TYPE_VIDEO;
+        context->bit_rate = bitrate;
+        context->width = width;
+        context->height = height;
+        context->time_base = AVRational{1, frameRate};
+        context->framerate = AVRational{frameRate, 1};
+        context->gop_size = std::max(frameRate * 2, frameRate);
+        context->max_b_frames = 0;
+        context->pix_fmt = AV_PIX_FMT_D3D11;
+        context->hw_frames_ctx = av_buffer_ref(framesContext.get());
+        if (context->hw_frames_ctx == nullptr) {
+            continue;
+        }
+
+        applyLowLatencyCodecOptions(candidate, context.get(), preset);
+        av_opt_set(context->priv_data, "repeat_headers", "1", 0);
+
+        if (avcodec_open2(context.get(), codec, nullptr) < 0) {
+            continue;
+        }
+
+        m_width = width;
+        m_height = height;
+        m_frameRate = frameRate;
+        m_bitrate = bitrate;
+        m_payloadType = payloadType;
+        m_preset = preset;
+        m_outputPixelFormat = AV_PIX_FMT_D3D11;
+        m_codecContext = std::move(context);
+        m_hwDeviceContext = std::move(deviceContext);
+        m_hwFramesContext = std::move(framesContext);
+        m_codecName = candidate;
+        return true;
+    }
+
+    return false;
+#endif
 }
 
 bool VideoEncoder::encode(const capture::ScreenFrame& inFrame,
@@ -769,6 +924,66 @@ bool VideoEncoder::encode(const AVFrame& inFrame,
         return false;
     }
 
+    const AVPixelFormat inputPixelFormat = static_cast<AVPixelFormat>(inFrame.format);
+    if (inputPixelFormat == AV_PIX_FMT_D3D11) {
+        if (!m_codecContext) {
+            const int configuredFrameRate = m_frameRate > 0 ? m_frameRate : 30;
+            const int configuredBitrate = m_bitrate > 0 ? m_bitrate : 1500 * 1000;
+            if (!configureHardwareD3D11(inputWidth,
+                                        inputHeight,
+                                        configuredFrameRate,
+                                        configuredBitrate,
+                                        m_payloadType,
+                                        m_preset)) {
+                if (error != nullptr) {
+                    *error = "hardware D3D11 encoder configure failed";
+                }
+                return false;
+            }
+        }
+        if (m_outputPixelFormat != AV_PIX_FMT_D3D11 || !m_hwFramesContext) {
+            if (error != nullptr) {
+                *error = "D3D11 input requires hardware encoder context";
+            }
+            return false;
+        }
+        if (inFrame.hw_frames_ctx == nullptr) {
+            if (error != nullptr) {
+                *error = "D3D11 input frame missing hw_frames_ctx";
+            }
+            return false;
+        }
+        if (inputWidth != m_width || inputHeight != m_height) {
+            if (error != nullptr) {
+                *error = "input size mismatch";
+            }
+            return false;
+        }
+
+        av::AVFramePtr frame(av_frame_clone(&inFrame));
+        if (!frame) {
+            if (error != nullptr) {
+                *error = "hardware frame clone failed";
+            }
+            return false;
+        }
+        const bool requestKeyFrame = consumeKeyframeRequest(forceKeyFrame);
+        if (requestKeyFrame) {
+            frame->pict_type = AV_PICTURE_TYPE_I;
+            frame->key_frame = 1;
+        }
+
+        const int sendResult = avcodec_send_frame(m_codecContext.get(), frame.get());
+        if (sendResult < 0) {
+            if (error != nullptr) {
+                *error = "avcodec_send_frame failed: " + describeAvError(sendResult);
+            }
+            return false;
+        }
+
+        return receivePacket(inFrame.pts, outFrame, error);
+    }
+
     if (!m_codecContext) {
         const int configuredFrameRate = m_frameRate > 0 ? m_frameRate : 30;
         const int configuredBitrate = m_bitrate > 0 ? m_bitrate : 1500 * 1000;
@@ -787,7 +1002,6 @@ bool VideoEncoder::encode(const AVFrame& inFrame,
         return false;
     }
 
-    const AVPixelFormat inputPixelFormat = static_cast<AVPixelFormat>(inFrame.format);
     av::AVFramePtr frame = nullptr;
     if (inputPixelFormat == m_outputPixelFormat) {
         frame.reset(av_frame_clone(&inFrame));
@@ -974,6 +1188,40 @@ VideoEncoderPreset VideoEncoder::preset() const {
 
 uint8_t VideoEncoder::payloadType() const {
     return m_payloadType;
+}
+
+bool VideoEncoder::usesHardwareInput() const {
+    return m_outputPixelFormat == AV_PIX_FMT_D3D11 && static_cast<bool>(m_hwFramesContext);
+}
+
+AVBufferRef* VideoEncoder::hardwareFramesContext() const {
+    return m_hwFramesContext.get();
+}
+
+void* VideoEncoder::d3d11Device() const {
+#ifdef _WIN32
+    if (!m_hwDeviceContext || m_hwDeviceContext->data == nullptr) {
+        return nullptr;
+    }
+    auto* deviceContext = reinterpret_cast<AVHWDeviceContext*>(m_hwDeviceContext->data);
+    auto* d3d11Context = reinterpret_cast<AVD3D11VADeviceContext*>(deviceContext->hwctx);
+    return d3d11Context != nullptr ? d3d11Context->device : nullptr;
+#else
+    return nullptr;
+#endif
+}
+
+void* VideoEncoder::d3d11DeviceContext() const {
+#ifdef _WIN32
+    if (!m_hwDeviceContext || m_hwDeviceContext->data == nullptr) {
+        return nullptr;
+    }
+    auto* deviceContext = reinterpret_cast<AVHWDeviceContext*>(m_hwDeviceContext->data);
+    auto* d3d11Context = reinterpret_cast<AVD3D11VADeviceContext*>(deviceContext->hwctx);
+    return d3d11Context != nullptr ? d3d11Context->device_context : nullptr;
+#else
+    return nullptr;
+#endif
 }
 
 }  // namespace av::codec

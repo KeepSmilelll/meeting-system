@@ -15,6 +15,7 @@
 #include "VideoSendTelemetryPipeline.h"
 #include "VideoSessionStateMachine.h"
 
+#include "av/capture/WindowsD3D11CameraCapture.h"
 #include "net/media/RTCPHandler.h"
 #include "net/media/SocketAddressUtils.h"
 
@@ -28,6 +29,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstdio>
 #include <deque>
 #include <functional>
 #include <memory>
@@ -41,6 +43,17 @@
 #endif
 #ifdef max
 #undef max
+#endif
+
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <d3d11.h>
+#include <dxgi1_2.h>
+extern "C" {
+#include <libavutil/hwcontext.h>
+}
 #endif
 
 namespace av::session {
@@ -70,6 +83,381 @@ constexpr std::size_t kRecvWorkerPollBudgetAfterPacket = 2U;
 constexpr std::size_t kRecvWorkerPollBudgetWhenIdle = 2U;
 constexpr std::size_t kRecvWorkerPollBudgetOnStop = 8U;
 constexpr uint64_t kVideoSenderReportIntervalMs = 1000U;
+
+#ifdef _WIN32
+std::string hresultString(HRESULT hr) {
+    char buffer[16]{};
+    std::snprintf(buffer, sizeof(buffer), "0x%08lx", static_cast<unsigned long>(hr));
+    return buffer;
+}
+
+const char* dxgiFormatName(DXGI_FORMAT format) {
+    switch (format) {
+    case DXGI_FORMAT_B8G8R8A8_UNORM:
+        return "B8G8R8A8_UNORM";
+    case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:
+        return "B8G8R8A8_UNORM_SRGB";
+    case DXGI_FORMAT_R8G8B8A8_UNORM:
+        return "R8G8B8A8_UNORM";
+    case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:
+        return "R8G8B8A8_UNORM_SRGB";
+    case DXGI_FORMAT_NV12:
+        return "NV12";
+    default:
+        return "other";
+    }
+}
+
+std::string textureDescString(const D3D11_TEXTURE2D_DESC& desc) {
+    char buffer[256]{};
+    std::snprintf(buffer,
+                  sizeof(buffer),
+                  "format=%s(%u) size=%ux%u bind=0x%08x usage=%u array=%u mips=%u sample=%u misc=0x%08x",
+                  dxgiFormatName(desc.Format),
+                  static_cast<unsigned>(desc.Format),
+                  desc.Width,
+                  desc.Height,
+                  desc.BindFlags,
+                  static_cast<unsigned>(desc.Usage),
+                  desc.ArraySize,
+                  desc.MipLevels,
+                  desc.SampleDesc.Count,
+                  desc.MiscFlags);
+    return buffer;
+}
+
+template <typename T>
+void releaseComObject(T*& object) {
+    if (object != nullptr) {
+        object->Release();
+        object = nullptr;
+    }
+}
+
+class WindowsD3D11ScreenCapture final {
+public:
+    WindowsD3D11ScreenCapture() = default;
+    ~WindowsD3D11ScreenCapture() {
+        shutdown();
+    }
+
+    WindowsD3D11ScreenCapture(const WindowsD3D11ScreenCapture&) = delete;
+    WindowsD3D11ScreenCapture& operator=(const WindowsD3D11ScreenCapture&) = delete;
+
+    bool initialize(av::codec::VideoEncoder& encoder, int targetWidth, int targetHeight, std::string* error) {
+        shutdown();
+        m_targetWidth = std::max(2, targetWidth & ~1);
+        m_targetHeight = std::max(2, targetHeight & ~1);
+        m_device = static_cast<ID3D11Device*>(encoder.d3d11Device());
+        if (m_device == nullptr || encoder.hardwareFramesContext() == nullptr) {
+            setError(error, "hardware screen capture requires D3D11 encoder device");
+            return false;
+        }
+        m_device->AddRef();
+        m_device->GetImmediateContext(&m_context);
+        if (m_context == nullptr) {
+            setError(error, "D3D11 immediate context unavailable");
+            shutdown();
+            return false;
+        }
+        if (FAILED(m_device->QueryInterface(__uuidof(ID3D11VideoDevice), reinterpret_cast<void**>(&m_videoDevice))) ||
+            m_videoDevice == nullptr ||
+            FAILED(m_context->QueryInterface(__uuidof(ID3D11VideoContext), reinterpret_cast<void**>(&m_videoContext))) ||
+            m_videoContext == nullptr) {
+            setError(error, "D3D11 video processor interfaces unavailable");
+            shutdown();
+            return false;
+        }
+
+        IDXGIDevice* dxgiDevice = nullptr;
+        IDXGIAdapter* adapter = nullptr;
+        IDXGIOutput* output = nullptr;
+        IDXGIOutput1* output1 = nullptr;
+        HRESULT hr = m_device->QueryInterface(__uuidof(IDXGIDevice), reinterpret_cast<void**>(&dxgiDevice));
+        if (SUCCEEDED(hr) && dxgiDevice != nullptr) {
+            hr = dxgiDevice->GetAdapter(&adapter);
+        }
+        if (SUCCEEDED(hr) && adapter != nullptr) {
+            hr = adapter->EnumOutputs(0, &output);
+        }
+        if (SUCCEEDED(hr) && output != nullptr) {
+            DXGI_OUTPUT_DESC outputDesc{};
+            if (SUCCEEDED(output->GetDesc(&outputDesc))) {
+                m_sourceWidth = std::max<LONG>(1, outputDesc.DesktopCoordinates.right - outputDesc.DesktopCoordinates.left);
+                m_sourceHeight = std::max<LONG>(1, outputDesc.DesktopCoordinates.bottom - outputDesc.DesktopCoordinates.top);
+            }
+            hr = output->QueryInterface(__uuidof(IDXGIOutput1), reinterpret_cast<void**>(&output1));
+        }
+        if (SUCCEEDED(hr) && output1 != nullptr) {
+            hr = output1->DuplicateOutput(m_device, &m_duplication);
+        }
+        releaseComObject(output1);
+        releaseComObject(output);
+        releaseComObject(adapter);
+        releaseComObject(dxgiDevice);
+        if (FAILED(hr) || m_duplication == nullptr) {
+            setError(error, "DXGI desktop duplication unavailable: " + hresultString(hr));
+            shutdown();
+            return false;
+        }
+
+        if (!ensureVideoProcessor(std::max(1, m_sourceWidth), std::max(1, m_sourceHeight), error)) {
+            shutdown();
+            return false;
+        }
+        return true;
+    }
+
+    bool capture(av::codec::VideoEncoder& encoder,
+                 int64_t pts,
+                 av::AVFramePtr& outFrame,
+                 std::string* error) {
+        if ((m_duplication == nullptr ||
+             m_targetWidth != std::max(2, encoder.width() & ~1) ||
+             m_targetHeight != std::max(2, encoder.height() & ~1)) &&
+            !initialize(encoder, encoder.width(), encoder.height(), error)) {
+            return false;
+        }
+
+        outFrame = av::makeFrame();
+        if (!outFrame) {
+            setError(error, "hardware frame allocation failed");
+            return false;
+        }
+        if (av_hwframe_get_buffer(encoder.hardwareFramesContext(), outFrame.get(), 0) < 0) {
+            outFrame.reset();
+            setError(error, "D3D11 hardware frame pool allocation failed");
+            return false;
+        }
+        outFrame->pts = pts;
+        outFrame->width = encoder.width();
+        outFrame->height = encoder.height();
+
+        DXGI_OUTDUPL_FRAME_INFO frameInfo{};
+        IDXGIResource* resource = nullptr;
+        HRESULT hr = m_duplication->AcquireNextFrame(33, &frameInfo, &resource);
+        if (hr == DXGI_ERROR_WAIT_TIMEOUT) {
+            outFrame.reset();
+            if (error != nullptr) {
+                error->clear();
+            }
+            return false;
+        }
+        if (hr == DXGI_ERROR_ACCESS_LOST) {
+            outFrame.reset();
+            shutdown();
+            setError(error, "DXGI desktop duplication access lost");
+            return false;
+        }
+        if (FAILED(hr) || resource == nullptr) {
+            outFrame.reset();
+            setError(error, "DXGI AcquireNextFrame failed: " + hresultString(hr));
+            return false;
+        }
+
+        ID3D11Texture2D* sourceTexture = nullptr;
+        hr = resource->QueryInterface(__uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&sourceTexture));
+        releaseComObject(resource);
+        if (FAILED(hr) || sourceTexture == nullptr) {
+            m_duplication->ReleaseFrame();
+            outFrame.reset();
+            setError(error, "DXGI frame is not a D3D11 texture");
+            return false;
+        }
+
+        D3D11_TEXTURE2D_DESC sourceDesc{};
+        sourceTexture->GetDesc(&sourceDesc);
+        bool converted = false;
+        if (ensureVideoProcessor(static_cast<int>(sourceDesc.Width), static_cast<int>(sourceDesc.Height), error)) {
+            converted = blitToEncoderFrame(sourceTexture, *outFrame, error);
+        }
+        releaseComObject(sourceTexture);
+        m_duplication->ReleaseFrame();
+        if (!converted) {
+            outFrame.reset();
+            return false;
+        }
+        return true;
+    }
+
+private:
+    static void setError(std::string* error, std::string message) {
+        if (error != nullptr) {
+            *error = std::move(message);
+        }
+    }
+
+    bool ensureVideoProcessor(int sourceWidth, int sourceHeight, std::string* error) {
+        sourceWidth = std::max(1, sourceWidth);
+        sourceHeight = std::max(1, sourceHeight);
+        if (m_videoProcessor != nullptr &&
+            m_processorEnumerator != nullptr &&
+            m_sourceWidth == sourceWidth &&
+            m_sourceHeight == sourceHeight) {
+            return true;
+        }
+        releaseComObject(m_videoProcessor);
+        releaseComObject(m_processorEnumerator);
+        m_sourceWidth = sourceWidth;
+        m_sourceHeight = sourceHeight;
+
+        D3D11_VIDEO_PROCESSOR_CONTENT_DESC contentDesc{};
+        contentDesc.InputFrameFormat = D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE;
+        contentDesc.InputWidth = static_cast<UINT>(sourceWidth);
+        contentDesc.InputHeight = static_cast<UINT>(sourceHeight);
+        contentDesc.OutputWidth = static_cast<UINT>(m_targetWidth);
+        contentDesc.OutputHeight = static_cast<UINT>(m_targetHeight);
+        contentDesc.Usage = D3D11_VIDEO_USAGE_PLAYBACK_NORMAL;
+
+        HRESULT hr = m_videoDevice->CreateVideoProcessorEnumerator(&contentDesc, &m_processorEnumerator);
+        if (FAILED(hr) || m_processorEnumerator == nullptr) {
+            setError(error, "CreateVideoProcessorEnumerator failed: " + hresultString(hr));
+            return false;
+        }
+        hr = m_videoDevice->CreateVideoProcessor(m_processorEnumerator, 0, &m_videoProcessor);
+        if (FAILED(hr) || m_videoProcessor == nullptr) {
+            setError(error, "CreateVideoProcessor failed: " + hresultString(hr));
+            return false;
+        }
+        return true;
+    }
+
+    bool blitToEncoderFrame(ID3D11Texture2D* sourceTexture, AVFrame& outFrame, std::string* error) {
+        auto* destTexture = reinterpret_cast<ID3D11Texture2D*>(outFrame.data[0]);
+        if (sourceTexture == nullptr || destTexture == nullptr || outFrame.hw_frames_ctx == nullptr) {
+            setError(error, "invalid D3D11 hardware frame textures");
+            return false;
+        }
+
+        D3D11_TEXTURE2D_DESC sourceDesc{};
+        sourceTexture->GetDesc(&sourceDesc);
+        if (!ensureInputTexture(sourceDesc, error)) {
+            return false;
+        }
+        m_context->CopySubresourceRegion(m_inputTexture, 0, 0, 0, 0, sourceTexture, 0, nullptr);
+        D3D11_TEXTURE2D_DESC inputTextureDesc{};
+        m_inputTexture->GetDesc(&inputTextureDesc);
+        UINT inputFormatSupport = 0;
+        if (m_processorEnumerator != nullptr) {
+            (void)m_processorEnumerator->CheckVideoProcessorFormat(inputTextureDesc.Format, &inputFormatSupport);
+        }
+
+        D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC inputDesc{};
+        inputDesc.FourCC = 0;
+        inputDesc.ViewDimension = D3D11_VPIV_DIMENSION_TEXTURE2D;
+        inputDesc.Texture2D.MipSlice = 0;
+        inputDesc.Texture2D.ArraySlice = 0;
+
+        D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC outputDesc{};
+        outputDesc.ViewDimension = D3D11_VPOV_DIMENSION_TEXTURE2DARRAY;
+        outputDesc.Texture2DArray.MipSlice = 0;
+        outputDesc.Texture2DArray.FirstArraySlice = static_cast<UINT>(reinterpret_cast<std::uintptr_t>(outFrame.data[1]));
+        outputDesc.Texture2DArray.ArraySize = 1;
+
+        ID3D11VideoProcessorInputView* inputView = nullptr;
+        ID3D11VideoProcessorOutputView* outputView = nullptr;
+        HRESULT hr = m_videoDevice->CreateVideoProcessorInputView(m_inputTexture,
+                                                                  m_processorEnumerator,
+                                                                  &inputDesc,
+                                                                  &inputView);
+        if (FAILED(hr) || inputView == nullptr) {
+            setError(error,
+                "CreateVideoProcessorInputView failed: " + hresultString(hr) +
+                " source{" + textureDescString(sourceDesc) + "}" +
+                " input{" + textureDescString(inputTextureDesc) + "}" +
+                " formatSupport=0x" + [&]() {
+                    char support[16]{};
+                    std::snprintf(support, sizeof(support), "%08x", inputFormatSupport);
+                    return std::string(support);
+                }());
+            return false;
+        }
+        hr = m_videoDevice->CreateVideoProcessorOutputView(destTexture,
+                                                           m_processorEnumerator,
+                                                           &outputDesc,
+                                                           &outputView);
+        if (FAILED(hr) || outputView == nullptr) {
+            releaseComObject(inputView);
+            setError(error, "CreateVideoProcessorOutputView failed: " + hresultString(hr));
+            return false;
+        }
+
+        RECT sourceRect{0, 0, m_sourceWidth, m_sourceHeight};
+        RECT targetRect{0, 0, m_targetWidth, m_targetHeight};
+        m_videoContext->VideoProcessorSetStreamSourceRect(m_videoProcessor, 0, TRUE, &sourceRect);
+        m_videoContext->VideoProcessorSetStreamDestRect(m_videoProcessor, 0, TRUE, &targetRect);
+        m_videoContext->VideoProcessorSetOutputTargetRect(m_videoProcessor, TRUE, &targetRect);
+
+        D3D11_VIDEO_PROCESSOR_STREAM stream{};
+        stream.Enable = TRUE;
+        stream.pInputSurface = inputView;
+        hr = m_videoContext->VideoProcessorBlt(m_videoProcessor, outputView, 0, 1, &stream);
+        releaseComObject(outputView);
+        releaseComObject(inputView);
+        if (FAILED(hr)) {
+            setError(error, "VideoProcessorBlt desktop frame failed: " + hresultString(hr));
+            return false;
+        }
+        return true;
+    }
+
+    bool ensureInputTexture(const D3D11_TEXTURE2D_DESC& sourceDesc, std::string* error) {
+        D3D11_TEXTURE2D_DESC existingDesc{};
+        if (m_inputTexture != nullptr) {
+            m_inputTexture->GetDesc(&existingDesc);
+            if (existingDesc.Width == sourceDesc.Width &&
+                existingDesc.Height == sourceDesc.Height &&
+                existingDesc.Format == sourceDesc.Format) {
+                return true;
+            }
+            releaseComObject(m_inputTexture);
+        }
+
+        D3D11_TEXTURE2D_DESC inputDesc{};
+        inputDesc.Width = sourceDesc.Width;
+        inputDesc.Height = sourceDesc.Height;
+        inputDesc.MipLevels = 1;
+        inputDesc.ArraySize = 1;
+        inputDesc.Format = sourceDesc.Format;
+        inputDesc.SampleDesc.Count = 1;
+        inputDesc.Usage = D3D11_USAGE_DEFAULT;
+        inputDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+
+        HRESULT hr = m_device->CreateTexture2D(&inputDesc, nullptr, &m_inputTexture);
+        if (FAILED(hr) || m_inputTexture == nullptr) {
+            setError(error, "CreateTexture2D desktop video processor input failed: " + hresultString(hr));
+            return false;
+        }
+        return true;
+    }
+
+    void shutdown() {
+        releaseComObject(m_videoProcessor);
+        releaseComObject(m_processorEnumerator);
+        releaseComObject(m_inputTexture);
+        releaseComObject(m_duplication);
+        releaseComObject(m_videoContext);
+        releaseComObject(m_videoDevice);
+        releaseComObject(m_context);
+        releaseComObject(m_device);
+        m_sourceWidth = 0;
+        m_sourceHeight = 0;
+    }
+
+    ID3D11Device* m_device{nullptr};
+    ID3D11DeviceContext* m_context{nullptr};
+    ID3D11VideoDevice* m_videoDevice{nullptr};
+    ID3D11VideoContext* m_videoContext{nullptr};
+    IDXGIOutputDuplication* m_duplication{nullptr};
+    ID3D11VideoProcessorEnumerator* m_processorEnumerator{nullptr};
+    ID3D11VideoProcessor* m_videoProcessor{nullptr};
+    ID3D11Texture2D* m_inputTexture{nullptr};
+    int m_sourceWidth{0};
+    int m_sourceHeight{0};
+    int m_targetWidth{0};
+    int m_targetHeight{0};
+};
+#endif
 
 uint64_t ntpNow() {
     constexpr uint64_t kNtpUnixEpochOffsetSeconds = 2208988800ULL;
@@ -263,7 +651,7 @@ private:
     }
 
     const uint32_t m_remoteMediaSsrc{0U};
-    const int m_expectedFrameRate{5};
+    const int m_expectedFrameRate{30};
     VideoRecvConsumePipeline m_recvConsumePipeline;
     VideoRecvPipeline m_recvPipeline;
     std::atomic<uint32_t>& m_adaptiveJitterTargetMs;
@@ -405,6 +793,7 @@ void ScreenShareSession::captureLoop() {
         QMutexLocker locker(&m_mutex);
         return m_errorCallback;
     }();
+    const av::VideoPipelineProfile requestedProfile = av::videoPipelineProfileFromEnvironment();
 
     while (m_running.load(std::memory_order_acquire) &&
            (m_sharingEnabled.load(std::memory_order_acquire) ||
@@ -427,6 +816,18 @@ void ScreenShareSession::captureLoop() {
         const VideoSendSource source = VideoSessionStateMachine::resolveSendSource(
             m_sharingEnabled.load(std::memory_order_acquire),
             m_cameraSendingEnabled.load(std::memory_order_acquire));
+        if (av::isHardwareE2E(requestedProfile)) {
+            bool bypassCpuCapture = source == VideoSendSource::Screen;
+            if (source == VideoSendSource::Camera) {
+                QMutexLocker locker(&m_mutex);
+                bypassCpuCapture = !(m_cameraCapture && m_cameraCapture->isRunning()) &&
+                                   !(m_cameraFallbackCapture && m_cameraFallbackCapture->isRunning());
+            }
+            if (bypassCpuCapture) {
+                QThread::msleep(10);
+                continue;
+            }
+        }
 
         VideoSendLoopState loopState{};
         loopState.source = source;
@@ -488,25 +889,78 @@ void ScreenShareSession::captureLoop() {
 
 void ScreenShareSession::sendLoop() {
     av::codec::VideoEncoder encoder;
+    const av::VideoPipelineProfile requestedProfile = av::videoPipelineProfileFromEnvironment();
+    const bool profileForced = av::videoPipelineProfileExplicitlySet();
+    av::VideoPipelineProfile sendProfile = requestedProfile;
     VideoSendPipeline sendPipeline(
-        VideoSendPipelineConfig{m_config.frameRate, m_config.maxPayloadBytes});
-    if (!encoder.configure(m_config.width,
-                           m_config.height,
-                           m_config.frameRate,
-                           m_config.bitrate,
-                           m_config.cameraPayloadType,
-                           m_config.encoderPreset)) {
+        VideoSendPipelineConfig{m_config.frameRate, m_config.maxPayloadBytes, sendProfile});
+    auto configureEncoderForProfile = [&](av::VideoPipelineProfile profile,
+                                          int width,
+                                          int height,
+                                          int frameRate,
+                                          int bitrate,
+                                          uint8_t payloadType) {
+        return av::isHardwareE2E(profile)
+            ? encoder.configureHardwareD3D11(width,
+                                             height,
+                                             frameRate,
+                                             bitrate,
+                                             payloadType,
+                                             m_config.encoderPreset)
+            : encoder.configure(width,
+                                height,
+                                frameRate,
+                                bitrate,
+                                payloadType,
+                                m_config.encoderPreset);
+    };
+    bool encoderConfigured = configureEncoderForProfile(sendProfile,
+                                                        m_config.width,
+                                                        m_config.height,
+                                                        m_config.frameRate,
+                                                        m_config.bitrate,
+                                                        m_config.cameraPayloadType);
+    if (!encoderConfigured &&
+        av::isHardwareE2E(sendProfile) &&
+        !profileForced) {
+        sendProfile = av::VideoPipelineProfile::SoftwareE2E;
+        {
+            QMutexLocker locker(&m_mutex);
+            (void)startCaptureLocked(false);
+            if (m_cameraSendingEnabled.load(std::memory_order_acquire)) {
+                (void)startCameraCaptureLocked(false);
+            }
+        }
+        sendPipeline = VideoSendPipeline(
+            VideoSendPipelineConfig{m_config.frameRate, m_config.maxPayloadBytes, sendProfile});
+        qInfo().noquote() << "[screen-session] video send profile fallback profile=software reason=hardware encoder unavailable";
+        encoderConfigured = configureEncoderForProfile(sendProfile,
+                                                       m_config.width,
+                                                       m_config.height,
+                                                       m_config.frameRate,
+                                                       m_config.bitrate,
+                                                       m_config.cameraPayloadType);
+    }
+    if (!encoderConfigured) {
         std::function<void(std::string)> errorCallback;
         {
             QMutexLocker locker(&m_mutex);
-            setErrorLocked("video encoder configure failed");
+            setErrorLocked(av::isHardwareE2E(sendProfile)
+                               ? "hardware video encoder configure failed"
+                               : "video encoder configure failed");
             errorCallback = m_errorCallback;
         }
         if (errorCallback) {
-            errorCallback("video encoder configure failed");
+            errorCallback(av::isHardwareE2E(sendProfile)
+                              ? "hardware video encoder configure failed"
+                              : "video encoder configure failed");
         }
         return;
     }
+    qInfo().noquote() << "[screen-session] video send profile="
+                      << av::videoPipelineProfileName(sendProfile)
+                      << "fps=" << m_config.frameRate
+                      << "hardwareInput=" << (encoder.usesHardwareInput() ? 1 : 0);
     m_appliedBitrateBps.store(static_cast<uint32_t>(encoder.bitrate()), std::memory_order_release);
 
     VideoSendTelemetryPipeline sendTelemetryPipeline;
@@ -516,9 +970,28 @@ void ScreenShareSession::sendLoop() {
     uint32_t lastRtpTimestamp = 0U;
     uint32_t rtpPacketCount = 0U;
     uint32_t rtpOctetCount = 0U;
+    const auto hardwareCaptureStartedAt = std::chrono::steady_clock::now();
+    int64_t lastHardwareCapturePts = -1;
+#ifdef _WIN32
+    std::unique_ptr<WindowsD3D11ScreenCapture> hardwareScreenCapture;
+    std::unique_ptr<av::capture::WindowsD3D11CameraCapture> hardwareCameraCapture;
+    uint64_t activeHardwareCameraDeviceGeneration = std::numeric_limits<uint64_t>::max();
+    uint64_t observedHardwareCameraDeviceGeneration = std::numeric_limits<uint64_t>::max();
+#endif
+    bool firstHardwareCameraFrameObserved = false;
+    bool firstHardwareCameraPreviewFrameStored = false;
+    bool firstHardwareScreenPreviewFrameStored = false;
     const auto statusCallback = [this]() {
         QMutexLocker locker(&m_mutex);
         return m_statusCallback;
+    }();
+    const auto cameraSourceCallback = [this]() {
+        QMutexLocker locker(&m_mutex);
+        return m_cameraSourceCallback;
+    }();
+    const auto localCameraPreviewCallback = [this]() {
+        QMutexLocker locker(&m_mutex);
+        return m_localCameraPreviewCallback;
     }();
     while (m_running.load(std::memory_order_acquire) &&
            (m_sharingEnabled.load(std::memory_order_acquire) ||
@@ -538,22 +1011,31 @@ void ScreenShareSession::sendLoop() {
             }
         }
 
-        VideoSendCapturedFrame capturedFrame;
-        if (!m_sendFrameRingBuffer.popWait(capturedFrame, std::chrono::milliseconds(100))) {
-            if (m_sendFrameRingBuffer.closed()) {
-                break;
-            }
-            continue;
-        }
-        const VideoSendSource source = capturedFrame.source;
-        if (source == VideoSendSource::None) {
-            continue;
-        }
         const VideoSendSource currentSource = VideoSessionStateMachine::resolveSendSource(
             m_sharingEnabled.load(std::memory_order_acquire),
             m_cameraSendingEnabled.load(std::memory_order_acquire));
-        if (currentSource != source) {
+        if (currentSource == VideoSendSource::None) {
             continue;
+        }
+        const bool useHardwareScreenCapture =
+            av::isHardwareE2E(sendProfile) && currentSource == VideoSendSource::Screen;
+        const bool useHardwareCameraCapture =
+            av::isHardwareE2E(sendProfile) && currentSource == VideoSendSource::Camera;
+        VideoSendCapturedFrame capturedFrame;
+        VideoSendSource source = currentSource;
+        if (!useHardwareScreenCapture && !useHardwareCameraCapture) {
+            if (!m_sendFrameRingBuffer.popWait(capturedFrame, std::chrono::milliseconds(100))) {
+                if (m_sendFrameRingBuffer.closed()) {
+                    break;
+                }
+                continue;
+            }
+            source = capturedFrame.source;
+            if (source == VideoSendSource::None || currentSource != source) {
+                continue;
+            }
+        } else {
+            capturedFrame.source = currentSource;
         }
         media::UdpEndpoint peer{};
         {
@@ -579,6 +1061,50 @@ void ScreenShareSession::sendLoop() {
             : m_config.frameRate;
         const uint32_t targetBitrate = m_targetBitrateBps.load(std::memory_order_acquire);
         const bool videoSuspended = m_adaptiveVideoSuspended.load(std::memory_order_acquire);
+
+#ifdef _WIN32
+        if (currentSource == VideoSendSource::Camera) {
+            const uint64_t cameraDeviceGeneration =
+                m_cameraDeviceGeneration.load(std::memory_order_acquire);
+            if (observedHardwareCameraDeviceGeneration != cameraDeviceGeneration) {
+                observedHardwareCameraDeviceGeneration = cameraDeviceGeneration;
+                activeHardwareCameraDeviceGeneration = std::numeric_limits<uint64_t>::max();
+                hardwareCameraCapture.reset();
+                firstHardwareCameraFrameObserved = false;
+                firstHardwareCameraPreviewFrameStored = false;
+                if (statusCallback) {
+                    statusCallback("Video hardware camera capture reset for selected device");
+                }
+                qInfo().noquote() << "[screen-session] video hardware camera capture reset for selected device"
+                                  << "profile=" << av::videoPipelineProfileName(sendProfile);
+                if (av::isHardwareE2E(requestedProfile) && !av::isHardwareE2E(sendProfile)) {
+                    {
+                        QMutexLocker locker(&m_mutex);
+                        stopCameraCaptureLocked();
+                    }
+                    sendProfile = requestedProfile;
+                    if (!configureEncoderForProfile(sendProfile,
+                                                    targetWidth,
+                                                    targetHeight,
+                                                    targetFrameRate,
+                                                    static_cast<int>(targetBitrate > 0U
+                                                                         ? targetBitrate
+                                                                         : static_cast<uint32_t>(m_config.bitrate)),
+                                                    payloadType)) {
+                        sendTelemetryPipeline.onEncodeError(sendTelemetryState,
+                                                            "hardware video encoder configure failed",
+                                                            statusCallback);
+                        QMutexLocker locker(&m_mutex);
+                        setErrorLocked("hardware video encoder configure failed");
+                        continue;
+                    }
+                    sendPipeline = VideoSendPipeline(
+                        VideoSendPipelineConfig{targetFrameRate, m_config.maxPayloadBytes, sendProfile});
+                    qInfo().noquote() << "[screen-session] video send profile restored profile=hardware reason=camera-device-switch";
+                }
+            }
+        }
+#endif
 
         const auto maybeSendSenderReport = [&]() {
             const uint64_t nowMs = steadyNowMs();
@@ -624,6 +1150,7 @@ void ScreenShareSession::sendLoop() {
                                               targetBitrate,
                                               payloadType,
                                               m_config.encoderPreset,
+                                              sendProfile,
                                               m_appliedBitrateBps,
                                               m_bitrateReconfigureCount,
                                               m_targetBitrateUpdatedAtMs,
@@ -634,7 +1161,241 @@ void ScreenShareSession::sendLoop() {
             setErrorLocked(bitrateError.empty() ? "video encoder adaptive profile update failed" : bitrateError);
             continue;
         }
-        sendPipeline = VideoSendPipeline(VideoSendPipelineConfig{targetFrameRate, m_config.maxPayloadBytes});
+        sendPipeline = VideoSendPipeline(
+            VideoSendPipelineConfig{targetFrameRate, m_config.maxPayloadBytes, sendProfile});
+
+        if (useHardwareScreenCapture) {
+#ifdef _WIN32
+            if (!hardwareScreenCapture) {
+                hardwareScreenCapture = std::make_unique<WindowsD3D11ScreenCapture>();
+            }
+            const auto now = std::chrono::steady_clock::now();
+            const auto elapsedMs =
+                std::chrono::duration_cast<std::chrono::milliseconds>(now - hardwareCaptureStartedAt).count();
+            int64_t framePts = static_cast<int64_t>((elapsedMs * std::max(1, targetFrameRate)) / 1000);
+            if (framePts <= lastHardwareCapturePts) {
+                framePts = lastHardwareCapturePts + 1;
+            }
+            std::string captureError;
+            av::AVFramePtr hardwareFrame;
+            if (!hardwareScreenCapture->capture(encoder, framePts, hardwareFrame, &captureError)) {
+                if (captureError.empty()) {
+                    sendTelemetryPipeline.onEncodePending(sendTelemetryState, statusCallback);
+                    continue;
+                }
+                if (!profileForced && !av::isHardwareE2E(requestedProfile)) {
+                    {
+                        QMutexLocker locker(&m_mutex);
+                        (void)startCaptureLocked(false);
+                    }
+                    sendProfile = av::VideoPipelineProfile::SoftwareE2E;
+                    if (!configureEncoderForProfile(sendProfile,
+                                                    targetWidth,
+                                                    targetHeight,
+                                                    targetFrameRate,
+                                                    static_cast<int>(targetBitrate > 0U
+                                                                         ? targetBitrate
+                                                                         : static_cast<uint32_t>(m_config.bitrate)),
+                                                    payloadType)) {
+                        sendTelemetryPipeline.onEncodeError(sendTelemetryState,
+                                                            "video software fallback encoder configure failed",
+                                                            statusCallback);
+                        QMutexLocker locker(&m_mutex);
+                        setErrorLocked("video software fallback encoder configure failed");
+                        continue;
+                    }
+                    qInfo().noquote() << "[screen-session] video send profile fallback profile=software reason="
+                                      << QString::fromStdString(captureError);
+                    sendPipeline = VideoSendPipeline(
+                        VideoSendPipelineConfig{targetFrameRate, m_config.maxPayloadBytes, sendProfile});
+                    continue;
+                }
+                sendTelemetryPipeline.onEncodeError(sendTelemetryState, captureError, statusCallback);
+                QMutexLocker locker(&m_mutex);
+                setErrorLocked(captureError);
+                continue;
+            }
+            lastHardwareCapturePts = framePts;
+            if (localCameraPreviewCallback) {
+                av::codec::DecodedVideoFrame previewFrame;
+                if (av::codec::makeD3D11HardwarePreviewFrame(*hardwareFrame, previewFrame)) {
+                    localCameraPreviewCallback(std::move(previewFrame));
+                    if (!firstHardwareScreenPreviewFrameStored) {
+                        firstHardwareScreenPreviewFrameStored = true;
+                        if (statusCallback) {
+                            statusCallback("Video hardware screen localPreview=hardware_interop screenBackend=dxgi-duplication screenInterop=d3d11");
+                        }
+                        qInfo().noquote() << "[screen-session] screen local preview screenBackend=dxgi-duplication screenInterop=d3d11"
+                                          << "profile=" << av::videoPipelineProfileName(sendProfile)
+                                          << "hardwareInput=1";
+                    }
+                } else if (!firstHardwareScreenPreviewFrameStored && statusCallback) {
+                    statusCallback("Video hardware screen localPreview=unavailable screenBackend=dxgi-duplication screenInterop=d3d11");
+                }
+            }
+            capturedFrame.inputFrame.avFrame = std::move(hardwareFrame);
+#else
+            sendTelemetryPipeline.onEncodeError(sendTelemetryState,
+                                                "hardware video pipeline unsupported on this platform",
+                                                statusCallback);
+            QMutexLocker locker(&m_mutex);
+            setErrorLocked("hardware video pipeline unsupported on this platform");
+            continue;
+#endif
+        } else if (useHardwareCameraCapture) {
+#ifdef _WIN32
+            std::string preferredCameraDeviceName;
+            uint64_t observedCameraDeviceGeneration = 0;
+            {
+                QMutexLocker locker(&m_mutex);
+                preferredCameraDeviceName = m_preferredCameraDeviceName;
+                observedCameraDeviceGeneration =
+                    m_cameraDeviceGeneration.load(std::memory_order_acquire);
+            }
+            if (hardwareCameraCapture &&
+                activeHardwareCameraDeviceGeneration != std::numeric_limits<uint64_t>::max() &&
+                activeHardwareCameraDeviceGeneration != observedCameraDeviceGeneration) {
+                hardwareCameraCapture.reset();
+                firstHardwareCameraFrameObserved = false;
+                firstHardwareCameraPreviewFrameStored = false;
+                if (statusCallback) {
+                    statusCallback("Video hardware camera switching device cameraBackend=mf-d3d11 cameraInterop=dxgi");
+                }
+                qInfo().noquote() << "[screen-session] video hardware camera switching device"
+                                  << "profile=" << av::videoPipelineProfileName(sendProfile)
+                                  << "cameraBackend=mf-d3d11 cameraInterop=dxgi";
+            }
+            if (!hardwareCameraCapture) {
+                hardwareCameraCapture = std::make_unique<av::capture::WindowsD3D11CameraCapture>();
+            }
+            const auto now = std::chrono::steady_clock::now();
+            const auto elapsedMs =
+                std::chrono::duration_cast<std::chrono::milliseconds>(now - hardwareCaptureStartedAt).count();
+            int64_t framePts = static_cast<int64_t>((elapsedMs * std::max(1, targetFrameRate)) / 1000);
+            if (framePts <= lastHardwareCapturePts) {
+                framePts = lastHardwareCapturePts + 1;
+            }
+            std::string captureError;
+            if (!hardwareCameraCapture->isInitialized() &&
+                !hardwareCameraCapture->initialize(encoder,
+                                                   preferredCameraDeviceName,
+                                                   targetWidth,
+                                                   targetHeight,
+                                                   targetFrameRate,
+                                                   &captureError)) {
+                if (!profileForced && !av::isHardwareE2E(requestedProfile)) {
+                    {
+                        QMutexLocker locker(&m_mutex);
+                        (void)startCameraCaptureLocked(false);
+                    }
+                    sendProfile = av::VideoPipelineProfile::SoftwareE2E;
+                    if (!configureEncoderForProfile(sendProfile,
+                                                    targetWidth,
+                                                    targetHeight,
+                                                    targetFrameRate,
+                                                    static_cast<int>(targetBitrate > 0U
+                                                                         ? targetBitrate
+                                                                         : static_cast<uint32_t>(m_config.bitrate)),
+                                                    payloadType)) {
+                        sendTelemetryPipeline.onEncodeError(sendTelemetryState,
+                                                            "video software fallback encoder configure failed",
+                                                            statusCallback);
+                        QMutexLocker locker(&m_mutex);
+                        setErrorLocked("video software fallback encoder configure failed");
+                        continue;
+                    }
+                    qInfo().noquote() << "[screen-session] video send profile fallback profile=software reason="
+                                      << QString::fromStdString(captureError);
+                    sendPipeline = VideoSendPipeline(
+                        VideoSendPipelineConfig{targetFrameRate, m_config.maxPayloadBytes, sendProfile});
+                    continue;
+                }
+                sendTelemetryPipeline.onEncodeError(sendTelemetryState, captureError, statusCallback);
+                QMutexLocker locker(&m_mutex);
+                setErrorLocked(captureError);
+                continue;
+            }
+            activeHardwareCameraDeviceGeneration = observedCameraDeviceGeneration;
+
+            av::AVFramePtr hardwareFrame;
+            captureError.clear();
+            if (!hardwareCameraCapture->capture(encoder, framePts, hardwareFrame, &captureError)) {
+                if (captureError.empty()) {
+                    sendTelemetryPipeline.onEncodePending(sendTelemetryState, statusCallback);
+                    continue;
+                }
+                if (!profileForced && !av::isHardwareE2E(requestedProfile)) {
+                    {
+                        QMutexLocker locker(&m_mutex);
+                        (void)startCameraCaptureLocked(false);
+                    }
+                    sendProfile = av::VideoPipelineProfile::SoftwareE2E;
+                    if (!configureEncoderForProfile(sendProfile,
+                                                    targetWidth,
+                                                    targetHeight,
+                                                    targetFrameRate,
+                                                    static_cast<int>(targetBitrate > 0U
+                                                                         ? targetBitrate
+                                                                         : static_cast<uint32_t>(m_config.bitrate)),
+                                                    payloadType)) {
+                        sendTelemetryPipeline.onEncodeError(sendTelemetryState,
+                                                            "video software fallback encoder configure failed",
+                                                            statusCallback);
+                        QMutexLocker locker(&m_mutex);
+                        setErrorLocked("video software fallback encoder configure failed");
+                        continue;
+                    }
+                    qInfo().noquote() << "[screen-session] video send profile fallback profile=software reason="
+                                      << QString::fromStdString(captureError);
+                    sendPipeline = VideoSendPipeline(
+                        VideoSendPipelineConfig{targetFrameRate, m_config.maxPayloadBytes, sendProfile});
+                    continue;
+                }
+                sendTelemetryPipeline.onEncodeError(sendTelemetryState, captureError, statusCallback);
+                QMutexLocker locker(&m_mutex);
+                setErrorLocked(captureError);
+                continue;
+            }
+            lastHardwareCapturePts = framePts;
+            if (localCameraPreviewCallback) {
+                av::codec::DecodedVideoFrame previewFrame;
+                if (av::codec::makeD3D11HardwarePreviewFrame(*hardwareFrame, previewFrame)) {
+                    localCameraPreviewCallback(std::move(previewFrame));
+                    if (!firstHardwareCameraPreviewFrameStored) {
+                        firstHardwareCameraPreviewFrameStored = true;
+                        if (statusCallback) {
+                            statusCallback("Video hardware camera localPreview=hardware_interop cameraBackend=mf-d3d11 cameraInterop=dxgi");
+                        }
+                        qInfo().noquote() << "[screen-session] video local preview cameraBackend=mf-d3d11 cameraInterop=dxgi"
+                                          << "profile=" << av::videoPipelineProfileName(sendProfile)
+                                          << "hardwareInput=1";
+                    }
+                } else if (!firstHardwareCameraPreviewFrameStored && statusCallback) {
+                    statusCallback("Video hardware camera localPreview=unavailable cameraBackend=mf-d3d11 cameraInterop=dxgi");
+                }
+            }
+            capturedFrame.inputFrame.avFrame = std::move(hardwareFrame);
+            if (!firstHardwareCameraFrameObserved) {
+                firstHardwareCameraFrameObserved = true;
+                if (cameraSourceCallback) {
+                    cameraSourceCallback(false);
+                }
+                if (statusCallback) {
+                    statusCallback("Video camera frame observed cameraBackend=mf-d3d11 cameraInterop=dxgi localPreview=hardware_interop");
+                }
+                qInfo().noquote() << "[screen-session] video send cameraBackend=mf-d3d11 cameraInterop=dxgi"
+                                  << "profile=" << av::videoPipelineProfileName(sendProfile)
+                                  << "hardwareInput=" << (encoder.usesHardwareInput() ? 1 : 0);
+            }
+#else
+            sendTelemetryPipeline.onEncodeError(sendTelemetryState,
+                                                "hardware video pipeline unsupported on this platform",
+                                                statusCallback);
+            QMutexLocker locker(&m_mutex);
+            setErrorLocked("hardware video pipeline unsupported on this platform");
+            continue;
+#endif
+        }
 
         const bool forceKeyFrame = m_forceKeyFramePending.exchange(false, std::memory_order_acq_rel);
         std::vector<VideoSendPipelinePacket> packets;
@@ -649,11 +1410,38 @@ void ScreenShareSession::sendLoop() {
             (capturedFrame.inputFrame.hasScreenFrame() &&
              capturedFrame.inputFrame.screenFrame.width == encoder.width() &&
              capturedFrame.inputFrame.screenFrame.height == encoder.height());
+        if (av::isHardwareE2E(sendProfile)) {
+            if (!capturedFrame.inputFrame.hasHardwareD3D11Frame() &&
+                !profileForced &&
+                !av::isHardwareE2E(requestedProfile)) {
+                sendProfile = av::VideoPipelineProfile::SoftwareE2E;
+                if (!configureEncoderForProfile(sendProfile,
+                                                targetWidth,
+                                                targetHeight,
+                                                targetFrameRate,
+                                                static_cast<int>(targetBitrate > 0U
+                                                                     ? targetBitrate
+                                                                     : static_cast<uint32_t>(m_config.bitrate)),
+                                                payloadType)) {
+                    sendTelemetryPipeline.onEncodeError(sendTelemetryState,
+                                                        "video software fallback encoder configure failed",
+                                                        statusCallback);
+                    QMutexLocker locker(&m_mutex);
+                    setErrorLocked("video software fallback encoder configure failed");
+                    continue;
+                }
+                qInfo().noquote() << "[screen-session] video send profile fallback profile=software reason=gpu input unavailable";
+                sendPipeline = VideoSendPipeline(
+                    VideoSendPipelineConfig{targetFrameRate, m_config.maxPayloadBytes, sendProfile});
+            }
+        }
+
         if (!frameAlreadyMatches) {
             std::string adaptError;
             if (!adaptVideoSendInputFrame(capturedFrame.inputFrame,
                                           encoder.width(),
                                           encoder.height(),
+                                          sendProfile,
                                           adaptedFrame,
                                           &adaptError)) {
                 sendTelemetryPipeline.onEncodeError(sendTelemetryState, adaptError, statusCallback);

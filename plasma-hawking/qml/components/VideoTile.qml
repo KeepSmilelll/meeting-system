@@ -25,12 +25,13 @@ Rectangle {
                                                       && remoteUser
                                                       && (userId === root.controller.activeVideoPeerUserId)
     readonly property bool activeLocalCameraPreview: localUser && !sharing && videoOn
+    readonly property bool activeLocalScreenPreview: localUser && sharing
     readonly property bool remoteVideoAvailable: root.hasController
                                                  && !root.controller.hasActiveShare
                                                  && remoteUser
                                                  && (videoOn || sharing)
                                                  && root.remoteVideoSource() !== null
-    readonly property bool showLiveFrame: activeShareSelected || remoteVideoAvailable || activeLocalCameraPreview
+    readonly property bool showLiveFrame: activeShareSelected || remoteVideoAvailable || activeLocalCameraPreview || activeLocalScreenPreview
     readonly property bool shareFocusable: remoteUser && sharing && !selected
     property int frameSourceRevision: 0
     property var currentFrameSource: null
@@ -68,7 +69,7 @@ Rectangle {
         if (!root.hasController || !root.showLiveFrame) {
             return null
         }
-        if (root.activeLocalCameraPreview) {
+        if (root.activeLocalCameraPreview || root.activeLocalScreenPreview) {
             return root.controller.localVideoFrameSource
         }
         if (root.activeShareSelected) {
@@ -87,6 +88,7 @@ Rectangle {
     onVideoOnChanged: refreshFrameSource()
     onShowLiveFrameChanged: refreshFrameSource()
     onActiveLocalCameraPreviewChanged: refreshFrameSource()
+    onActiveLocalScreenPreviewChanged: refreshFrameSource()
     onRemoteVideoAvailableChanged: refreshFrameSource()
     onActiveShareSelectedChanged: refreshFrameSource()
 

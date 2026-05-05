@@ -1,6 +1,10 @@
 #include "av/session/ScreenShareSession.h"
+#include "av/VideoPipelineProfile.h"
+#include "av/capture/WindowsD3D11CameraCapture.h"
+#include "av/codec/VideoEncoder.h"
 
 #include <QCoreApplication>
+#include <QThread>
 #include <QTimer>
 
 #include <iostream>
@@ -32,6 +36,53 @@ int main(int argc, char* argv[]) {
     config.height = 720;
     config.frameRate = 30;
     config.bitrate = 2500000;
+
+    if (av::isHardwareE2E(av::videoPipelineProfileFromEnvironment())) {
+        av::codec::VideoEncoder encoder;
+        if (!encoder.configureHardwareD3D11(config.width,
+                                            config.height,
+                                            config.frameRate,
+                                            config.bitrate,
+                                            config.cameraPayloadType,
+                                            av::codec::VideoEncoderPreset::Realtime)) {
+            std::cerr << "SKIP hardware D3D11 encoder unavailable" << std::endl;
+            return 77;
+        }
+
+        av::capture::WindowsD3D11CameraCapture cameraCapture;
+        std::string error;
+        if (!cameraCapture.initialize(encoder,
+                                      deviceSelection.toStdString(),
+                                      config.width,
+                                      config.height,
+                                      config.frameRate,
+                                      &error)) {
+            std::cerr << "SKIP hardware camera unsupported " << error << std::endl;
+            return 77;
+        }
+
+        for (int i = 0; i < 300; ++i) {
+            av::AVFramePtr frame;
+            error.clear();
+            if (cameraCapture.capture(encoder, i, frame, &error)) {
+                if (!frame ||
+                    static_cast<AVPixelFormat>(frame->format) != AV_PIX_FMT_D3D11 ||
+                    frame->hw_frames_ctx == nullptr) {
+                    std::cerr << "hardware-camera-invalid-frame" << std::endl;
+                    return 1;
+                }
+                std::cerr << "hardware-camera-frame-observed cameraBackend=mf-d3d11 cameraInterop=dxgi" << std::endl;
+                return 0;
+            }
+            if (!error.empty()) {
+                std::cerr << "SKIP hardware camera unsupported " << error << std::endl;
+                return 77;
+            }
+            QThread::msleep(10);
+        }
+        std::cerr << "hardware-camera-frame-timeout" << std::endl;
+        return 3;
+    }
 
     av::session::ScreenShareSession session(config);
     session.setPreferredCameraDeviceName(deviceSelection.toStdString());

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "av/VideoPipelineProfile.h"
 #include "av/capture/ScreenCapture.h"
 #include "av/codec/VideoEncoder.h"
 #include "net/media/RTPSender.h"
@@ -12,8 +13,9 @@
 namespace av::session {
 
 struct VideoSendPipelineConfig {
-    int frameRate{5};
+    int frameRate{30};
     std::size_t maxPayloadBytes{1200};
+    av::VideoPipelineProfile profile{av::videoPipelineProfileFromEnvironment()};
 };
 
 struct VideoSendPipelinePacket {
@@ -32,6 +34,12 @@ struct VideoSendPipelineInputFrame {
 
     bool hasScreenFrame() const {
         return !screenFrame.bgra.empty();
+    }
+
+    bool hasHardwareD3D11Frame() const {
+        return hasAvFrame() &&
+               static_cast<AVPixelFormat>(avFrame->format) == AV_PIX_FMT_D3D11 &&
+               avFrame->hw_frames_ctx != nullptr;
     }
 };
 

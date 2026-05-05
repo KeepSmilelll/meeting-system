@@ -51,7 +51,9 @@ bool encodePacketsForSsrc(av::codec::VideoEncoder& encoder,
                           std::vector<av::session::VideoSendPipelinePacket>& outPackets,
                           std::string* error) {
     av::session::VideoSendPipeline pipeline(
-        av::session::VideoSendPipelineConfig{kFrameRate, kMaxPayloadBytes});
+        av::session::VideoSendPipelineConfig{kFrameRate,
+                                             kMaxPayloadBytes,
+                                             av::VideoPipelineProfile::SoftwareE2E});
     outPackets.clear();
     if (error != nullptr) {
         error->clear();
@@ -151,7 +153,10 @@ int main() {
     }
 
     av::session::VideoRecvPipeline recvPipeline(
-        av::session::VideoRecvPipelineConfig{kPayloadType, 96, kFrameRate});
+        av::session::VideoRecvPipelineConfig{kPayloadType,
+                                             96,
+                                             kFrameRate,
+                                             av::VideoPipelineProfile::SoftwareE2E});
     media::RTPReceiver receiver;
     std::unordered_set<uint32_t> readySsrcs;
     const std::size_t maxPackets = std::max(packetsA.size(), packetsB.size());

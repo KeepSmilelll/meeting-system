@@ -44,7 +44,7 @@ struct ScreenShareSessionConfig {
     uint16_t peerPort{0};
     int width{1280};
     int height{720};
-    int frameRate{5};
+    int frameRate{30};
     int bitrate{1500 * 1000};
     av::codec::VideoEncoderPreset encoderPreset{av::codec::VideoEncoderPreset::Realtime};
     uint8_t cameraPayloadType{96};
@@ -116,9 +116,9 @@ private:
     bool openSocketLocked();
     void closeSocketLocked();
     void setErrorLocked(std::string message);
-    bool startCaptureLocked();
+    bool startCaptureLocked(bool allowHardwareBypass = true);
     void stopCaptureLocked();
-    bool startCameraCaptureLocked();
+    bool startCameraCaptureLocked(bool allowHardwareBypass = true);
     void stopCameraFallbackCaptureLocked();
     void stopCameraCaptureLocked();
     void captureLoop();
@@ -149,6 +149,7 @@ private:
     std::atomic<bool> m_sharingEnabled{false};
     std::atomic<bool> m_cameraSendingEnabled{false};
     std::string m_preferredCameraDeviceName;
+    std::atomic<uint64_t> m_cameraDeviceGeneration{0};
     std::atomic<uint64_t> m_sentPacketCount{0};
     std::atomic<uint64_t> m_receivedPacketCount{0};
     std::atomic<uint64_t> m_keyframeRequestCount{0};

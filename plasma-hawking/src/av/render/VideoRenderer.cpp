@@ -1,6 +1,7 @@
 #include "VideoRenderer.h"
 
 #include "NV12Shader.h"
+#include "av/VideoPipelineProfile.h"
 
 #include <QOpenGLFramebufferObject>
 #include <QOpenGLContext>
@@ -161,7 +162,11 @@ bool moveNv12Frame(av::AVFramePtr&& frame, av::codec::DecodedVideoFrame& outFram
     outFrame.vPlane.clear();
     outFrame.pixelFormat = AV_PIX_FMT_NV12;
     outFrame.avFrame = adoptOwnedFrame(std::move(frame));
-    return static_cast<bool>(outFrame.avFrame);
+    if (!outFrame.avFrame) {
+        return false;
+    }
+    outFrame.markSoftwareFrame(false);
+    return true;
 }
 
 bool moveYuv420pFrame(av::AVFramePtr&& frame, av::codec::DecodedVideoFrame& outFrame) {
@@ -179,7 +184,11 @@ bool moveYuv420pFrame(av::AVFramePtr&& frame, av::codec::DecodedVideoFrame& outF
     outFrame.vPlane.clear();
     outFrame.pixelFormat = static_cast<AVPixelFormat>(frame->format);
     outFrame.avFrame = adoptOwnedFrame(std::move(frame));
-    return static_cast<bool>(outFrame.avFrame);
+    if (!outFrame.avFrame) {
+        return false;
+    }
+    outFrame.markSoftwareFrame(false);
+    return true;
 }
 
 bool copyNv12Frame(const AVFrame& frame, av::codec::DecodedVideoFrame& outFrame) {
@@ -204,6 +213,7 @@ bool copyNv12Frame(const AVFrame& frame, av::codec::DecodedVideoFrame& outFrame)
         const uint8_t* src = frame.data[1] + static_cast<std::ptrdiff_t>(y) * frame.linesize[1];
         std::copy(src, src + frame.width, outFrame.uvPlane.begin() + static_cast<std::ptrdiff_t>(y * frame.width));
     }
+    outFrame.markSoftwareFrame(true);
     return true;
 }
 
@@ -235,6 +245,7 @@ bool copyYuv420pFrame(const AVFrame& frame, av::codec::DecodedVideoFrame& outFra
                   srcV + (frame.width / 2),
                   outFrame.vPlane.begin() + static_cast<std::ptrdiff_t>(y * (frame.width / 2)));
     }
+    outFrame.markSoftwareFrame(true);
     return true;
 }
 
@@ -319,6 +330,15 @@ public:
         const av::codec::DecodedVideoFrame* uploadFrame = nullptr;
         NV12Shader::InputFormat inputFormat = NV12Shader::InputFormat::Nv12;
         if (!usingHardwareInterop) {
+            if (av::isHardwareE2E(m_pipelineProfile)) {
+#ifdef _WIN32
+                logHardwareInteropFailure(QStringLiteral("hardware profile requires D3D11/OpenGL interop; CPU upload disabled"));
+#else
+                qWarning().noquote() << "[video-renderer] hardware interop fallback:"
+                                     << "hardware profile unsupported on this platform; CPU upload disabled";
+#endif
+                return;
+            }
 #ifdef _WIN32
             releaseHardwareInteropTextures();
 #endif
@@ -356,6 +376,7 @@ public:
         if (!m_loggedFirstDraw) {
             qInfo().noquote() << "[video-renderer] drew first frame"
                               << "size=" << m_frame->width << "x" << m_frame->height
+                              << "profile=" << av::videoPipelineProfileName(m_pipelineProfile)
                               << "revision=" << m_revision;
             m_loggedFirstDraw = true;
         }
@@ -746,10 +767,16 @@ private:
                                const av::codec::DecodedVideoFrame*& uploadFrame) {
         uploadFrame = nullptr;
         if (source.hasAvFramePlanes() || source.hasCpuPlanes()) {
+            if (av::isHardwareE2E(m_pipelineProfile)) {
+                return false;
+            }
             uploadFrame = &source;
             return true;
         }
         if (!source.hasHardwareTextureShareCandidate()) {
+            return false;
+        }
+        if (av::isHardwareE2E(m_pipelineProfile)) {
             return false;
         }
         if (!promoteHardwareFrameForUpload(source)) {
@@ -788,6 +815,8 @@ private:
 
         (void)av_frame_copy_props(transferredFrame.get(), source.hardwareAvFrame.get());
         m_hwTransferFrame = av::codec::DecodedVideoFrame{};
+        m_hwTransferFrame.telemetry.profile = m_pipelineProfile;
+        m_hwTransferFrame.telemetry.cpuFrameTransfer = true;
 
         const AVPixelFormat transferredFormat = static_cast<AVPixelFormat>(transferredFrame->format);
         bool promoted = false;
@@ -850,6 +879,9 @@ private:
     }
 
     void uploadFrameTextures(const av::codec::DecodedVideoFrame& frame) {
+        if (av::isHardwareE2E(m_pipelineProfile)) {
+            return;
+        }
         const bool needsResize = m_textureWidth != frame.width || m_textureHeight != frame.height;
         const int pboSlot = static_cast<int>(m_pboUploadIndex++ % 2U);
         const GLuint yPbo = m_pbos[static_cast<std::size_t>(pboSlot * 2)];
@@ -1047,6 +1079,7 @@ private:
     int m_dxInteropHeight{0};
 #endif
     uint64_t m_revision{0};
+    av::VideoPipelineProfile m_pipelineProfile{av::videoPipelineProfileFromEnvironment()};
     VideoFrameStore::FramePtr m_frame;
     av::codec::DecodedVideoFrame m_hwTransferFrame;
     NV12Shader m_shader;

@@ -36,6 +36,12 @@ public:
                    int bitrate,
                    uint8_t payloadType = 97,
                    VideoEncoderPreset preset = VideoEncoderPreset::Realtime);
+    bool configureHardwareD3D11(int width,
+                                int height,
+                                int frameRate,
+                                int bitrate,
+                                uint8_t payloadType = 97,
+                                VideoEncoderPreset preset = VideoEncoderPreset::Realtime);
     bool encode(const capture::ScreenFrame& inFrame,
                 EncodedVideoFrame& outFrame,
                 bool forceKeyFrame = false,
@@ -55,8 +61,17 @@ public:
     int bitrate() const;
     VideoEncoderPreset preset() const;
     uint8_t payloadType() const;
+    bool usesHardwareInput() const;
+    AVBufferRef* hardwareFramesContext() const;
+    void* d3d11Device() const;
+    void* d3d11DeviceContext() const;
 
 private:
+    struct AvBufferRefDeleter {
+        void operator()(AVBufferRef* ref) const;
+    };
+    using AVBufferRefPtr = std::unique_ptr<AVBufferRef, AvBufferRefDeleter>;
+
     bool receivePacket(int64_t fallbackPts, EncodedVideoFrame& outFrame, std::string* error);
     bool consumeKeyframeRequest(bool forceKeyFrame);
 
@@ -68,6 +83,8 @@ private:
     VideoEncoderPreset m_preset{VideoEncoderPreset::Realtime};
     AVPixelFormat m_outputPixelFormat{AV_PIX_FMT_NONE};
     av::AVCodecContextPtr m_codecContext;
+    AVBufferRefPtr m_hwDeviceContext;
+    AVBufferRefPtr m_hwFramesContext;
     std::string m_codecName;
     bool m_forceKeyFrameNext{false};
 };

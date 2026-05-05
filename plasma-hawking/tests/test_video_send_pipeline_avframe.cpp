@@ -167,7 +167,9 @@ int main() {
     }
 
     av::session::VideoSendPipeline pipeline(
-        av::session::VideoSendPipelineConfig{kFrameRate, kMaxPayloadBytes});
+        av::session::VideoSendPipelineConfig{kFrameRate,
+                                             kMaxPayloadBytes,
+                                             av::VideoPipelineProfile::SoftwareE2E});
     media::RTPSender sender(0, 0x12345678);
 
     std::string error;

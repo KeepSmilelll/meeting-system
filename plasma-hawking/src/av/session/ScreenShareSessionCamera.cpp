@@ -1,5 +1,7 @@
 #include "ScreenShareSession.h"
 
+#include "av/VideoPipelineProfile.h"
+
 #include "VideoSessionControlActions.h"
 #include "VideoSessionStateMachine.h"
 #include "VideoThreadLifecycleStateMachine.h"
@@ -351,29 +353,37 @@ bool ScreenShareSession::setPreferredCameraDeviceName(const std::string& deviceN
         }
 
         m_preferredCameraDeviceName = requestedDeviceName;
+        m_lastError.clear();
+        m_cameraDeviceGeneration.fetch_add(1, std::memory_order_acq_rel);
+        m_stateWaitCondition.wakeAll();
         statusCallback = m_statusCallback;
         if (!m_cameraCapture || !m_cameraCapture->isRunning()) {
-            return true;
-        }
-
-        const QCameraDevice requestedDevice = resolvePreferredCameraDeviceName(normalizedDeviceName);
-        const bool switched = requestedDevice.isNull()
-            ? m_cameraCapture->setDeviceSelection(normalizedDeviceName)
-            : m_cameraCapture->setDevice(requestedDevice);
-        if (!switched) {
-            setErrorLocked(QStringLiteral("camera device switch failed: %1").arg(m_cameraCapture->lastError()).toStdString());
-            return false;
-        }
-
-        const QString backendName = m_cameraCapture->backendName();
-        if (!backendName.isEmpty() && backendName != QStringLiteral("qt") && !normalizedDeviceName.isEmpty()) {
-            statusMessage = QStringLiteral("Video camera switched to %1 (%2 fallback)").arg(normalizedDeviceName, backendName);
-        } else if (!requestedDevice.isNull()) {
-            statusMessage = QStringLiteral("Video camera switched to %1").arg(cameraDeviceLabel(requestedDevice));
-        } else if (normalizedDeviceName.isEmpty()) {
-            statusMessage = QStringLiteral("Video camera switched to system default");
+            if (av::isHardwareE2E(av::videoPipelineProfileFromEnvironment())) {
+                const QString label = normalizedDeviceName.isEmpty()
+                    ? QStringLiteral("system default")
+                    : normalizedDeviceName;
+                statusMessage = QStringLiteral("Video hardware camera switch requested: %1").arg(label);
+            }
         } else {
-            statusMessage = QStringLiteral("Preferred camera unavailable, using system default");
+            const QCameraDevice requestedDevice = resolvePreferredCameraDeviceName(normalizedDeviceName);
+            const bool switched = requestedDevice.isNull()
+                ? m_cameraCapture->setDeviceSelection(normalizedDeviceName)
+                : m_cameraCapture->setDevice(requestedDevice);
+            if (!switched) {
+                setErrorLocked(QStringLiteral("camera device switch failed: %1").arg(m_cameraCapture->lastError()).toStdString());
+                return false;
+            }
+
+            const QString backendName = m_cameraCapture->backendName();
+            if (!backendName.isEmpty() && backendName != QStringLiteral("qt") && !normalizedDeviceName.isEmpty()) {
+                statusMessage = QStringLiteral("Video camera switched to %1 (%2 fallback)").arg(normalizedDeviceName, backendName);
+            } else if (!requestedDevice.isNull()) {
+                statusMessage = QStringLiteral("Video camera switched to %1").arg(cameraDeviceLabel(requestedDevice));
+            } else if (normalizedDeviceName.isEmpty()) {
+                statusMessage = QStringLiteral("Video camera switched to system default");
+            } else {
+                statusMessage = QStringLiteral("Preferred camera unavailable, using system default");
+            }
         }
     }
 
@@ -388,8 +398,12 @@ std::string ScreenShareSession::preferredCameraDeviceName() const {
     return m_preferredCameraDeviceName;
 }
 
-bool ScreenShareSession::startCaptureLocked() {
+bool ScreenShareSession::startCaptureLocked(bool allowHardwareBypass) {
     if (m_capture && m_capture->isRunning()) {
+        return true;
+    }
+    if (allowHardwareBypass && av::isHardwareE2E(av::videoPipelineProfileFromEnvironment())) {
+        m_capture.reset();
         return true;
     }
 
@@ -416,10 +430,21 @@ void ScreenShareSession::stopCaptureLocked() {
     }
 }
 
-bool ScreenShareSession::startCameraCaptureLocked() {
+bool ScreenShareSession::startCameraCaptureLocked(bool allowHardwareBypass) {
     debugCameraRelayTrace(QStringLiteral("[camera-relay] startCameraCaptureLocked enter"));
     if (!m_cameraRelay) {
         m_cameraRelay = std::make_shared<CameraFrameRelay>(m_config.width, m_config.height, m_config.frameRate);
+    }
+    if (allowHardwareBypass && av::isHardwareE2E(av::videoPipelineProfileFromEnvironment())) {
+        if (m_cameraCapture) {
+            m_cameraCapture->stop();
+            m_cameraCapture.reset();
+        }
+        stopCameraFallbackCaptureLocked();
+        if (m_statusCallback) {
+            m_statusCallback("Video hardware camera localPreview=pending_hardware_interop");
+        }
+        return true;
     }
     if (m_cameraCapture && m_cameraCapture->isRunning()) {
         return true;

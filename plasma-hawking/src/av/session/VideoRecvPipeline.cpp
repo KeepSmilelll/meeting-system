@@ -6,6 +6,7 @@
 #include <condition_variable>
 #include <deque>
 #include <limits>
+#include <memory>
 #include <mutex>
 #include <thread>
 #include <unordered_set>
@@ -28,8 +29,9 @@ uint64_t steadyNowMs() {
 
 class VideoRecvDecodeWorker final {
 public:
-    explicit VideoRecvDecodeWorker(uint32_t remoteMediaSsrc)
+    VideoRecvDecodeWorker(uint32_t remoteMediaSsrc, av::VideoPipelineProfile profile)
         : m_remoteMediaSsrc(remoteMediaSsrc),
+          m_profile(profile),
           m_thread([this]() { run(); }) {}
 
     ~VideoRecvDecodeWorker() {
@@ -93,7 +95,7 @@ public:
 private:
     struct DecodeTask {
         media::H264AccessUnit accessUnit;
-        int frameRate{5};
+        int frameRate{30};
     };
 
     void run() {
@@ -102,8 +104,17 @@ private:
             m_threadId = std::this_thread::get_id();
         }
 
-        av::codec::VideoDecoder decoder;
-        if (!decoder.configure()) {
+        av::VideoPipelineProfile activeProfile = m_profile;
+        auto decoder = std::make_unique<av::codec::VideoDecoder>(activeProfile);
+        bool decoderConfigured = decoder->configure();
+        if (!decoderConfigured &&
+            av::isHardwareE2E(activeProfile) &&
+            !av::videoPipelineProfileExplicitlySet()) {
+            activeProfile = av::VideoPipelineProfile::SoftwareE2E;
+            decoder = std::make_unique<av::codec::VideoDecoder>(activeProfile);
+            decoderConfigured = decoder->configure();
+        }
+        if (!decoderConfigured) {
             pushResult(DecodeResult{
                 {},
                 "video decoder configure failed",
@@ -132,7 +143,7 @@ private:
 
             av::codec::DecodedVideoFrame decoded;
             std::string decodeError;
-            if (!decoder.decode(encoded, decoded, &decodeError)) {
+            if (!decoder->decode(encoded, decoded, &decodeError)) {
                 if (decodeError.find("Resource temporarily unavailable") != std::string::npos) {
                     continue;
                 }
@@ -176,6 +187,7 @@ private:
     }
 
     const uint32_t m_remoteMediaSsrc{0U};
+    const av::VideoPipelineProfile m_profile{av::VideoPipelineProfile::SoftwareE2E};
     mutable std::mutex m_mutex;
     std::condition_variable m_cv;
     std::deque<DecodeTask> m_tasks;
@@ -313,7 +325,7 @@ VideoRecvPipeline::StreamState* VideoRecvPipeline::findOrCreateStreamState(uint3
         return nullptr;
     }
 
-    insertedIt->second.decodeWorker = std::make_shared<VideoRecvDecodeWorker>(ssrc);
+    insertedIt->second.decodeWorker = std::make_shared<VideoRecvDecodeWorker>(ssrc, m_config.profile);
     if (!insertedIt->second.decodeWorker) {
         m_streamStates.erase(insertedIt);
         if (error != nullptr) {

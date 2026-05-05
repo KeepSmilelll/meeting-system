@@ -1,6 +1,7 @@
 #include "VideoSendControlActions.h"
 
 #include "av/FFmpegUtils.h"
+#include "av/VideoPipelineProfile.h"
 
 #include <QImage>
 
@@ -225,6 +226,7 @@ bool maybeApplyAdaptiveEncoderProfile(av::codec::VideoEncoder& encoder,
                                       uint32_t targetBitrateBps,
                                       uint8_t payloadType,
                                       av::codec::VideoEncoderPreset preset,
+                                      av::VideoPipelineProfile profile,
                                       std::atomic<uint32_t>& appliedBitrateBps,
                                       std::atomic<uint64_t>& bitrateReconfigureCount,
                                       std::atomic<uint64_t>& targetBitrateUpdatedAtMs,
@@ -254,14 +256,24 @@ bool maybeApplyAdaptiveEncoderProfile(av::codec::VideoEncoder& encoder,
         return true;
     }
 
-    if (!encoder.configure(targetWidth,
-                           targetHeight,
-                           targetFrameRate,
-                           static_cast<int>(boundedBitrate),
-                           payloadType,
-                           preset)) {
+    const bool configured = av::isHardwareE2E(profile)
+        ? encoder.configureHardwareD3D11(targetWidth,
+                                         targetHeight,
+                                         targetFrameRate,
+                                         static_cast<int>(boundedBitrate),
+                                         payloadType,
+                                         preset)
+        : encoder.configure(targetWidth,
+                            targetHeight,
+                            targetFrameRate,
+                            static_cast<int>(boundedBitrate),
+                            payloadType,
+                            preset);
+    if (!configured) {
         if (error != nullptr) {
-            *error = "video encoder adaptive profile reconfigure failed";
+            *error = av::isHardwareE2E(profile)
+                ? "video hardware encoder adaptive profile reconfigure failed"
+                : "video encoder adaptive profile reconfigure failed";
         }
         return false;
     }
@@ -276,11 +288,40 @@ bool maybeApplyAdaptiveEncoderProfile(av::codec::VideoEncoder& encoder,
 bool adaptVideoSendInputFrame(const VideoSendPipelineInputFrame& inputFrame,
                               int targetWidth,
                               int targetHeight,
+                              av::VideoPipelineProfile profile,
                               VideoSendPipelineInputFrame& outFrame,
                               std::string* error) {
     targetWidth = normalizeEvenDimension(targetWidth);
     targetHeight = normalizeEvenDimension(targetHeight);
     outFrame = VideoSendPipelineInputFrame{};
+
+    if (av::isHardwareE2E(profile)) {
+        const bool sameAvFrameSize = inputFrame.hasAvFrame() &&
+                                     inputFrame.avFrame->width == targetWidth &&
+                                     inputFrame.avFrame->height == targetHeight;
+        const bool sameScreenFrameSize = inputFrame.hasScreenFrame() &&
+                                         inputFrame.screenFrame.width == targetWidth &&
+                                         inputFrame.screenFrame.height == targetHeight;
+        if (!sameAvFrameSize && !sameScreenFrameSize) {
+            if (error != nullptr) {
+                *error = "hardware video pipeline forbids CPU scaling";
+            }
+            return false;
+        }
+        if (inputFrame.hasAvFrame()) {
+            AVFrame* cloned = av_frame_clone(inputFrame.avFrame.get());
+            if (cloned == nullptr) {
+                if (error != nullptr) {
+                    *error = "hardware video pipeline input clone failed";
+                }
+                return false;
+            }
+            outFrame.avFrame.reset(cloned);
+            return true;
+        }
+        outFrame.screenFrame = inputFrame.screenFrame;
+        return inputFrame.hasScreenFrame();
+    }
 
     if (inputFrame.hasAvFrame()) {
         av::AVFramePtr scaled;

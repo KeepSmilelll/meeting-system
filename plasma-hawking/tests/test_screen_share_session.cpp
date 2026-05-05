@@ -149,6 +149,14 @@ int main(int argc, char* argv[]) {
     if (qEnvironmentVariableIsEmpty("MEETING_SYNTHETIC_CAMERA")) {
         qputenv("MEETING_SYNTHETIC_CAMERA", QByteArrayLiteral("1"));
     }
+    if (qEnvironmentVariableIsEmpty("MEETING_VIDEO_PIPELINE_PROFILE")) {
+        qputenv("MEETING_VIDEO_PIPELINE_PROFILE", QByteArrayLiteral("software"));
+    }
+    const QByteArray profileEnv = qgetenv("MEETING_VIDEO_PIPELINE_PROFILE").trimmed().toLower();
+    const bool forcedHardwareProfile = profileEnv == QByteArrayLiteral("hardware") ||
+                                       profileEnv == QByteArrayLiteral("hardwaree2e") ||
+                                       profileEnv == QByteArrayLiteral("hw") ||
+                                       profileEnv == QByteArrayLiteral("gpu");
 
     av::session::ScreenShareSessionConfig senderConfig{};
     senderConfig.localAddress = "127.0.0.1";
@@ -263,7 +271,14 @@ int main(int argc, char* argv[]) {
     const std::string cameraError = sender.lastError();
     const bool cameraEncoderUnavailable = !cameraPacketsSent &&
                                           cameraError.find("video encoder configure failed") != std::string::npos;
-    assert(cameraPacketsSent || cameraEncoderUnavailable);
+    const bool hardwareCameraFailClosed = !cameraPacketsSent &&
+                                          forcedHardwareProfile &&
+                                          (cameraError.find("hardware video pipeline") != std::string::npos ||
+                                           cameraError.find("hardware camera capture") != std::string::npos ||
+                                           cameraError.find("CPU sample disabled") != std::string::npos ||
+                                           cameraError.find("Media Foundation") != std::string::npos ||
+                                           cameraError.find("D3D11") != std::string::npos);
+    assert(cameraPacketsSent || cameraEncoderUnavailable || hardwareCameraFailClosed);
     if (cameraPacketsSent) {
         const bool cameraPacketsReceived = waitForCondition(app, [&receiver, cameraRecvBase]() {
             return receiver.receivedPacketCount() > cameraRecvBase;
@@ -305,7 +320,7 @@ int main(int argc, char* argv[]) {
     }, 2000);
     assert(pliHandled);
 
-    if (packetsSent) {
+    if (packetsSent && (sender.sharingEnabled() || sender.cameraSendingEnabled())) {
         const uint64_t retransmitBase = sender.retransmitPacketCount();
         const auto nackPacket = buildNackPacket(0x33333333U, rtcpFeedbackSsrc, 0U, 0U);
         const qint64 nackSent = feedbackSocket.writeDatagram(reinterpret_cast<const char*>(nackPacket.data()),

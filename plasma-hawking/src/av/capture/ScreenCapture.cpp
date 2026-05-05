@@ -26,7 +26,7 @@ namespace {
 
 constexpr int kDefaultWidth = 1280;
 constexpr int kDefaultHeight = 720;
-constexpr int kDefaultFrameRate = 5;
+constexpr int kDefaultFrameRate = 30;
 
 bool allowSyntheticCapture() {
     return qEnvironmentVariableIntValue("MEETING_SYNTHETIC_SCREEN") != 0;
