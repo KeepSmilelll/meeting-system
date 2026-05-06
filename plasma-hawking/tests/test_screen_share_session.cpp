@@ -145,10 +145,10 @@ bool testPliCooldownIsPerSsrc() {
         return false;
     }
     pipeline.markPliSent(kSsrcA, 1000U);
-    if (pipeline.shouldSendPli(kSsrcA, 2499U)) {
+    if (pipeline.shouldSendPli(kSsrcA, 2999U)) {
         return false;
     }
-    if (!pipeline.shouldSendPli(kSsrcA, 2500U)) {
+    if (!pipeline.shouldSendPli(kSsrcA, 3000U)) {
         return false;
     }
     return pipeline.shouldSendPli(kSsrcB, 1200U);

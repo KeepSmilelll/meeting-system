@@ -11,7 +11,7 @@ namespace sfu {
 
 class NackBuffer final {
 public:
-    explicit NackBuffer(std::size_t capacity = 500, std::size_t maxPacketSize = 1600);
+    explicit NackBuffer(std::size_t capacity = 1500, std::size_t maxPacketSize = 1600);
 
     void Store(uint16_t seq, const uint8_t* packet, std::size_t len);
     bool Get(uint16_t seq, std::vector<uint8_t>* out) const;

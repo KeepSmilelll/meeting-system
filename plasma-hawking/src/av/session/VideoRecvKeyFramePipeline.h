@@ -7,7 +7,7 @@ namespace av::session {
 
 class VideoRecvKeyFramePipeline {
 public:
-    explicit VideoRecvKeyFramePipeline(uint64_t cooldownMs = 1500U);
+    explicit VideoRecvKeyFramePipeline(uint64_t cooldownMs = 2000U);
 
     bool shouldSendPli(uint32_t mediaSsrc,
                        uint64_t nowMs) const;
@@ -16,7 +16,7 @@ public:
     void reset(uint32_t mediaSsrc);
 
 private:
-    uint64_t m_cooldownMs{1500U};
+    uint64_t m_cooldownMs{2000U};
     std::unordered_map<uint32_t, uint64_t> m_lastPliRequestedAtMsBySsrc;
 };
 

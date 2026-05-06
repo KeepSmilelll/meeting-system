@@ -45,7 +45,7 @@ struct ScreenShareSessionConfig {
     int width{1280};
     int height{720};
     int frameRate{30};
-    int bitrate{1500 * 1000};
+    int bitrate{800 * 1000};
     av::codec::VideoEncoderPreset encoderPreset{av::codec::VideoEncoderPreset::Realtime};
     uint8_t cameraPayloadType{96};
     uint8_t payloadType{97};

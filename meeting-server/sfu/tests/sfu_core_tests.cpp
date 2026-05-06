@@ -265,6 +265,11 @@ bool TestBandwidthEstimatorAdaptsToRttAndLoss() {
 }
 
 bool TestNackBufferCapacity() {
+    if (sfu::NackBuffer().Capacity() != 1500U) {
+        std::cerr << "NackBuffer default capacity should cover a longer public-network retransmit window\n";
+        return false;
+    }
+
     sfu::NackBuffer buffer(2);
 
     const std::vector<uint8_t> p1 = {1, 2, 3};

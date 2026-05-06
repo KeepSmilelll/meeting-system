@@ -3,7 +3,7 @@
 namespace sfu {
 
 NackBuffer::NackBuffer(std::size_t capacity, std::size_t maxPacketSize)
-    : capacity_(capacity > 0 ? capacity : 500),
+    : capacity_(capacity > 0 ? capacity : 1500),
       maxPacketSize_(maxPacketSize > 0 ? maxPacketSize : 1600) {}
 
 void NackBuffer::Store(uint16_t seq, const uint8_t* packet, std::size_t len) {
