@@ -44,6 +44,7 @@ struct VideoRecvDatagram {
 
 enum class VideoRecvHandlingAction {
     Continue,
+    RequestRetransmit,
     RequestKeyFrame,
     RequestKeyFrameAndError,
     DeliverFrame,
@@ -52,6 +53,7 @@ enum class VideoRecvHandlingAction {
 struct VideoRecvHandlingDecision {
     VideoRecvHandlingAction action{VideoRecvHandlingAction::Continue};
     const char* keyFrameReason{nullptr};
+    std::vector<uint16_t> retransmitSequenceNumbers;
     std::string errorMessage;
 };
 
@@ -70,7 +72,8 @@ public:
                                         uint32_t expectedRemoteSsrc,
                                         av::codec::DecodedVideoFrame& outFrame,
                                         uint32_t& outRemoteMediaSsrc,
-                                        std::string* error = nullptr);
+                                        std::string* error = nullptr,
+                                        media::H264PacketLossInfo* lossInfo = nullptr);
     VideoRecvPacketResult pollDecodedFrame(av::codec::DecodedVideoFrame& outFrame,
                                            uint32_t& outRemoteMediaSsrc,
                                            std::string* error = nullptr);

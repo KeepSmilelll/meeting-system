@@ -2,11 +2,14 @@
 
 #include "VideoRecvPipeline.h"
 
+#include <vector>
+
 namespace av::session {
 
 struct VideoRecvConsumeOutcome {
     bool ignored{true};
     uint32_t remoteMediaSsrc{0U};
+    std::vector<uint16_t> missingSequences;
     VideoRecvHandlingDecision decision;
 };
 

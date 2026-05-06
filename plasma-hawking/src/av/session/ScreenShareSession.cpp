@@ -5,6 +5,7 @@
 #include "VideoThreadLifecycleStateMachine.h"
 
 #include "net/media/SocketAddressUtils.h"
+#include "net/media/RTPReceiver.h"
 
 #include <QDebug>
 #include <QByteArray>
@@ -98,6 +99,7 @@ void ScreenShareSession::stop() {
 
     m_sharingEnabled.store(false, std::memory_order_release);
     m_cameraSendingEnabled.store(false, std::memory_order_release);
+    m_disableHardwareScreenCapture.store(false, std::memory_order_release);
     m_stateWaitCondition.wakeAll();
     m_mediaSocket.interruptWaiters();
     m_sendFrameRingBuffer.close();
@@ -151,6 +153,7 @@ bool ScreenShareSession::setSharingEnabled(bool enabled) {
         bool startSendThread = false;
         {
             QMutexLocker locker(&m_mutex);
+            m_disableHardwareScreenCapture.store(false, std::memory_order_release);
             if (!startCaptureLocked()) {
                 return false;
             }
@@ -218,6 +221,7 @@ bool ScreenShareSession::setSharingEnabled(bool enabled) {
     if (!m_sharingEnabled.exchange(false, std::memory_order_acq_rel)) {
         return true;
     }
+    m_disableHardwareScreenCapture.store(false, std::memory_order_release);
     if (m_cameraRelay) {
         m_cameraRelay->setSharingEnabled(false);
     }
@@ -403,6 +407,11 @@ bool ScreenShareSession::sendTransportProbe(const std::vector<uint8_t>& packet) 
     if (!m_mediaSocket.isOpen() || !m_mediaSocket.hasPeer()) {
         return false;
     }
+    media::RTPPacket rtpProbe{};
+    if (m_receiver.parsePacket(packet.data(), packet.size(), rtpProbe) &&
+        rtpProbe.header.ssrc == m_sender.ssrc()) {
+        m_rtcpActionPipeline.cacheSentPacket(rtpProbe.header.sequenceNumber, packet);
+    }
     const media::UdpEndpoint peer = m_mediaSocket.peer();
     const int sent = m_mediaSocket.sendTo(packet.data(), packet.size(), peer);
     return sent == static_cast<int>(packet.size());
@@ -545,6 +554,9 @@ bool ScreenShareSession::unprotectRtpLocked(std::vector<uint8_t>* packet) {
     }
     QByteArray bytes(reinterpret_cast<const char*>(packet->data()), static_cast<int>(packet->size()));
     if (!m_inboundSrtp.unprotectRtp(&bytes)) {
+        if (m_inboundSrtp.lastFailureWasReplay()) {
+            return false;
+        }
         const uint8_t first = packet->empty() ? 0U : (*packet)[0];
         const uint8_t second = packet->size() > 1U ? (*packet)[1] : 0U;
         setErrorLocked(QStringLiteral("%1 rtp_len=%2 first=%3 second=%4")
@@ -595,7 +607,8 @@ void ScreenShareSession::setDecodedFrameWithSsrcCallback(
     m_decodedFrameWithSsrcCallback = std::move(callback);
 }
 
-void ScreenShareSession::setLocalCameraPreviewCallback(std::function<void(av::codec::DecodedVideoFrame)> callback) {
+void ScreenShareSession::setLocalCameraPreviewCallback(
+    std::function<void(av::codec::DecodedVideoFrame, VideoSendSource)> callback) {
     QMutexLocker locker(&m_mutex);
     m_localCameraPreviewCallback = std::move(callback);
 }

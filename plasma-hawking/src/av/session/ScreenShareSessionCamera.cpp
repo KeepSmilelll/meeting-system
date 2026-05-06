@@ -20,10 +20,12 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <memory>
 #include <random>
+#include <utility>
 
 namespace av::session {
 namespace {
@@ -45,6 +47,28 @@ uint64_t steadyNowMs() {
         std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now().time_since_epoch())
             .count());
+}
+
+constexpr int kMaxScreenShareWidth = 2560;
+constexpr int kMaxScreenShareHeight = 1600;
+constexpr int kMaxScreenShareFrameRate = 30;
+
+int normalizeEvenDimension(int value) {
+    value = std::max(2, value);
+    value &= ~1;
+    return std::max(2, value);
+}
+
+std::pair<int, int> clampScreenShareDimensions(int width, int height) {
+    width = normalizeEvenDimension(width);
+    height = normalizeEvenDimension(height);
+    if (width <= kMaxScreenShareWidth && height <= kMaxScreenShareHeight) {
+        return {width, height};
+    }
+    const double scale = std::min(static_cast<double>(kMaxScreenShareWidth) / static_cast<double>(width),
+                                  static_cast<double>(kMaxScreenShareHeight) / static_cast<double>(height));
+    return {std::min(kMaxScreenShareWidth, normalizeEvenDimension(static_cast<int>(std::floor(width * scale)))),
+            std::min(kMaxScreenShareHeight, normalizeEvenDimension(static_cast<int>(std::floor(height * scale))))};
 }
 
 bool allowSyntheticCameraFallback() {
@@ -215,7 +239,13 @@ bool buildLocalCameraPreviewFrame(const av::capture::CameraCaptureFrame& frame,
         return false;
     }
 
-    return fillNv12PreviewFromArgb32Image(image, outFrame);
+    if (!fillNv12PreviewFromArgb32Image(image, outFrame)) {
+        return false;
+    }
+    outFrame.telemetry.profile = av::VideoPipelineProfile::SoftwareE2E;
+    outFrame.telemetry.backendName = "camera-preview";
+    outFrame.markSoftwareFrame(true, true);
+    return true;
 }
 
 }  // namespace
@@ -408,9 +438,10 @@ bool ScreenShareSession::startCaptureLocked(bool allowHardwareBypass) {
     }
 
     av::capture::ScreenCaptureConfig captureConfig{};
-    captureConfig.targetWidth = m_config.width;
-    captureConfig.targetHeight = m_config.height;
-    captureConfig.frameRate = m_config.frameRate;
+    const auto [targetWidth, targetHeight] = clampScreenShareDimensions(m_config.width, m_config.height);
+    captureConfig.targetWidth = targetWidth;
+    captureConfig.targetHeight = targetHeight;
+    captureConfig.frameRate = std::min(std::max(1, m_config.frameRate), kMaxScreenShareFrameRate);
     captureConfig.ringCapacity = 3;
 
     auto capture = std::make_shared<av::capture::ScreenCapture>(captureConfig);
@@ -542,7 +573,7 @@ bool ScreenShareSession::startCameraCaptureLocked(bool allowHardwareBypass) {
                 if (localCameraPreviewCallback) {
                     av::codec::DecodedVideoFrame preview;
                     if (buildLocalCameraPreviewFrame(previewFrame, previewWidth, previewHeight, preview)) {
-                        localCameraPreviewCallback(std::move(preview));
+                        localCameraPreviewCallback(std::move(preview), VideoSendSource::Camera);
                     }
                 }
                 if (!firstCameraFrameObserved->exchange(true, std::memory_order_acq_rel)) {

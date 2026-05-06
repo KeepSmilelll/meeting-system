@@ -16,6 +16,9 @@
 #include <QtNetwork/QUdpSocket>
 
 #include "av/session/ScreenShareSession.h"
+#include "av/session/VideoRecvKeyFramePipeline.h"
+#include "av/session/VideoRtcpActionPipeline.h"
+#include "net/media/RTCPHandler.h"
 
 namespace {
 
@@ -109,6 +112,48 @@ uint8_t fractionForLossPercent(double percent) {
     return static_cast<uint8_t>((percent * 256.0) / 100.0 + 0.5);
 }
 
+std::vector<uint8_t> buildRtpProbePacket(uint32_t ssrc,
+                                         uint16_t sequence,
+                                         uint8_t payloadType,
+                                         uint32_t timestamp,
+                                         bool marker,
+                                         const std::vector<uint8_t>& payload) {
+    media::RTPSender sender(ssrc, sequence);
+    return sender.buildPacket(payloadType, marker, timestamp, payload);
+}
+
+bool testNackFeedbackBuilder() {
+    av::session::VideoRtcpActionPipeline pipeline;
+    const std::vector<uint16_t> lostSequences{0x1000U, 0x1001U, 0x1003U, 0x1015U};
+    const std::vector<uint8_t> packet =
+        pipeline.buildNackFeedback(0x22222222U, 0x11111111U, lostSequences);
+    media::RTCPHandler handler;
+    media::RTCPNackFeedback parsed{};
+    if (!handler.parseNackFeedback(packet.data(), packet.size(), parsed)) {
+        return false;
+    }
+    return parsed.senderSsrc == 0x22222222U &&
+           parsed.mediaSsrc == 0x11111111U &&
+           parsed.lostSequences == lostSequences;
+}
+
+bool testPliCooldownIsPerSsrc() {
+    av::session::VideoRecvKeyFramePipeline pipeline;
+    constexpr uint32_t kSsrcA = 0x11111111U;
+    constexpr uint32_t kSsrcB = 0x22222222U;
+    if (!pipeline.shouldSendPli(kSsrcA, 1000U)) {
+        return false;
+    }
+    pipeline.markPliSent(kSsrcA, 1000U);
+    if (pipeline.shouldSendPli(kSsrcA, 2499U)) {
+        return false;
+    }
+    if (!pipeline.shouldSendPli(kSsrcA, 2500U)) {
+        return false;
+    }
+    return pipeline.shouldSendPli(kSsrcB, 1200U);
+}
+
 std::vector<uint8_t> buildReceiverReportPacket(uint32_t receiverSsrc,
                                                uint32_t mediaSsrc,
                                                uint8_t fractionLost,
@@ -142,6 +187,9 @@ std::vector<uint8_t> buildReceiverReportPacket(uint32_t receiverSsrc,
 }  // namespace
 
 int main(int argc, char* argv[]) {
+    assert(testNackFeedbackBuilder());
+    assert(testPliCooldownIsPerSsrc());
+
     QCoreApplication app(argc, argv);
     if (qEnvironmentVariableIsEmpty("MEETING_SYNTHETIC_SCREEN")) {
         qputenv("MEETING_SYNTHETIC_SCREEN", QByteArrayLiteral("1"));
@@ -192,7 +240,7 @@ int main(int argc, char* argv[]) {
     receiver.setPeer("127.0.0.1", sender.localPort());
     assert(sender.setSharingEnabled(true));
     assert(sender.videoSsrc() != 0);
-    const uint32_t screenSsrc = sender.videoSsrc();
+    uint32_t screenSsrc = sender.videoSsrc();
 
     const bool packetsSent = waitForCondition(app, [&sender]() {
         return sender.sentPacketCount() > 0;
@@ -228,6 +276,40 @@ int main(int argc, char* argv[]) {
         assert(decodedWidth == 640);
         assert(decodedHeight == 360);
 
+        assert(sender.setSharingEnabled(false));
+        receiver.resetRemoteVideoStream(screenSsrc);
+        QThread::msleep(80);
+        app.processEvents(QEventLoop::AllEvents, 20);
+        const uint64_t retransmitBeforeGap = sender.retransmitPacketCount();
+        const uint64_t keyframesBeforeGap = receiver.keyframeRequestCount();
+        const std::vector<uint8_t> fuStart{0x7c, 0x85, 0x01, 0x02};
+        const std::vector<uint8_t> fuMiddle{0x7c, 0x05, 0x03, 0x04};
+        assert(sender.sendTransportProbe(
+            buildRtpProbePacket(screenSsrc, 100U, senderConfig.payloadType, 0x12345678U, false, fuStart)));
+        sender.setPeer("127.0.0.1", 9);
+        assert(sender.sendTransportProbe(
+            buildRtpProbePacket(screenSsrc, 101U, senderConfig.payloadType, 0x12345678U, false, fuMiddle)));
+        sender.setPeer("127.0.0.1", receiver.localPort());
+        assert(sender.sendTransportProbe(
+            buildRtpProbePacket(screenSsrc, 102U, senderConfig.payloadType, 0x12345678U, false, fuMiddle)));
+        sender.setPeer("127.0.0.1", 9);
+        assert(sender.sendTransportProbe(
+            buildRtpProbePacket(screenSsrc, 103U, senderConfig.payloadType, 0x12345678U, false, fuMiddle)));
+        sender.setPeer("127.0.0.1", receiver.localPort());
+        assert(sender.sendTransportProbe(
+            buildRtpProbePacket(screenSsrc, 104U, senderConfig.payloadType, 0x12345678U, false, fuMiddle)));
+
+        QThread::msleep(80);
+        app.processEvents(QEventLoop::AllEvents, 20);
+        assert(receiver.keyframeRequestCount() == keyframesBeforeGap);
+        const bool nackTriggeredRetransmit = waitForCondition(app, [&sender, retransmitBeforeGap]() {
+            return sender.retransmitPacketCount() > retransmitBeforeGap;
+        }, 1000);
+        assert(nackTriggeredRetransmit);
+
+        assert(sender.setSharingEnabled(true));
+        screenSsrc = sender.videoSsrc();
+        assert(screenSsrc != 0U);
         receiver.setExpectedRemoteVideoSsrc(screenSsrc + 1U);
         // Recv now runs per-SSRC worker queues; allow a tiny in-flight tail after filter switch.
         QThread::msleep(120);

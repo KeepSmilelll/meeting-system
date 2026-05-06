@@ -38,6 +38,7 @@
 #include <cstring>
 #include <limits>
 #include <memory>
+#include <string>
 #include <vector>
 #include "signaling.pb.h"
 
@@ -3620,26 +3621,31 @@ void MeetingController::maybeStartVideoNegotiation() {
                                      : QStringLiteral("Video camera source: real-device"));
             }, Qt::QueuedConnection);
         });
-        m_screenShareSession->setLocalCameraPreviewCallback([this](av::codec::DecodedVideoFrame frame) {
-            QMetaObject::invokeMethod(
-                this,
-                [this, frame = std::move(frame)]() mutable {
-                    if (!m_localVideoFrameStore || !m_inMeeting || (m_videoMuted && !m_screenSharing)) {
-                        return;
-                    }
-                    if (frame.hasRenderableData()) {
-                        if (m_screenSharing && !m_loggedLocalScreenPreviewFrameStored) {
-                            m_loggedLocalScreenPreviewFrameStored = true;
-                            emit infoMessage(QStringLiteral("Video local screen preview frame stored"));
-                        } else if (!m_screenSharing && !m_loggedLocalVideoPreviewFrameStored) {
-                            m_loggedLocalVideoPreviewFrameStored = true;
-                            emit infoMessage(QStringLiteral("Video local preview frame stored"));
+        m_screenShareSession->setLocalCameraPreviewCallback(
+            [this](av::codec::DecodedVideoFrame frame, av::session::VideoSendSource source) {
+                QMetaObject::invokeMethod(
+                    this,
+                    [this, frame = std::move(frame), source]() mutable {
+                        if (!m_localVideoFrameStore || !m_inMeeting || (m_videoMuted && !m_screenSharing)) {
+                            return;
                         }
-                    }
-                    m_localVideoFrameStore->setFrame(std::move(frame));
-                },
-                Qt::QueuedConnection);
-        });
+                        const bool screenPreviewFrame = source == av::session::VideoSendSource::Screen;
+                        if (m_screenSharing != screenPreviewFrame) {
+                            return;
+                        }
+                        if (frame.hasRenderableData()) {
+                            if (m_screenSharing && !m_loggedLocalScreenPreviewFrameStored) {
+                                m_loggedLocalScreenPreviewFrameStored = true;
+                                emit infoMessage(QStringLiteral("Video local screen preview frame stored"));
+                            } else if (!m_screenSharing && !m_loggedLocalVideoPreviewFrameStored) {
+                                m_loggedLocalVideoPreviewFrameStored = true;
+                                emit infoMessage(QStringLiteral("Video local preview frame stored"));
+                            }
+                        }
+                        m_localVideoFrameStore->setFrame(std::move(frame));
+                    },
+                    Qt::QueuedConnection);
+            });
         m_screenShareSession->setStatusCallback([this](std::string statusMessage) {
             const QString statusText = QString::fromStdString(statusMessage);
             QMetaObject::invokeMethod(this, [this, statusText]() {

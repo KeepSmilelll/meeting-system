@@ -24,11 +24,19 @@ public:
 
     std::vector<uint8_t> buildPictureLossIndication(uint32_t senderSsrc,
                                                     uint32_t mediaSsrc) const;
+    std::vector<uint8_t> buildNackFeedback(uint32_t senderSsrc,
+                                           uint32_t mediaSsrc,
+                                           const std::vector<uint16_t>& lostSequences) const;
 
     bool sendPictureLossIndication(const media::UdpPeerSocket& socket,
                                    uint32_t senderSsrc,
                                    uint32_t mediaSsrc,
                                    std::string* error = nullptr) const;
+    bool sendNackFeedback(const media::UdpPeerSocket& socket,
+                          uint32_t senderSsrc,
+                          uint32_t mediaSsrc,
+                          const std::vector<uint16_t>& lostSequences,
+                          std::string* error = nullptr) const;
 
 private:
     std::size_t m_retransmitCacheLimit{512U};

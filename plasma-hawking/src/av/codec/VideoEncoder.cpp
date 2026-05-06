@@ -893,7 +893,23 @@ bool VideoEncoder::encode(const capture::ScreenFrame& inFrame,
         return false;
     }
 
-    if (!fillFrameFromBgra(inFrame, *frame, m_outputPixelFormat)) {
+    // Fast path: GPU already produced NV12 - copy planes directly.
+    const std::size_t expectedNv12 = static_cast<std::size_t>(m_width) * m_height * 3 / 2;
+    if (!inFrame.nv12.empty() && inFrame.nv12.size() == expectedNv12 &&
+        m_outputPixelFormat == AV_PIX_FMT_NV12) {
+        const uint8_t* yPlane = inFrame.nv12.data();
+        const uint8_t* uvPlane = yPlane + static_cast<std::size_t>(m_width) * m_height;
+        for (int y = 0; y < m_height; ++y) {
+            std::memcpy(frame->data[0] + static_cast<std::ptrdiff_t>(y) * frame->linesize[0],
+                        yPlane + static_cast<std::size_t>(y) * m_width,
+                        static_cast<std::size_t>(m_width));
+        }
+        for (int y = 0; y < m_height / 2; ++y) {
+            std::memcpy(frame->data[1] + static_cast<std::ptrdiff_t>(y) * frame->linesize[1],
+                        uvPlane + static_cast<std::size_t>(y) * m_width,
+                        static_cast<std::size_t>(m_width));
+        }
+    } else if (!fillFrameFromBgra(inFrame, *frame, m_outputPixelFormat)) {
         if (error != nullptr) {
             *error = "BGRA to encoder pixel format conversion failed";
         }

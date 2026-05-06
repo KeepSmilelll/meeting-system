@@ -16,6 +16,7 @@
 #include "VideoSessionStateMachine.h"
 
 #include "av/capture/WindowsD3D11CameraCapture.h"
+#include "net/media/JitterBuffer.h"
 #include "net/media/RTCPHandler.h"
 #include "net/media/SocketAddressUtils.h"
 
@@ -29,6 +30,8 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
+#include <cstddef>
 #include <cstdio>
 #include <deque>
 #include <functional>
@@ -36,6 +39,7 @@
 #include <limits>
 #include <thread>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #ifdef min
@@ -51,6 +55,9 @@
 #endif
 #include <d3d11.h>
 #include <dxgi1_2.h>
+#include <dxgi1_5.h>
+#include <d3dcompiler.h>
+#pragma comment(lib, "d3dcompiler.lib")
 extern "C" {
 #include <libavutil/hwcontext.h>
 }
@@ -78,11 +85,117 @@ bool looksLikeStunPacket(const uint8_t* data, std::size_t len) {
 
 constexpr std::size_t kMaxRecvPeerWorkers = 16U;
 constexpr std::size_t kMaxRecvPeerQueuedPackets = 64U;
+constexpr std::size_t kMinRecvPeerBufferedPackets = 3U;
+constexpr uint64_t kRecvPeerJitterGapTimeoutMs = 20U;
 constexpr uint64_t kRecvPeerWorkerIdleTimeoutMs = 30 * 1000U;
 constexpr std::size_t kRecvWorkerPollBudgetAfterPacket = 2U;
 constexpr std::size_t kRecvWorkerPollBudgetWhenIdle = 2U;
 constexpr std::size_t kRecvWorkerPollBudgetOnStop = 8U;
+constexpr int kRecvLoopWaitTimeoutMs = 20;
+constexpr uint64_t kNackRetryIntervalMs = 60U;
+constexpr uint64_t kNackPliFallbackMs = 300U;
+constexpr uint32_t kNackAttemptsBeforePli = 3U;
+constexpr std::size_t kMaxPendingNackRequests = 64U;
 constexpr uint64_t kVideoSenderReportIntervalMs = 1000U;
+constexpr int kMaxScreenShareWidth = 2560;
+constexpr int kMaxScreenShareHeight = 1600;
+constexpr int kMaxScreenShareFrameRate = 30;
+
+int normalizeEvenDimension(int value) {
+    value = std::max(2, value);
+    value &= ~1;
+    return std::max(2, value);
+}
+
+std::pair<int, int> clampScreenShareDimensions(int width, int height) {
+    width = normalizeEvenDimension(width);
+    height = normalizeEvenDimension(height);
+    if (width <= kMaxScreenShareWidth && height <= kMaxScreenShareHeight) {
+        return {width, height};
+    }
+    const double scale = std::min(static_cast<double>(kMaxScreenShareWidth) / static_cast<double>(width),
+                                  static_cast<double>(kMaxScreenShareHeight) / static_cast<double>(height));
+    const int scaledWidth = normalizeEvenDimension(static_cast<int>(std::floor(width * scale)));
+    const int scaledHeight = normalizeEvenDimension(static_cast<int>(std::floor(height * scale)));
+    return {std::min(kMaxScreenShareWidth, scaledWidth),
+            std::min(kMaxScreenShareHeight, scaledHeight)};
+}
+
+uint8_t clampToByte(int value) {
+    return static_cast<uint8_t>(std::clamp(value, 0, 255));
+}
+
+uint8_t lumaFromBgra(uint8_t b, uint8_t g, uint8_t r) {
+    const int y = ((66 * static_cast<int>(r)) + (129 * static_cast<int>(g)) + (25 * static_cast<int>(b)) + 128) >> 8;
+    return clampToByte(y + 16);
+}
+
+uint8_t chromaUFromBgra(uint8_t b, uint8_t g, uint8_t r) {
+    const int u = ((-38 * static_cast<int>(r)) - (74 * static_cast<int>(g)) + (112 * static_cast<int>(b)) + 128) >> 8;
+    return clampToByte(u + 128);
+}
+
+uint8_t chromaVFromBgra(uint8_t b, uint8_t g, uint8_t r) {
+    const int v = ((112 * static_cast<int>(r)) - (94 * static_cast<int>(g)) - (18 * static_cast<int>(b)) + 128) >> 8;
+    return clampToByte(v + 128);
+}
+
+bool makeSoftwarePreviewFrame(const av::capture::ScreenFrame& frame,
+                              av::codec::DecodedVideoFrame& outFrame) {
+    if (frame.width <= 0 || frame.height <= 0 ||
+        (frame.width % 2) != 0 || (frame.height % 2) != 0) {
+        return false;
+    }
+    const std::size_t expectedBytes =
+        static_cast<std::size_t>(frame.width) * static_cast<std::size_t>(frame.height) * 4U;
+    if (frame.bgra.size() != expectedBytes) {
+        return false;
+    }
+
+    outFrame = av::codec::DecodedVideoFrame{};
+    outFrame.width = frame.width;
+    outFrame.height = frame.height;
+    outFrame.pts = frame.pts;
+    outFrame.pixelFormat = AV_PIX_FMT_NV12;
+    outFrame.yPlane.resize(static_cast<std::size_t>(frame.width) * static_cast<std::size_t>(frame.height));
+    outFrame.uvPlane.resize(static_cast<std::size_t>(frame.width) * static_cast<std::size_t>(frame.height / 2));
+
+    const int sourceStride = frame.width * 4;
+    for (int y = 0; y < frame.height; ++y) {
+        const uint8_t* srcRow = frame.bgra.data() + static_cast<std::size_t>(y) * sourceStride;
+        uint8_t* yRow = outFrame.yPlane.data() + static_cast<std::size_t>(y) * frame.width;
+        for (int x = 0; x < frame.width; ++x) {
+            const uint8_t* pixel = srcRow + static_cast<std::ptrdiff_t>(x) * 4;
+            yRow[x] = lumaFromBgra(pixel[0], pixel[1], pixel[2]);
+        }
+    }
+    for (int y = 0; y < frame.height; y += 2) {
+        const uint8_t* row0 = frame.bgra.data() + static_cast<std::size_t>(y) * sourceStride;
+        const uint8_t* row1 = frame.bgra.data() + static_cast<std::size_t>(std::min(y + 1, frame.height - 1)) * sourceStride;
+        uint8_t* uvRow = outFrame.uvPlane.data() + static_cast<std::size_t>(y / 2) * frame.width;
+        for (int x = 0; x < frame.width; x += 2) {
+            const uint8_t* p00 = row0 + static_cast<std::ptrdiff_t>(x) * 4;
+            const uint8_t* p01 = row0 + static_cast<std::ptrdiff_t>(std::min(x + 1, frame.width - 1)) * 4;
+            const uint8_t* p10 = row1 + static_cast<std::ptrdiff_t>(x) * 4;
+            const uint8_t* p11 = row1 + static_cast<std::ptrdiff_t>(std::min(x + 1, frame.width - 1)) * 4;
+            uvRow[x] = clampToByte((static_cast<int>(chromaUFromBgra(p00[0], p00[1], p00[2])) +
+                                    static_cast<int>(chromaUFromBgra(p01[0], p01[1], p01[2])) +
+                                    static_cast<int>(chromaUFromBgra(p10[0], p10[1], p10[2])) +
+                                    static_cast<int>(chromaUFromBgra(p11[0], p11[1], p11[2])) + 2) /
+                                   4);
+            uvRow[x + 1] = clampToByte((static_cast<int>(chromaVFromBgra(p00[0], p00[1], p00[2])) +
+                                        static_cast<int>(chromaVFromBgra(p01[0], p01[1], p01[2])) +
+                                        static_cast<int>(chromaVFromBgra(p10[0], p10[1], p10[2])) +
+                                        static_cast<int>(chromaVFromBgra(p11[0], p11[1], p11[2])) + 2) /
+                                       4);
+        }
+    }
+    outFrame.telemetry.profile = av::VideoPipelineProfile::SoftwareE2E;
+    outFrame.telemetry.cpuFrameCopy = true;
+    outFrame.telemetry.backendName = "dxgi-readback-screen-preview";
+    outFrame.markSoftwareFrame(true, true);
+    return true;
+}
 
 #ifdef _WIN32
 std::string hresultString(HRESULT hr) {
@@ -103,6 +216,8 @@ const char* dxgiFormatName(DXGI_FORMAT format) {
         return "R8G8B8A8_UNORM_SRGB";
     case DXGI_FORMAT_NV12:
         return "NV12";
+    case DXGI_FORMAT_R16G16B16A16_FLOAT:
+        return "R16G16B16A16_FLOAT";
     default:
         return "other";
     }
@@ -173,6 +288,7 @@ public:
         IDXGIAdapter* adapter = nullptr;
         IDXGIOutput* output = nullptr;
         IDXGIOutput1* output1 = nullptr;
+        IDXGIOutput5* output5 = nullptr;
         HRESULT hr = m_device->QueryInterface(__uuidof(IDXGIDevice), reinterpret_cast<void**>(&dxgiDevice));
         if (SUCCEEDED(hr) && dxgiDevice != nullptr) {
             hr = dxgiDevice->GetAdapter(&adapter);
@@ -189,8 +305,28 @@ public:
             hr = output->QueryInterface(__uuidof(IDXGIOutput1), reinterpret_cast<void**>(&output1));
         }
         if (SUCCEEDED(hr) && output1 != nullptr) {
-            hr = output1->DuplicateOutput(m_device, &m_duplication);
+            bool duplicateOutput1Attempted = false;
+            bool duplicateOutput1Succeeded = false;
+            if (SUCCEEDED(output1->QueryInterface(__uuidof(IDXGIOutput5),
+                                                  reinterpret_cast<void**>(&output5))) &&
+                output5 != nullptr) {
+                duplicateOutput1Attempted = true;
+                const DXGI_FORMAT requestedFormats[] = {DXGI_FORMAT_B8G8R8A8_UNORM};
+                hr = output5->DuplicateOutput1(m_device,
+                                               0,
+                                               1U,
+                                               requestedFormats,
+                                               &m_duplication);
+                duplicateOutput1Succeeded = SUCCEEDED(hr) && m_duplication != nullptr;
+            }
+            if (FAILED(hr) || m_duplication == nullptr) {
+                releaseComObject(m_duplication);
+                hr = output1->DuplicateOutput(m_device, &m_duplication);
+            }
+            m_duplicateOutput1Attempted = duplicateOutput1Attempted;
+            m_duplicateOutput1Succeeded = duplicateOutput1Succeeded;
         }
+        releaseComObject(output5);
         releaseComObject(output1);
         releaseComObject(output);
         releaseComObject(adapter);
@@ -331,6 +467,19 @@ private:
 
         D3D11_TEXTURE2D_DESC sourceDesc{};
         sourceTexture->GetDesc(&sourceDesc);
+        UINT sourceFormatSupport = 0;
+        if (m_processorEnumerator != nullptr) {
+            (void)m_processorEnumerator->CheckVideoProcessorFormat(sourceDesc.Format, &sourceFormatSupport);
+        }
+        if ((sourceFormatSupport & D3D11_VIDEO_PROCESSOR_FORMAT_SUPPORT_INPUT) == 0U) {
+            setError(error,
+                "DXGI desktop duplication format unsupported by video processor: " +
+                textureDescString(sourceDesc) +
+                " formatSupport=0x" + formatSupportString(sourceFormatSupport) +
+                " duplicateOutput1Attempted=" + (m_duplicateOutput1Attempted ? "1" : "0") +
+                " duplicateOutput1Succeeded=" + (m_duplicateOutput1Succeeded ? "1" : "0"));
+            return false;
+        }
         if (!ensureInputTexture(sourceDesc, error)) {
             return false;
         }
@@ -431,6 +580,12 @@ private:
         return true;
     }
 
+    static std::string formatSupportString(UINT supportValue) {
+        char support[16]{};
+        std::snprintf(support, sizeof(support), "%08x", supportValue);
+        return std::string(support);
+    }
+
     void shutdown() {
         releaseComObject(m_videoProcessor);
         releaseComObject(m_processorEnumerator);
@@ -442,6 +597,8 @@ private:
         releaseComObject(m_device);
         m_sourceWidth = 0;
         m_sourceHeight = 0;
+        m_duplicateOutput1Attempted = false;
+        m_duplicateOutput1Succeeded = false;
     }
 
     ID3D11Device* m_device{nullptr};
@@ -456,6 +613,824 @@ private:
     int m_sourceHeight{0};
     int m_targetWidth{0};
     int m_targetHeight{0};
+    bool m_duplicateOutput1Attempted{false};
+    bool m_duplicateOutput1Succeeded{false};
+};
+
+constexpr const char* kGpuScaleVertexShaderHlsl = R"hlsl(
+void main(uint id : SV_VertexID,
+          out float4 pos : SV_Position,
+          out float2 uv  : TEXCOORD0) {
+    uv  = float2((id << 1) & 2, id & 2);
+    pos = float4(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, 0.0, 1.0);
+}
+)hlsl";
+
+constexpr const char* kGpuScalePixelShaderHlsl = R"hlsl(
+Texture2D    tex  : register(t0);
+SamplerState samp : register(s0);
+float4 main(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target {
+    return tex.Sample(samp, uv);
+}
+)hlsl";
+
+// BT.601 BGRA -> Y luma. GPU samples BGRA texture as RGBA, so r=R, g=G, b=B.
+constexpr const char* kBgraToYShaderHlsl = R"hlsl(
+Texture2D    tex  : register(t0);
+SamplerState samp : register(s0);
+float main(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target {
+    float4 c = tex.Sample(samp, uv);
+    return 16.0/255.0 + c.r * (65.481/255.0) + c.g * (128.553/255.0) + c.b * (24.966/255.0);
+}
+)hlsl";
+
+// BT.601 BGRA -> UV chroma at half resolution. Point-samples 2x2 block and averages.
+constexpr const char* kBgraToUvShaderHlsl = R"hlsl(
+Texture2D tex  : register(t0);
+cbuffer cb : register(b0) { float2 texelSize; };
+float2 main(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target {
+    float2 half_texel = texelSize * 0.5;
+    float4 c00 = tex.Sample(SamplerState_dummy, uv + float2(-half_texel.x, -half_texel.y));
+    float4 c10 = tex.Sample(SamplerState_dummy, uv + float2( half_texel.x, -half_texel.y));
+    float4 c01 = tex.Sample(SamplerState_dummy, uv + float2(-half_texel.x,  half_texel.y));
+    float4 c11 = tex.Sample(SamplerState_dummy, uv + float2( half_texel.x,  half_texel.y));
+    float4 c = (c00 + c10 + c01 + c11) * 0.25;
+    float u = 128.0/255.0 + c.r * (-37.797/255.0) + c.g * (-74.203/255.0) + c.b * (112.0/255.0);
+    float v = 128.0/255.0 + c.r * (112.0/255.0)   + c.g * (-93.786/255.0) + c.b * (-18.214/255.0);
+    return float2(u, v);
+}
+)hlsl";
+
+// Simplified UV shader that uses bilinear hardware filtering (the sampler does the 2x2 average).
+constexpr const char* kBgraToUvSimpleShaderHlsl = R"hlsl(
+Texture2D    tex  : register(t0);
+SamplerState samp : register(s0);
+float2 main(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target {
+    float4 c = tex.Sample(samp, uv);
+    float u = 128.0/255.0 + c.r * (-37.797/255.0) + c.g * (-74.203/255.0) + c.b * (112.0/255.0);
+    float v = 128.0/255.0 + c.r * (112.0/255.0)   + c.g * (-93.786/255.0) + c.b * (-18.214/255.0);
+    return float2(u, v);
+}
+)hlsl";
+
+bool compileHlslShader(const char* source, const char* target, const char* entryPoint,
+                       ID3DBlob** blob, std::string* error) {
+    ID3DBlob* errorBlob = nullptr;
+    HRESULT hr = D3DCompile(source,
+                            std::strlen(source),
+                            nullptr, nullptr, nullptr,
+                            entryPoint, target,
+                            D3DCOMPILE_OPTIMIZATION_LEVEL3, 0,
+                            blob, &errorBlob);
+    if (FAILED(hr)) {
+        if (error != nullptr && errorBlob != nullptr) {
+            *error = std::string("shader compile failed: ") +
+                     std::string(static_cast<const char*>(errorBlob->GetBufferPointer()),
+                                 errorBlob->GetBufferSize());
+        }
+        releaseComObject(errorBlob);
+        return false;
+    }
+    releaseComObject(errorBlob);
+    return *blob != nullptr;
+}
+
+class WindowsD3D11ScreenReadbackCapture final {
+public:
+    WindowsD3D11ScreenReadbackCapture() = default;
+    ~WindowsD3D11ScreenReadbackCapture() {
+        shutdown();
+    }
+
+    WindowsD3D11ScreenReadbackCapture(const WindowsD3D11ScreenReadbackCapture&) = delete;
+    WindowsD3D11ScreenReadbackCapture& operator=(const WindowsD3D11ScreenReadbackCapture&) = delete;
+
+    bool initialize(int targetWidth, int targetHeight, std::string* error) {
+        shutdown();
+        m_targetWidth = std::max(2, targetWidth & ~1);
+        m_targetHeight = std::max(2, targetHeight & ~1);
+
+        const D3D_FEATURE_LEVEL featureLevels[] = {
+            D3D_FEATURE_LEVEL_11_1,
+            D3D_FEATURE_LEVEL_11_0,
+            D3D_FEATURE_LEVEL_10_1,
+            D3D_FEATURE_LEVEL_10_0,
+        };
+        D3D_FEATURE_LEVEL selectedFeatureLevel{};
+        HRESULT hr = D3D11CreateDevice(nullptr,
+                                       D3D_DRIVER_TYPE_HARDWARE,
+                                       nullptr,
+                                       D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+                                       featureLevels,
+                                       static_cast<UINT>(std::size(featureLevels)),
+                                       D3D11_SDK_VERSION,
+                                       &m_device,
+                                       &selectedFeatureLevel,
+                                       &m_context);
+        if (FAILED(hr) || m_device == nullptr || m_context == nullptr) {
+            setError(error, "D3D11 readback device create failed: " + hresultString(hr));
+            shutdown();
+            return false;
+        }
+
+        IDXGIDevice* dxgiDevice = nullptr;
+        IDXGIAdapter* adapter = nullptr;
+        IDXGIOutput* output = nullptr;
+        IDXGIOutput1* output1 = nullptr;
+        IDXGIOutput5* output5 = nullptr;
+        hr = m_device->QueryInterface(__uuidof(IDXGIDevice), reinterpret_cast<void**>(&dxgiDevice));
+        if (SUCCEEDED(hr) && dxgiDevice != nullptr) {
+            hr = dxgiDevice->GetAdapter(&adapter);
+        }
+        if (SUCCEEDED(hr) && adapter != nullptr) {
+            hr = adapter->EnumOutputs(0, &output);
+        }
+        if (SUCCEEDED(hr) && output != nullptr) {
+            DXGI_OUTPUT_DESC outputDesc{};
+            if (SUCCEEDED(output->GetDesc(&outputDesc))) {
+                m_sourceWidth = std::max<LONG>(1, outputDesc.DesktopCoordinates.right - outputDesc.DesktopCoordinates.left);
+                m_sourceHeight = std::max<LONG>(1, outputDesc.DesktopCoordinates.bottom - outputDesc.DesktopCoordinates.top);
+            }
+            hr = output->QueryInterface(__uuidof(IDXGIOutput1), reinterpret_cast<void**>(&output1));
+        }
+        if (SUCCEEDED(hr) && output1 != nullptr) {
+            if (SUCCEEDED(output1->QueryInterface(__uuidof(IDXGIOutput5),
+                                                  reinterpret_cast<void**>(&output5))) &&
+                output5 != nullptr) {
+                const DXGI_FORMAT requestedFormats[] = {
+                    DXGI_FORMAT_B8G8R8A8_UNORM,
+                    DXGI_FORMAT_R8G8B8A8_UNORM,
+                    DXGI_FORMAT_R16G16B16A16_FLOAT,
+                };
+                hr = output5->DuplicateOutput1(m_device,
+                                               0,
+                                               static_cast<UINT>(std::size(requestedFormats)),
+                                               requestedFormats,
+                                               &m_duplication);
+            }
+            if (FAILED(hr) || m_duplication == nullptr) {
+                releaseComObject(m_duplication);
+                hr = output1->DuplicateOutput(m_device, &m_duplication);
+            }
+        }
+        releaseComObject(output5);
+        releaseComObject(output1);
+        releaseComObject(output);
+        releaseComObject(adapter);
+        releaseComObject(dxgiDevice);
+        if (FAILED(hr) || m_duplication == nullptr) {
+            setError(error, "DXGI readback desktop duplication unavailable: " + hresultString(hr));
+            shutdown();
+            return false;
+        }
+
+        initGpuScalePipeline();
+        initNv12Pipeline();
+        return true;
+    }
+
+    bool capture(int targetWidth,
+                 int targetHeight,
+                 int64_t pts,
+                 av::capture::ScreenFrame& outFrame,
+                 std::string* error) {
+        outFrame = av::capture::ScreenFrame{};
+        if ((m_duplication == nullptr ||
+             m_targetWidth != std::max(2, targetWidth & ~1) ||
+             m_targetHeight != std::max(2, targetHeight & ~1)) &&
+            !initialize(targetWidth, targetHeight, error)) {
+            return false;
+        }
+
+        DXGI_OUTDUPL_FRAME_INFO frameInfo{};
+        IDXGIResource* resource = nullptr;
+        HRESULT hr = m_duplication->AcquireNextFrame(33, &frameInfo, &resource);
+        if (hr == DXGI_ERROR_WAIT_TIMEOUT) {
+            if (error != nullptr) {
+                error->clear();
+            }
+            return false;
+        }
+        if (hr == DXGI_ERROR_ACCESS_LOST) {
+            shutdown();
+            setError(error, "DXGI readback desktop duplication access lost");
+            return false;
+        }
+        if (FAILED(hr) || resource == nullptr) {
+            setError(error, "DXGI readback AcquireNextFrame failed: " + hresultString(hr));
+            return false;
+        }
+
+        ID3D11Texture2D* sourceTexture = nullptr;
+        hr = resource->QueryInterface(__uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&sourceTexture));
+        releaseComObject(resource);
+        if (FAILED(hr) || sourceTexture == nullptr) {
+            m_duplication->ReleaseFrame();
+            setError(error, "DXGI readback frame is not a D3D11 texture");
+            return false;
+        }
+
+        D3D11_TEXTURE2D_DESC sourceDesc{};
+        sourceTexture->GetDesc(&sourceDesc);
+        bool converted = false;
+
+        // GPU scaling path: scale on GPU then download the smaller texture.
+        if (m_gpuScaleReady && gpuScaleBlit(sourceTexture, sourceDesc, error)) {
+            D3D11_TEXTURE2D_DESC scaledDesc{};
+            m_scaledTexture->GetDesc(&scaledDesc);
+            if (ensureStagingTexture(scaledDesc, error)) {
+                m_context->CopyResource(m_stagingTexture, m_scaledTexture);
+                D3D11_MAPPED_SUBRESOURCE mapped{};
+                hr = m_context->Map(m_stagingTexture, 0, D3D11_MAP_READ, 0, &mapped);
+                if (SUCCEEDED(hr)) {
+                    converted = convertMappedFrame(scaledDesc, mapped, pts, outFrame, error);
+                    m_context->Unmap(m_stagingTexture, 0);
+                } else {
+                    setError(error, "DXGI readback staging map failed: " + hresultString(hr));
+                }
+            }
+            // GPU NV12 conversion: produce NV12 planes for the encoder.
+            if (converted && m_nv12Ready) {
+                gpuNv12Convert(outFrame);
+            }
+        }
+
+        // CPU fallback: download full source and scale on CPU.
+        if (!converted) {
+            if (ensureStagingTexture(sourceDesc, error)) {
+                m_context->CopyResource(m_stagingTexture, sourceTexture);
+                D3D11_MAPPED_SUBRESOURCE mapped{};
+                hr = m_context->Map(m_stagingTexture, 0, D3D11_MAP_READ, 0, &mapped);
+                if (SUCCEEDED(hr)) {
+                    converted = convertMappedFrame(sourceDesc, mapped, pts, outFrame, error);
+                    m_context->Unmap(m_stagingTexture, 0);
+                } else {
+                    setError(error, "DXGI readback staging map failed: " + hresultString(hr));
+                }
+            }
+        }
+
+        releaseComObject(sourceTexture);
+        m_duplication->ReleaseFrame();
+        return converted;
+    }
+
+private:
+    static void setError(std::string* error, std::string message) {
+        if (error != nullptr) {
+            *error = std::move(message);
+        }
+    }
+
+    static uint8_t clampFloatToByte(float value) {
+        if (!std::isfinite(value)) {
+            return 0U;
+        }
+        const float clamped = std::max(0.0f, std::min(1.0f, value));
+        return static_cast<uint8_t>(clamped * 255.0f + 0.5f);
+    }
+
+    static float halfToFloat(uint16_t value) {
+        const uint16_t exponent = static_cast<uint16_t>((value >> 10U) & 0x1FU);
+        const uint16_t mantissa = static_cast<uint16_t>(value & 0x03FFU);
+        const float sign = (value & 0x8000U) != 0U ? -1.0f : 1.0f;
+        if (exponent == 0U) {
+            return mantissa == 0U ? sign * 0.0f : sign * std::ldexp(static_cast<float>(mantissa), -24);
+        }
+        if (exponent == 0x1FU) {
+            return sign * 1.0f;
+        }
+        return sign * std::ldexp(1.0f + static_cast<float>(mantissa) / 1024.0f,
+                                 static_cast<int>(exponent) - 15);
+    }
+
+    static uint16_t readLe16(const uint8_t* data) {
+        return static_cast<uint16_t>(data[0]) |
+               static_cast<uint16_t>(static_cast<uint16_t>(data[1]) << 8U);
+    }
+
+    bool ensureStagingTexture(const D3D11_TEXTURE2D_DESC& sourceDesc, std::string* error) {
+        D3D11_TEXTURE2D_DESC existingDesc{};
+        if (m_stagingTexture != nullptr) {
+            m_stagingTexture->GetDesc(&existingDesc);
+            if (existingDesc.Width == sourceDesc.Width &&
+                existingDesc.Height == sourceDesc.Height &&
+                existingDesc.Format == sourceDesc.Format) {
+                return true;
+            }
+            releaseComObject(m_stagingTexture);
+        }
+
+        D3D11_TEXTURE2D_DESC stagingDesc = sourceDesc;
+        stagingDesc.MipLevels = 1;
+        stagingDesc.ArraySize = 1;
+        stagingDesc.SampleDesc.Count = 1;
+        stagingDesc.SampleDesc.Quality = 0;
+        stagingDesc.Usage = D3D11_USAGE_STAGING;
+        stagingDesc.BindFlags = 0;
+        stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+        stagingDesc.MiscFlags = 0;
+        HRESULT hr = m_device->CreateTexture2D(&stagingDesc, nullptr, &m_stagingTexture);
+        if (FAILED(hr) || m_stagingTexture == nullptr) {
+            setError(error, "DXGI readback staging texture create failed: " + hresultString(hr));
+            return false;
+        }
+        return true;
+    }
+
+    bool convertMappedFrame(const D3D11_TEXTURE2D_DESC& sourceDesc,
+                            const D3D11_MAPPED_SUBRESOURCE& mapped,
+                            int64_t pts,
+                            av::capture::ScreenFrame& outFrame,
+                            std::string* error) const {
+        if (mapped.pData == nullptr || sourceDesc.Width == 0U || sourceDesc.Height == 0U) {
+            setError(error, "DXGI readback mapped frame is empty");
+            return false;
+        }
+        if (sourceDesc.Format != DXGI_FORMAT_B8G8R8A8_UNORM &&
+            sourceDesc.Format != DXGI_FORMAT_R8G8B8A8_UNORM &&
+            sourceDesc.Format != DXGI_FORMAT_R16G16B16A16_FLOAT) {
+            setError(error, "DXGI readback unsupported source format: " + textureDescString(sourceDesc));
+            return false;
+        }
+
+        outFrame.width = m_targetWidth;
+        outFrame.height = m_targetHeight;
+        outFrame.pts = pts;
+        const std::size_t targetBytes = static_cast<std::size_t>(m_targetWidth) *
+                                        static_cast<std::size_t>(m_targetHeight) * 4U;
+        outFrame.bgra.resize(targetBytes);
+
+        // Fast path: GPU-scaled BGRA at target resolution — row-by-row memcpy.
+        if (sourceDesc.Format == DXGI_FORMAT_B8G8R8A8_UNORM &&
+            sourceDesc.Width == static_cast<UINT>(m_targetWidth) &&
+            sourceDesc.Height == static_cast<UINT>(m_targetHeight)) {
+            const auto* sourceBase = static_cast<const uint8_t*>(mapped.pData);
+            const std::size_t rowBytes = static_cast<std::size_t>(m_targetWidth) * 4U;
+            for (int y = 0; y < m_targetHeight; ++y) {
+                std::memcpy(outFrame.bgra.data() + static_cast<std::size_t>(y) * rowBytes,
+                            sourceBase + static_cast<std::size_t>(y) * mapped.RowPitch,
+                            rowBytes);
+            }
+            return true;
+        }
+
+        // Slow path: CPU scaling + format conversion for non-BGRA or mismatched sizes.
+        const auto* sourceBase = static_cast<const uint8_t*>(mapped.pData);
+        const UINT sourceWidth = sourceDesc.Width;
+        const UINT sourceHeight = sourceDesc.Height;
+        const UINT bytesPerPixel = sourceDesc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT ? 8U : 4U;
+        ensureSampleMaps(sourceWidth, sourceHeight);
+
+        for (int y = 0; y < m_targetHeight; ++y) {
+            const UINT sourceY = m_sourceYMap[static_cast<std::size_t>(y)];
+            const uint8_t* sourceRow = sourceBase + static_cast<std::size_t>(sourceY) * mapped.RowPitch;
+            uint8_t* destRow = outFrame.bgra.data() +
+                static_cast<std::size_t>(y) * static_cast<std::size_t>(m_targetWidth) * 4U;
+            for (int x = 0; x < m_targetWidth; ++x) {
+                const UINT sourceX = m_sourceXMap[static_cast<std::size_t>(x)];
+                const uint8_t* pixel = sourceRow + static_cast<std::size_t>(sourceX) * bytesPerPixel;
+                uint8_t* dest = destRow + static_cast<std::size_t>(x) * 4U;
+                if (sourceDesc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT) {
+                    const uint8_t r = clampFloatToByte(halfToFloat(readLe16(pixel + 0)));
+                    const uint8_t g = clampFloatToByte(halfToFloat(readLe16(pixel + 2)));
+                    const uint8_t b = clampFloatToByte(halfToFloat(readLe16(pixel + 4)));
+                    dest[0] = b;
+                    dest[1] = g;
+                    dest[2] = r;
+                    dest[3] = 0xFF;
+                } else if (sourceDesc.Format == DXGI_FORMAT_R8G8B8A8_UNORM) {
+                    dest[0] = pixel[2];
+                    dest[1] = pixel[1];
+                    dest[2] = pixel[0];
+                    dest[3] = 0xFF;
+                } else {
+                    dest[0] = pixel[0];
+                    dest[1] = pixel[1];
+                    dest[2] = pixel[2];
+                    dest[3] = 0xFF;
+                }
+            }
+        }
+        return true;
+    }
+
+    void initGpuScalePipeline() {
+        m_gpuScaleReady = false;
+        if (m_device == nullptr) {
+            return;
+        }
+        ID3DBlob* vsBlob = nullptr;
+        ID3DBlob* psBlob = nullptr;
+        std::string compileError;
+        if (!compileHlslShader(kGpuScaleVertexShaderHlsl, "vs_4_0", "main", &vsBlob, &compileError) ||
+            !compileHlslShader(kGpuScalePixelShaderHlsl, "ps_4_0", "main", &psBlob, &compileError)) {
+            releaseComObject(vsBlob);
+            releaseComObject(psBlob);
+            return;
+        }
+
+        HRESULT hr = m_device->CreateVertexShader(
+            vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), nullptr, &m_vertexShader);
+        releaseComObject(vsBlob);
+        if (FAILED(hr) || m_vertexShader == nullptr) {
+            releaseComObject(psBlob);
+            return;
+        }
+
+        hr = m_device->CreatePixelShader(
+            psBlob->GetBufferPointer(), psBlob->GetBufferSize(), nullptr, &m_pixelShader);
+        releaseComObject(psBlob);
+        if (FAILED(hr) || m_pixelShader == nullptr) {
+            return;
+        }
+
+        D3D11_SAMPLER_DESC samplerDesc{};
+        samplerDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+        samplerDesc.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
+        samplerDesc.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+        samplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+        samplerDesc.ComparisonFunc = D3D11_COMPARISON_NEVER;
+        samplerDesc.MaxLOD = D3D11_FLOAT32_MAX;
+        hr = m_device->CreateSamplerState(&samplerDesc, &m_sampler);
+        if (FAILED(hr) || m_sampler == nullptr) {
+            return;
+        }
+
+        D3D11_RASTERIZER_DESC rasterDesc{};
+        rasterDesc.FillMode = D3D11_FILL_SOLID;
+        rasterDesc.CullMode = D3D11_CULL_NONE;
+        rasterDesc.DepthClipEnable = TRUE;
+        hr = m_device->CreateRasterizerState(&rasterDesc, &m_rasterizerState);
+        if (FAILED(hr) || m_rasterizerState == nullptr) {
+            return;
+        }
+
+        D3D11_BLEND_DESC blendDesc{};
+        blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+        hr = m_device->CreateBlendState(&blendDesc, &m_blendState);
+        if (FAILED(hr) || m_blendState == nullptr) {
+            return;
+        }
+
+        D3D11_DEPTH_STENCIL_DESC dsDesc{};
+        dsDesc.DepthEnable = FALSE;
+        dsDesc.StencilEnable = FALSE;
+        hr = m_device->CreateDepthStencilState(&dsDesc, &m_depthStencilState);
+        if (FAILED(hr) || m_depthStencilState == nullptr) {
+            return;
+        }
+
+        m_gpuScaleReady = true;
+    }
+
+    bool ensureGpuScaleTextures(UINT sourceWidth, UINT sourceHeight,
+                                DXGI_FORMAT sourceFormat, std::string* error) {
+        // Recreate source copy texture if source dimensions/format changed.
+        if (m_gpuSourceTexture != nullptr) {
+            D3D11_TEXTURE2D_DESC existing{};
+            m_gpuSourceTexture->GetDesc(&existing);
+            if (existing.Width != sourceWidth ||
+                existing.Height != sourceHeight ||
+                existing.Format != sourceFormat) {
+                releaseComObject(m_gpuSourceSrv);
+                releaseComObject(m_gpuSourceTexture);
+            }
+        }
+        if (m_gpuSourceTexture == nullptr) {
+            D3D11_TEXTURE2D_DESC desc{};
+            desc.Width = sourceWidth;
+            desc.Height = sourceHeight;
+            desc.MipLevels = 1;
+            desc.ArraySize = 1;
+            desc.Format = sourceFormat;
+            desc.SampleDesc.Count = 1;
+            desc.Usage = D3D11_USAGE_DEFAULT;
+            desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+            HRESULT hr = m_device->CreateTexture2D(&desc, nullptr, &m_gpuSourceTexture);
+            if (FAILED(hr) || m_gpuSourceTexture == nullptr) {
+                setError(error, "GPU scale source texture create failed: " + hresultString(hr));
+                return false;
+            }
+            hr = m_device->CreateShaderResourceView(m_gpuSourceTexture, nullptr, &m_gpuSourceSrv);
+            if (FAILED(hr) || m_gpuSourceSrv == nullptr) {
+                setError(error, "GPU scale source SRV create failed: " + hresultString(hr));
+                return false;
+            }
+        }
+
+        // Recreate scaled render target if target dimensions changed.
+        if (m_scaledTexture != nullptr) {
+            D3D11_TEXTURE2D_DESC existing{};
+            m_scaledTexture->GetDesc(&existing);
+            if (existing.Width != static_cast<UINT>(m_targetWidth) ||
+                existing.Height != static_cast<UINT>(m_targetHeight)) {
+                releaseComObject(m_scaledRtv);
+                releaseComObject(m_scaledTexture);
+            }
+        }
+        if (m_scaledTexture == nullptr) {
+            D3D11_TEXTURE2D_DESC desc{};
+            desc.Width = static_cast<UINT>(m_targetWidth);
+            desc.Height = static_cast<UINT>(m_targetHeight);
+            desc.MipLevels = 1;
+            desc.ArraySize = 1;
+            desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+            desc.SampleDesc.Count = 1;
+            desc.Usage = D3D11_USAGE_DEFAULT;
+            desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+            HRESULT hr = m_device->CreateTexture2D(&desc, nullptr, &m_scaledTexture);
+            if (FAILED(hr) || m_scaledTexture == nullptr) {
+                setError(error, "GPU scale target texture create failed: " + hresultString(hr));
+                return false;
+            }
+            hr = m_device->CreateRenderTargetView(m_scaledTexture, nullptr, &m_scaledRtv);
+            if (FAILED(hr) || m_scaledRtv == nullptr) {
+                setError(error, "GPU scale target RTV create failed: " + hresultString(hr));
+                return false;
+            }
+        }
+        return true;
+    }
+
+    bool gpuScaleBlit(ID3D11Texture2D* sourceTexture,
+                      const D3D11_TEXTURE2D_DESC& sourceDesc,
+                      std::string* error) {
+        if (!m_gpuScaleReady || m_context == nullptr) {
+            return false;
+        }
+        if (!ensureGpuScaleTextures(sourceDesc.Width, sourceDesc.Height,
+                                    sourceDesc.Format, error)) {
+            return false;
+        }
+
+        // Copy DDA texture (has special misc flags) to a regular SRV-capable texture.
+        m_context->CopyResource(m_gpuSourceTexture, sourceTexture);
+
+        // Set up the fullscreen-triangle draw to scale the source to the target.
+        m_context->IASetInputLayout(nullptr);
+        m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        m_context->VSSetShader(m_vertexShader, nullptr, 0);
+        m_context->PSSetShader(m_pixelShader, nullptr, 0);
+        m_context->PSSetShaderResources(0, 1, &m_gpuSourceSrv);
+        m_context->PSSetSamplers(0, 1, &m_sampler);
+        m_context->RSSetState(m_rasterizerState);
+        m_context->OMSetBlendState(m_blendState, nullptr, 0xFFFFFFFF);
+        m_context->OMSetDepthStencilState(m_depthStencilState, 0);
+        m_context->OMSetRenderTargets(1, &m_scaledRtv, nullptr);
+
+        D3D11_VIEWPORT viewport{};
+        viewport.Width = static_cast<float>(m_targetWidth);
+        viewport.Height = static_cast<float>(m_targetHeight);
+        viewport.MaxDepth = 1.0f;
+        m_context->RSSetViewports(1, &viewport);
+
+        m_context->Draw(3, 0);
+
+        // Unbind SRV to avoid hazard on next frame.
+        ID3D11ShaderResourceView* nullSrv = nullptr;
+        m_context->PSSetShaderResources(0, 1, &nullSrv);
+        return true;
+    }
+
+    void initNv12Pipeline() {
+        m_nv12Ready = false;
+        if (m_device == nullptr) {
+            return;
+        }
+        ID3DBlob* yBlob = nullptr;
+        ID3DBlob* uvBlob = nullptr;
+        std::string err;
+        if (!compileHlslShader(kBgraToYShaderHlsl, "ps_4_0", "main", &yBlob, &err) ||
+            !compileHlslShader(kBgraToUvSimpleShaderHlsl, "ps_4_0", "main", &uvBlob, &err)) {
+            releaseComObject(yBlob);
+            releaseComObject(uvBlob);
+            return;
+        }
+        HRESULT hr = m_device->CreatePixelShader(
+            yBlob->GetBufferPointer(), yBlob->GetBufferSize(), nullptr, &m_yPixelShader);
+        releaseComObject(yBlob);
+        if (FAILED(hr) || m_yPixelShader == nullptr) {
+            releaseComObject(uvBlob);
+            return;
+        }
+        hr = m_device->CreatePixelShader(
+            uvBlob->GetBufferPointer(), uvBlob->GetBufferSize(), nullptr, &m_uvPixelShader);
+        releaseComObject(uvBlob);
+        if (FAILED(hr) || m_uvPixelShader == nullptr) {
+            return;
+        }
+        m_nv12Ready = true;
+    }
+
+    bool ensureNv12Textures(std::string* error) {
+        const UINT w = static_cast<UINT>(m_targetWidth);
+        const UINT h = static_cast<UINT>(m_targetHeight);
+        if (m_yTexture == nullptr) {
+            D3D11_TEXTURE2D_DESC d{};
+            d.Width = w; d.Height = h; d.MipLevels = 1; d.ArraySize = 1;
+            d.Format = DXGI_FORMAT_R8_UNORM; d.SampleDesc.Count = 1;
+            d.Usage = D3D11_USAGE_DEFAULT; d.BindFlags = D3D11_BIND_RENDER_TARGET;
+            HRESULT hr = m_device->CreateTexture2D(&d, nullptr, &m_yTexture);
+            if (FAILED(hr)) { setError(error, "Y tex failed"); return false; }
+            hr = m_device->CreateRenderTargetView(m_yTexture, nullptr, &m_yRtv);
+            if (FAILED(hr)) { setError(error, "Y RTV failed"); return false; }
+            d.Usage = D3D11_USAGE_STAGING; d.BindFlags = 0; d.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+            hr = m_device->CreateTexture2D(&d, nullptr, &m_yStaging);
+            if (FAILED(hr)) { setError(error, "Y staging failed"); return false; }
+        }
+        if (m_uvTexture == nullptr) {
+            D3D11_TEXTURE2D_DESC d{};
+            d.Width = w / 2; d.Height = h / 2; d.MipLevels = 1; d.ArraySize = 1;
+            d.Format = DXGI_FORMAT_R8G8_UNORM; d.SampleDesc.Count = 1;
+            d.Usage = D3D11_USAGE_DEFAULT; d.BindFlags = D3D11_BIND_RENDER_TARGET;
+            HRESULT hr = m_device->CreateTexture2D(&d, nullptr, &m_uvTexture);
+            if (FAILED(hr)) { setError(error, "UV tex failed"); return false; }
+            hr = m_device->CreateRenderTargetView(m_uvTexture, nullptr, &m_uvRtv);
+            if (FAILED(hr)) { setError(error, "UV RTV failed"); return false; }
+            d.Usage = D3D11_USAGE_STAGING; d.BindFlags = 0; d.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+            hr = m_device->CreateTexture2D(&d, nullptr, &m_uvStaging);
+            if (FAILED(hr)) { setError(error, "UV staging failed"); return false; }
+        }
+        return true;
+    }
+
+    void gpuNv12Convert(av::capture::ScreenFrame& outFrame) {
+        std::string nv12Err;
+        if (!ensureNv12Textures(&nv12Err)) { return; }
+        // Create SRV for the scaled BGRA texture.
+        ID3D11ShaderResourceView* scaledSrv = nullptr;
+        HRESULT hr = m_device->CreateShaderResourceView(m_scaledTexture, nullptr, &scaledSrv);
+        if (FAILED(hr) || scaledSrv == nullptr) { return; }
+
+        // Pass 1: Y plane (full resolution).
+        m_context->IASetInputLayout(nullptr);
+        m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        m_context->VSSetShader(m_vertexShader, nullptr, 0);
+        m_context->PSSetShader(m_yPixelShader, nullptr, 0);
+        m_context->PSSetShaderResources(0, 1, &scaledSrv);
+        m_context->PSSetSamplers(0, 1, &m_sampler);
+        m_context->RSSetState(m_rasterizerState);
+        m_context->OMSetBlendState(m_blendState, nullptr, 0xFFFFFFFF);
+        m_context->OMSetDepthStencilState(m_depthStencilState, 0);
+        m_context->OMSetRenderTargets(1, &m_yRtv, nullptr);
+        D3D11_VIEWPORT vpY{};
+        vpY.Width = static_cast<float>(m_targetWidth);
+        vpY.Height = static_cast<float>(m_targetHeight);
+        vpY.MaxDepth = 1.0f;
+        m_context->RSSetViewports(1, &vpY);
+        m_context->Draw(3, 0);
+
+        // Pass 2: UV plane (half resolution).
+        m_context->PSSetShader(m_uvPixelShader, nullptr, 0);
+        m_context->OMSetRenderTargets(1, &m_uvRtv, nullptr);
+        D3D11_VIEWPORT vpUV{};
+        vpUV.Width = static_cast<float>(m_targetWidth / 2);
+        vpUV.Height = static_cast<float>(m_targetHeight / 2);
+        vpUV.MaxDepth = 1.0f;
+        m_context->RSSetViewports(1, &vpUV);
+        m_context->Draw(3, 0);
+
+        // Unbind.
+        ID3D11ShaderResourceView* nullSrv = nullptr;
+        m_context->PSSetShaderResources(0, 1, &nullSrv);
+        releaseComObject(scaledSrv);
+
+        // Download NV12 planes.
+        m_context->CopyResource(m_yStaging, m_yTexture);
+        m_context->CopyResource(m_uvStaging, m_uvTexture);
+        const int w = m_targetWidth;
+        const int h = m_targetHeight;
+        const std::size_t ySize = static_cast<std::size_t>(w) * h;
+        const std::size_t uvSize = static_cast<std::size_t>(w) * (h / 2);
+        outFrame.nv12.resize(ySize + uvSize);
+
+        D3D11_MAPPED_SUBRESOURCE yMap{};
+        hr = m_context->Map(m_yStaging, 0, D3D11_MAP_READ, 0, &yMap);
+        if (SUCCEEDED(hr)) {
+            const auto* s = static_cast<const uint8_t*>(yMap.pData);
+            for (int y = 0; y < h; ++y) {
+                std::memcpy(outFrame.nv12.data() + static_cast<std::size_t>(y) * w,
+                            s + static_cast<std::size_t>(y) * yMap.RowPitch,
+                            static_cast<std::size_t>(w));
+            }
+            m_context->Unmap(m_yStaging, 0);
+        }
+        D3D11_MAPPED_SUBRESOURCE uvMap{};
+        hr = m_context->Map(m_uvStaging, 0, D3D11_MAP_READ, 0, &uvMap);
+        if (SUCCEEDED(hr)) {
+            const auto* s = static_cast<const uint8_t*>(uvMap.pData);
+            const int uvRowBytes = w;  // R8G8 has w/2 texels * 2 bytes = w bytes.
+            const int uvH = h / 2;
+            for (int y = 0; y < uvH; ++y) {
+                std::memcpy(outFrame.nv12.data() + ySize + static_cast<std::size_t>(y) * uvRowBytes,
+                            s + static_cast<std::size_t>(y) * uvMap.RowPitch,
+                            static_cast<std::size_t>(uvRowBytes));
+            }
+            m_context->Unmap(m_uvStaging, 0);
+        }
+    }
+
+    void ensureSampleMaps(UINT sourceWidth, UINT sourceHeight) const {
+        if (m_mapSourceWidth == sourceWidth &&
+            m_mapSourceHeight == sourceHeight &&
+            m_mapTargetWidth == m_targetWidth &&
+            m_mapTargetHeight == m_targetHeight &&
+            m_sourceXMap.size() == static_cast<std::size_t>(m_targetWidth) &&
+            m_sourceYMap.size() == static_cast<std::size_t>(m_targetHeight)) {
+            return;
+        }
+        m_sourceXMap.resize(static_cast<std::size_t>(m_targetWidth));
+        m_sourceYMap.resize(static_cast<std::size_t>(m_targetHeight));
+        for (int x = 0; x < m_targetWidth; ++x) {
+            m_sourceXMap[static_cast<std::size_t>(x)] = static_cast<UINT>(
+                (static_cast<uint64_t>(x) * static_cast<uint64_t>(sourceWidth)) /
+                static_cast<uint64_t>(m_targetWidth));
+        }
+        for (int y = 0; y < m_targetHeight; ++y) {
+            m_sourceYMap[static_cast<std::size_t>(y)] = static_cast<UINT>(
+                (static_cast<uint64_t>(y) * static_cast<uint64_t>(sourceHeight)) /
+                static_cast<uint64_t>(m_targetHeight));
+        }
+        m_mapSourceWidth = sourceWidth;
+        m_mapSourceHeight = sourceHeight;
+        m_mapTargetWidth = m_targetWidth;
+        m_mapTargetHeight = m_targetHeight;
+    }
+
+    void shutdown() {
+        releaseComObject(m_uvStaging);
+        releaseComObject(m_uvRtv);
+        releaseComObject(m_uvTexture);
+        releaseComObject(m_yStaging);
+        releaseComObject(m_yRtv);
+        releaseComObject(m_yTexture);
+        releaseComObject(m_uvPixelShader);
+        releaseComObject(m_yPixelShader);
+        releaseComObject(m_scaledRtv);
+        releaseComObject(m_scaledTexture);
+        releaseComObject(m_gpuSourceSrv);
+        releaseComObject(m_gpuSourceTexture);
+        releaseComObject(m_depthStencilState);
+        releaseComObject(m_blendState);
+        releaseComObject(m_rasterizerState);
+        releaseComObject(m_sampler);
+        releaseComObject(m_pixelShader);
+        releaseComObject(m_vertexShader);
+        releaseComObject(m_stagingTexture);
+        releaseComObject(m_duplication);
+        releaseComObject(m_context);
+        releaseComObject(m_device);
+        m_sourceWidth = 0;
+        m_sourceHeight = 0;
+        m_sourceXMap.clear();
+        m_sourceYMap.clear();
+        m_mapSourceWidth = 0;
+        m_mapSourceHeight = 0;
+        m_mapTargetWidth = 0;
+        m_mapTargetHeight = 0;
+        m_gpuScaleReady = false;
+        m_nv12Ready = false;
+    }
+
+    ID3D11Device* m_device{nullptr};
+    ID3D11DeviceContext* m_context{nullptr};
+    IDXGIOutputDuplication* m_duplication{nullptr};
+    ID3D11Texture2D* m_stagingTexture{nullptr};
+    int m_sourceWidth{0};
+    int m_sourceHeight{0};
+    int m_targetWidth{0};
+    int m_targetHeight{0};
+    mutable std::vector<UINT> m_sourceXMap;
+    mutable std::vector<UINT> m_sourceYMap;
+    mutable UINT m_mapSourceWidth{0};
+    mutable UINT m_mapSourceHeight{0};
+    mutable int m_mapTargetWidth{0};
+    mutable int m_mapTargetHeight{0};
+
+    // GPU scale pipeline resources.
+    bool m_gpuScaleReady{false};
+    ID3D11VertexShader* m_vertexShader{nullptr};
+    ID3D11PixelShader* m_pixelShader{nullptr};
+    ID3D11SamplerState* m_sampler{nullptr};
+    ID3D11RasterizerState* m_rasterizerState{nullptr};
+    ID3D11BlendState* m_blendState{nullptr};
+    ID3D11DepthStencilState* m_depthStencilState{nullptr};
+    ID3D11Texture2D* m_gpuSourceTexture{nullptr};
+    ID3D11ShaderResourceView* m_gpuSourceSrv{nullptr};
+    ID3D11Texture2D* m_scaledTexture{nullptr};
+    ID3D11RenderTargetView* m_scaledRtv{nullptr};
+
+    // GPU NV12 conversion resources.
+    bool m_nv12Ready{false};
+    ID3D11PixelShader* m_yPixelShader{nullptr};
+    ID3D11PixelShader* m_uvPixelShader{nullptr};
+    ID3D11Texture2D* m_yTexture{nullptr};
+    ID3D11RenderTargetView* m_yRtv{nullptr};
+    ID3D11Texture2D* m_yStaging{nullptr};
+    ID3D11Texture2D* m_uvTexture{nullptr};
+    ID3D11RenderTargetView* m_uvRtv{nullptr};
+    ID3D11Texture2D* m_uvStaging{nullptr};
 };
 #endif
 
@@ -537,7 +1512,6 @@ public:
                 return;
             }
             m_stopping.store(true, std::memory_order_release);
-            m_waitCondition.wakeAll();
             threadToJoin = m_thread;
             m_thread = nullptr;
         }
@@ -545,7 +1519,7 @@ public:
         delete threadToJoin;
 
         QMutexLocker locker(&m_mutex);
-        m_pendingPackets.clear();
+        m_jitterBuffer.clear();
     }
 
     bool enqueue(media::RTPPacket packet) {
@@ -553,12 +1527,8 @@ public:
         if (m_thread == nullptr || m_stopping.load(std::memory_order_acquire)) {
             return false;
         }
-        if (m_pendingPackets.size() >= kMaxRecvPeerQueuedPackets) {
-            m_pendingPackets.pop_front();
-        }
-        m_pendingPackets.push_back(std::move(packet));
+        m_jitterBuffer.push(packet);
         m_lastActiveAtMs.store(steadyNowMs(), std::memory_order_release);
-        m_waitCondition.wakeOne();
         return true;
     }
 
@@ -575,35 +1545,25 @@ private:
         while (true) {
             media::RTPPacket packet;
             bool hasPacket = false;
-            {
-                QMutexLocker locker(&m_mutex);
-                if (m_pendingPackets.empty() &&
-                    !m_stopping.load(std::memory_order_acquire)) {
-                    m_waitCondition.wait(&m_mutex, 20);
-                }
-                const uint32_t jitterTargetMs = m_adaptiveJitterTargetMs.load(std::memory_order_acquire);
-                const std::size_t minBufferedPackets =
-                    jitterTargetMs >= 100U
-                        ? std::max<std::size_t>(1U, static_cast<std::size_t>(
-                                                       (m_expectedFrameRate * jitterTargetMs + 999U) /
-                                                       1000U))
-                        : 0U;
-                if (!m_stopping.load(std::memory_order_acquire) &&
-                    minBufferedPackets > 0U &&
-                    !m_pendingPackets.empty() &&
-                    m_pendingPackets.size() < minBufferedPackets) {
-                    m_waitCondition.wait(&m_mutex, jitterTargetMs);
-                }
-                if (m_stopping.load(std::memory_order_acquire) &&
-                    m_pendingPackets.empty()) {
-                    break;
-                }
-                if (!m_pendingPackets.empty()) {
-                    packet = std::move(m_pendingPackets.front());
-                    m_pendingPackets.pop_front();
-                    hasPacket = true;
-                }
+            const bool stopping = m_stopping.load(std::memory_order_acquire);
+            const uint32_t jitterTargetMs = m_adaptiveJitterTargetMs.load(std::memory_order_acquire);
+            const std::size_t minBufferedPackets =
+                stopping
+                    ? 1U
+                    : jitterTargetMs >= 100U
+                    ? std::max<std::size_t>(kMinRecvPeerBufferedPackets,
+                                             static_cast<std::size_t>(
+                                                 (m_expectedFrameRate * jitterTargetMs + 999U) / 1000U))
+                    : kMinRecvPeerBufferedPackets;
+            m_jitterBuffer.setMinBufferedPackets(minBufferedPackets);
+            m_jitterBuffer.setGapTimeout(std::chrono::milliseconds(kRecvPeerJitterGapTimeoutMs));
+
+            if (stopping && m_jitterBuffer.size() == 0U) {
+                break;
             }
+            hasPacket = m_jitterBuffer.popWait(
+                packet,
+                std::chrono::milliseconds(kRecvPeerJitterGapTimeoutMs));
 
             if (hasPacket) {
                 processPacket(packet);
@@ -657,10 +1617,12 @@ private:
     std::atomic<uint32_t>& m_adaptiveJitterTargetMs;
     PacketOutcomeCallback m_packetOutcomeCallback;
     PollOutcomeCallback m_pollOutcomeCallback;
+    media::JitterBuffer m_jitterBuffer{
+        kMaxRecvPeerQueuedPackets,
+        kMinRecvPeerBufferedPackets,
+        std::chrono::milliseconds(kRecvPeerJitterGapTimeoutMs)};
 
     mutable QMutex m_mutex;
-    QWaitCondition m_waitCondition;
-    std::deque<media::RTPPacket> m_pendingPackets;
     QThread* m_thread{nullptr};
     std::atomic<bool> m_stopping{false};
     std::atomic<uint64_t> m_lastActiveAtMs{0};
@@ -817,7 +1779,8 @@ void ScreenShareSession::captureLoop() {
             m_sharingEnabled.load(std::memory_order_acquire),
             m_cameraSendingEnabled.load(std::memory_order_acquire));
         if (av::isHardwareE2E(requestedProfile)) {
-            bool bypassCpuCapture = source == VideoSendSource::Screen;
+            bool bypassCpuCapture = source == VideoSendSource::Screen &&
+                                    !m_disableHardwareScreenCapture.load(std::memory_order_acquire);
             if (source == VideoSendSource::Camera) {
                 QMutexLocker locker(&m_mutex);
                 bypassCpuCapture = !(m_cameraCapture && m_cameraCapture->isRunning()) &&
@@ -926,6 +1889,7 @@ void ScreenShareSession::sendLoop() {
         sendProfile = av::VideoPipelineProfile::SoftwareE2E;
         {
             QMutexLocker locker(&m_mutex);
+            m_disableHardwareScreenCapture.store(true, std::memory_order_release);
             (void)startCaptureLocked(false);
             if (m_cameraSendingEnabled.load(std::memory_order_acquire)) {
                 (void)startCameraCaptureLocked(false);
@@ -974,6 +1938,7 @@ void ScreenShareSession::sendLoop() {
     int64_t lastHardwareCapturePts = -1;
 #ifdef _WIN32
     std::unique_ptr<WindowsD3D11ScreenCapture> hardwareScreenCapture;
+    std::unique_ptr<WindowsD3D11ScreenReadbackCapture> gpuReadbackScreenCapture;
     std::unique_ptr<av::capture::WindowsD3D11CameraCapture> hardwareCameraCapture;
     uint64_t activeHardwareCameraDeviceGeneration = std::numeric_limits<uint64_t>::max();
     uint64_t observedHardwareCameraDeviceGeneration = std::numeric_limits<uint64_t>::max();
@@ -981,6 +1946,8 @@ void ScreenShareSession::sendLoop() {
     bool firstHardwareCameraFrameObserved = false;
     bool firstHardwareCameraPreviewFrameStored = false;
     bool firstHardwareScreenPreviewFrameStored = false;
+    bool firstGpuReadbackScreenFrameObserved = false;
+    bool gpuReadbackScreenCaptureFailed = false;
     const auto statusCallback = [this]() {
         QMutexLocker locker(&m_mutex);
         return m_statusCallback;
@@ -1001,7 +1968,9 @@ void ScreenShareSession::sendLoop() {
             while (m_running.load(std::memory_order_acquire) &&
                    (m_sharingEnabled.load(std::memory_order_acquire) ||
                     m_cameraSendingEnabled.load(std::memory_order_acquire)) &&
-                   !m_mediaSocket.hasPeer()) {
+                   !m_mediaSocket.hasPeer() &&
+                   (!m_sharingEnabled.load(std::memory_order_acquire) ||
+                    !localCameraPreviewCallback)) {
                 m_stateWaitCondition.wait(&m_mutex, 100);
             }
             if (!m_running.load(std::memory_order_acquire) ||
@@ -1018,12 +1987,22 @@ void ScreenShareSession::sendLoop() {
             continue;
         }
         const bool useHardwareScreenCapture =
-            av::isHardwareE2E(sendProfile) && currentSource == VideoSendSource::Screen;
+            av::isHardwareE2E(sendProfile) &&
+            currentSource == VideoSendSource::Screen &&
+            !m_disableHardwareScreenCapture.load(std::memory_order_acquire);
+        const bool useGpuReadbackScreenCapture =
+            av::isHardwareE2E(requestedProfile) &&
+            !profileForced &&
+            currentSource == VideoSendSource::Screen &&
+            m_disableHardwareScreenCapture.load(std::memory_order_acquire) &&
+            !gpuReadbackScreenCaptureFailed;
         const bool useHardwareCameraCapture =
             av::isHardwareE2E(sendProfile) && currentSource == VideoSendSource::Camera;
         VideoSendCapturedFrame capturedFrame;
         VideoSendSource source = currentSource;
-        if (!useHardwareScreenCapture && !useHardwareCameraCapture) {
+        if (!useHardwareScreenCapture &&
+            !useGpuReadbackScreenCapture &&
+            !useHardwareCameraCapture) {
             if (!m_sendFrameRingBuffer.popWait(capturedFrame, std::chrono::milliseconds(100))) {
                 if (m_sendFrameRingBuffer.closed()) {
                     break;
@@ -1044,21 +2023,24 @@ void ScreenShareSession::sendLoop() {
                 peer = m_mediaSocket.peer();
             }
         }
-        if (!peer.isValid()) {
-            continue;
-        }
 
         const uint8_t payloadType = source == VideoSendSource::Screen ? m_config.payloadType
                                                                       : m_config.cameraPayloadType;
-        const int targetWidth = m_adaptiveVideoWidth.load(std::memory_order_acquire) > 0
+        int targetWidth = m_adaptiveVideoWidth.load(std::memory_order_acquire) > 0
             ? m_adaptiveVideoWidth.load(std::memory_order_acquire)
             : m_config.width;
-        const int targetHeight = m_adaptiveVideoHeight.load(std::memory_order_acquire) > 0
+        int targetHeight = m_adaptiveVideoHeight.load(std::memory_order_acquire) > 0
             ? m_adaptiveVideoHeight.load(std::memory_order_acquire)
             : m_config.height;
-        const int targetFrameRate = m_adaptiveVideoFrameRate.load(std::memory_order_acquire) > 0
+        int targetFrameRate = m_adaptiveVideoFrameRate.load(std::memory_order_acquire) > 0
             ? m_adaptiveVideoFrameRate.load(std::memory_order_acquire)
             : m_config.frameRate;
+        if (source == VideoSendSource::Screen) {
+            const auto [cappedWidth, cappedHeight] = clampScreenShareDimensions(targetWidth, targetHeight);
+            targetWidth = cappedWidth;
+            targetHeight = cappedHeight;
+            targetFrameRate = std::min(std::max(1, targetFrameRate), kMaxScreenShareFrameRate);
+        }
         const uint32_t targetBitrate = m_targetBitrateBps.load(std::memory_order_acquire);
         const bool videoSuspended = m_adaptiveVideoSuspended.load(std::memory_order_acquire);
 
@@ -1107,6 +2089,9 @@ void ScreenShareSession::sendLoop() {
 #endif
 
         const auto maybeSendSenderReport = [&]() {
+            if (!peer.isValid()) {
+                return;
+            }
             const uint64_t nowMs = steadyNowMs();
             if (lastSenderReportAtMs != 0U &&
                 nowMs - lastSenderReportAtMs < kVideoSenderReportIntervalMs) {
@@ -1137,7 +2122,9 @@ void ScreenShareSession::sendLoop() {
             }
         };
 
-        if (videoSuspended) {
+        const bool keepLocalScreenPreviewActive =
+            source == VideoSendSource::Screen && static_cast<bool>(localCameraPreviewCallback);
+        if (videoSuspended && !keepLocalScreenPreviewActive) {
             maybeSendSenderReport();
             continue;
         }
@@ -1163,6 +2150,7 @@ void ScreenShareSession::sendLoop() {
         }
         sendPipeline = VideoSendPipeline(
             VideoSendPipelineConfig{targetFrameRate, m_config.maxPayloadBytes, sendProfile});
+        bool localScreenPreviewDispatched = false;
 
         if (useHardwareScreenCapture) {
 #ifdef _WIN32
@@ -1183,10 +2171,10 @@ void ScreenShareSession::sendLoop() {
                     sendTelemetryPipeline.onEncodePending(sendTelemetryState, statusCallback);
                     continue;
                 }
-                if (!profileForced && !av::isHardwareE2E(requestedProfile)) {
+                if (!profileForced) {
                     {
                         QMutexLocker locker(&m_mutex);
-                        (void)startCaptureLocked(false);
+                        m_disableHardwareScreenCapture.store(true, std::memory_order_release);
                     }
                     sendProfile = av::VideoPipelineProfile::SoftwareE2E;
                     if (!configureEncoderForProfile(sendProfile,
@@ -1219,7 +2207,9 @@ void ScreenShareSession::sendLoop() {
             if (localCameraPreviewCallback) {
                 av::codec::DecodedVideoFrame previewFrame;
                 if (av::codec::makeD3D11HardwarePreviewFrame(*hardwareFrame, previewFrame)) {
-                    localCameraPreviewCallback(std::move(previewFrame));
+                    previewFrame.telemetry.backendName = "dxgi-duplication-screen-preview";
+                    localCameraPreviewCallback(std::move(previewFrame), VideoSendSource::Screen);
+                    localScreenPreviewDispatched = true;
                     if (!firstHardwareScreenPreviewFrameStored) {
                         firstHardwareScreenPreviewFrameStored = true;
                         if (statusCallback) {
@@ -1240,6 +2230,85 @@ void ScreenShareSession::sendLoop() {
                                                 statusCallback);
             QMutexLocker locker(&m_mutex);
             setErrorLocked("hardware video pipeline unsupported on this platform");
+            continue;
+#endif
+        } else if (useGpuReadbackScreenCapture) {
+#ifdef _WIN32
+            if (av::isHardwareE2E(sendProfile)) {
+                sendProfile = av::VideoPipelineProfile::SoftwareE2E;
+                if (!configureEncoderForProfile(sendProfile,
+                                                targetWidth,
+                                                targetHeight,
+                                                targetFrameRate,
+                                                static_cast<int>(targetBitrate > 0U
+                                                                     ? targetBitrate
+                                                                     : static_cast<uint32_t>(m_config.bitrate)),
+                                                payloadType)) {
+                    sendTelemetryPipeline.onEncodeError(sendTelemetryState,
+                                                        "video software fallback encoder configure failed",
+                                                        statusCallback);
+                    QMutexLocker locker(&m_mutex);
+                    setErrorLocked("video software fallback encoder configure failed");
+                    continue;
+                }
+                sendPipeline = VideoSendPipeline(
+                    VideoSendPipelineConfig{targetFrameRate, m_config.maxPayloadBytes, sendProfile});
+            }
+            if (!gpuReadbackScreenCapture) {
+                gpuReadbackScreenCapture = std::make_unique<WindowsD3D11ScreenReadbackCapture>();
+            }
+            const auto now = std::chrono::steady_clock::now();
+            const auto elapsedMs =
+                std::chrono::duration_cast<std::chrono::milliseconds>(now - hardwareCaptureStartedAt).count();
+            int64_t framePts = static_cast<int64_t>((elapsedMs * std::max(1, targetFrameRate)) / 1000);
+            if (framePts <= lastHardwareCapturePts) {
+                framePts = lastHardwareCapturePts + 1;
+            }
+            std::string captureError;
+            av::capture::ScreenFrame readbackFrame;
+            if (!gpuReadbackScreenCapture->capture(targetWidth,
+                                                   targetHeight,
+                                                   framePts,
+                                                   readbackFrame,
+                                                   &captureError)) {
+                if (captureError.empty()) {
+                    sendTelemetryPipeline.onEncodePending(sendTelemetryState, statusCallback);
+                    continue;
+                }
+                {
+                    QMutexLocker locker(&m_mutex);
+                    (void)startCaptureLocked(false);
+                }
+                gpuReadbackScreenCaptureFailed = true;
+                qInfo().noquote() << "[screen-session] video send profile fallback profile=software-cpu-capture reason="
+                                  << QString::fromStdString(captureError);
+                continue;
+            }
+            lastHardwareCapturePts = framePts;
+            if (localCameraPreviewCallback) {
+                av::codec::DecodedVideoFrame previewFrame;
+                if (makeSoftwarePreviewFrame(readbackFrame, previewFrame)) {
+                    localCameraPreviewCallback(std::move(previewFrame), VideoSendSource::Screen);
+                    localScreenPreviewDispatched = true;
+                }
+            }
+            capturedFrame.inputFrame.screenFrame = std::move(readbackFrame);
+            if (!firstGpuReadbackScreenFrameObserved) {
+                firstGpuReadbackScreenFrameObserved = true;
+                if (statusCallback) {
+                    statusCallback("Video screen capture active screenBackend=dxgi-duplication screenInterop=cpu-readback encoder=software");
+                }
+                qInfo().noquote() << "[screen-session] video screen capture active"
+                                  << "screenBackend=dxgi-duplication"
+                                  << "screenInterop=cpu-readback"
+                                  << "profile=software";
+            }
+#else
+            sendTelemetryPipeline.onEncodeError(sendTelemetryState,
+                                                "DXGI readback screen capture unsupported on this platform",
+                                                statusCallback);
+            QMutexLocker locker(&m_mutex);
+            setErrorLocked("DXGI readback screen capture unsupported on this platform");
             continue;
 #endif
         } else if (useHardwareCameraCapture) {
@@ -1360,7 +2429,7 @@ void ScreenShareSession::sendLoop() {
             if (localCameraPreviewCallback) {
                 av::codec::DecodedVideoFrame previewFrame;
                 if (av::codec::makeD3D11HardwarePreviewFrame(*hardwareFrame, previewFrame)) {
-                    localCameraPreviewCallback(std::move(previewFrame));
+                    localCameraPreviewCallback(std::move(previewFrame), VideoSendSource::Camera);
                     if (!firstHardwareCameraPreviewFrameStored) {
                         firstHardwareCameraPreviewFrameStored = true;
                         if (statusCallback) {
@@ -1395,6 +2464,22 @@ void ScreenShareSession::sendLoop() {
             setErrorLocked("hardware video pipeline unsupported on this platform");
             continue;
 #endif
+        }
+
+        if (!localScreenPreviewDispatched &&
+            source == VideoSendSource::Screen &&
+            localCameraPreviewCallback &&
+            capturedFrame.inputFrame.hasScreenFrame()) {
+            av::codec::DecodedVideoFrame previewFrame;
+            if (makeSoftwarePreviewFrame(capturedFrame.inputFrame.screenFrame, previewFrame)) {
+                localCameraPreviewCallback(std::move(previewFrame), VideoSendSource::Screen);
+                localScreenPreviewDispatched = true;
+            }
+        }
+
+        if (!peer.isValid() || videoSuspended) {
+            maybeSendSenderReport();
+            continue;
         }
 
         const bool forceKeyFrame = m_forceKeyFramePending.exchange(false, std::memory_order_acq_rel);
@@ -1537,12 +2622,20 @@ void ScreenShareSession::recvLoop() {
     QMutex consumeActionMutex;
     QMutex telemetryMutex;
     QMutex pendingKeyFrameMutex;
-    uint64_t lastPliRequestedAtMs = 0;
+    QMutex pendingNackMutex;
     struct PendingKeyFrameRequest {
         uint32_t remoteMediaSsrc{0U};
         std::string reason;
     };
+    struct PendingNackRequest {
+        uint32_t remoteMediaSsrc{0U};
+        std::vector<uint16_t> missingSequences;
+        uint64_t firstRequestedAtMs{0U};
+        uint64_t lastSentAtMs{0U};
+        uint32_t attempts{0U};
+    };
     std::deque<PendingKeyFrameRequest> pendingKeyFrameRequests;
+    std::unordered_map<uint32_t, PendingNackRequest> pendingNackRequests;
 
     const auto stopAllRecvPeerWorkers = [&recvPeerWorkers]() {
         for (auto& [remoteMediaSsrc, worker] : recvPeerWorkers) {
@@ -1610,12 +2703,128 @@ void ScreenShareSession::recvLoop() {
         });
     };
 
+    const auto enqueueNackRequest =
+        [&pendingNackMutex, &pendingNackRequests](uint32_t remoteMediaSsrc,
+                                                  const std::vector<uint16_t>& missingSequences) {
+            if (remoteMediaSsrc == 0U || missingSequences.empty()) {
+                return;
+            }
+            QMutexLocker locker(&pendingNackMutex);
+            if (pendingNackRequests.size() >= kMaxPendingNackRequests &&
+                pendingNackRequests.find(remoteMediaSsrc) == pendingNackRequests.end()) {
+                pendingNackRequests.erase(pendingNackRequests.begin());
+            }
+
+            PendingNackRequest& request = pendingNackRequests[remoteMediaSsrc];
+            request.remoteMediaSsrc = remoteMediaSsrc;
+            if (request.firstRequestedAtMs == 0U) {
+                request.firstRequestedAtMs = steadyNowMs();
+            }
+            for (const uint16_t sequenceNumber : missingSequences) {
+                if (std::find(request.missingSequences.begin(),
+                              request.missingSequences.end(),
+                              sequenceNumber) != request.missingSequences.end()) {
+                    continue;
+                }
+                request.missingSequences.push_back(sequenceNumber);
+                if (request.missingSequences.size() >= 32U) {
+                    break;
+                }
+            }
+        };
+
+    const auto clearPendingNackRequest =
+        [&pendingNackMutex, &pendingNackRequests](uint32_t remoteMediaSsrc) {
+            if (remoteMediaSsrc == 0U) {
+                return;
+            }
+            QMutexLocker locker(&pendingNackMutex);
+            pendingNackRequests.erase(remoteMediaSsrc);
+        };
+
+    const auto flushPendingNackRequests =
+        [this,
+         &pendingNackMutex,
+         &pendingNackRequests,
+         &enqueueKeyFrameRequest]() {
+            struct NackSendRequest {
+                uint32_t remoteMediaSsrc{0U};
+                std::vector<uint16_t> missingSequences;
+            };
+            std::vector<NackSendRequest> nackSends;
+            std::vector<uint32_t> fallbackKeyFrames;
+            const uint64_t nowMs = steadyNowMs();
+            {
+                QMutexLocker locker(&pendingNackMutex);
+                for (auto it = pendingNackRequests.begin(); it != pendingNackRequests.end();) {
+                    PendingNackRequest& request = it->second;
+                    if (request.remoteMediaSsrc == 0U || request.missingSequences.empty()) {
+                        it = pendingNackRequests.erase(it);
+                        continue;
+                    }
+                    if (request.attempts >= kNackAttemptsBeforePli &&
+                        nowMs >= request.firstRequestedAtMs &&
+                        nowMs - request.firstRequestedAtMs >= kNackPliFallbackMs) {
+                        fallbackKeyFrames.push_back(request.remoteMediaSsrc);
+                        it = pendingNackRequests.erase(it);
+                        continue;
+                    }
+                    if (request.attempts == 0U ||
+                        (nowMs >= request.lastSentAtMs &&
+                         nowMs - request.lastSentAtMs >= kNackRetryIntervalMs)) {
+                        nackSends.push_back(NackSendRequest{
+                            request.remoteMediaSsrc,
+                            request.missingSequences,
+                        });
+                        request.lastSentAtMs = nowMs;
+                        ++request.attempts;
+                    }
+                    ++it;
+                }
+            }
+
+            for (const NackSendRequest& request : nackSends) {
+                bool nackSent = false;
+                {
+                    QMutexLocker locker(&m_mutex);
+                    std::string nackError;
+                    std::vector<uint8_t> nackPacket =
+                        m_rtcpActionPipeline.buildNackFeedback(
+                            m_sender.ssrc(),
+                            request.remoteMediaSsrc,
+                            request.missingSequences);
+                    bool readyToSend = !nackPacket.empty();
+                    if (readyToSend && m_dtlsStarted.load(std::memory_order_acquire)) {
+                        readyToSend = protectRtcpLocked(&nackPacket);
+                        if (!readyToSend) {
+                            nackError = "NACK SRTCP protect failed";
+                        }
+                    }
+                    if (readyToSend) {
+                        const int sent = m_mediaSocket.sendToPeer(nackPacket.data(), nackPacket.size());
+                        nackSent = sent == static_cast<int>(nackPacket.size());
+                        if (!nackSent) {
+                            nackError = "NACK sendto failed";
+                        }
+                    } else if (nackPacket.empty()) {
+                        nackError = "NACK packet build failed";
+                    }
+                    if (!nackSent) {
+                        setErrorLocked(nackError);
+                    }
+                }
+            }
+
+            for (const uint32_t remoteMediaSsrc : fallbackKeyFrames) {
+                enqueueKeyFrameRequest(remoteMediaSsrc, "packet loss");
+            }
+        };
+
     const auto flushPendingKeyFrameRequests =
         [this,
          &pendingKeyFrameMutex,
          &pendingKeyFrameRequests,
          &keyFramePipeline,
-         &lastPliRequestedAtMs,
          &statusCallback]() {
             std::deque<PendingKeyFrameRequest> requests;
             {
@@ -1629,8 +2838,7 @@ void ScreenShareSession::recvLoop() {
                 }
 
                 const uint64_t nowMs = steadyNowMs();
-                if (!keyFramePipeline.shouldSendPli(
-                        request.remoteMediaSsrc, nowMs, lastPliRequestedAtMs)) {
+                if (!keyFramePipeline.shouldSendPli(request.remoteMediaSsrc, nowMs)) {
                     continue;
                 }
 
@@ -1666,7 +2874,7 @@ void ScreenShareSession::recvLoop() {
                     continue;
                 }
 
-                keyFramePipeline.markPliSent(nowMs, lastPliRequestedAtMs);
+                keyFramePipeline.markPliSent(request.remoteMediaSsrc, nowMs);
                 m_keyframeRequestCount.fetch_add(1, std::memory_order_acq_rel);
                 if (statusCallback) {
                     statusCallback(std::string("Video keyframe requested: ") + request.reason);
@@ -1679,6 +2887,8 @@ void ScreenShareSession::recvLoop() {
          &recvErrorPipeline,
          &frameDispatchPipeline,
          &enqueueKeyFrameRequest,
+         &enqueueNackRequest,
+         &clearPendingNackRequest,
          &statusCallback,
          &consumeActionMutex,
          &loggedFirstDecodedFrame](const VideoRecvConsumeOutcome& consumeOutcome,
@@ -1686,6 +2896,12 @@ void ScreenShareSession::recvLoop() {
             QMutexLocker consumeLocker(&consumeActionMutex);
             const VideoRecvHandlingDecision& decision = consumeOutcome.decision;
             if (decision.action == VideoRecvHandlingAction::Continue) {
+                return;
+            }
+
+            if (decision.action == VideoRecvHandlingAction::RequestRetransmit) {
+                enqueueNackRequest(consumeOutcome.remoteMediaSsrc,
+                                   decision.retransmitSequenceNumbers);
                 return;
             }
 
@@ -1706,6 +2922,7 @@ void ScreenShareSession::recvLoop() {
             if (decision.action != VideoRecvHandlingAction::DeliverFrame) {
                 return;
             }
+            clearPendingNackRequest(consumeOutcome.remoteMediaSsrc);
 
             std::function<void(av::codec::DecodedVideoFrame)> callback;
             std::function<void(av::codec::DecodedVideoFrame, uint32_t)> callbackWithSsrc;
@@ -1788,13 +3005,14 @@ void ScreenShareSession::recvLoop() {
         };
 
     while (m_running.load(std::memory_order_acquire)) {
+        flushPendingNackRequests();
         flushPendingKeyFrameRequests();
         resetRequestedRecvPeerWorkers();
         const uint32_t expectedRemoteSsrc =
             m_expectedRemoteVideoSsrc.load(std::memory_order_acquire);
         pruneRecvPeerWorkers(steadyNowMs(), expectedRemoteSsrc);
 
-        const int waitResult = m_mediaSocket.waitForReadable(-1);
+        const int waitResult = m_mediaSocket.waitForReadable(kRecvLoopWaitTimeoutMs);
         if (waitResult < 0) {
             const bool transientSocketError = m_mediaSocket.isTransientSocketError();
             if (!recvErrorPipeline.shouldReportSocketError(
@@ -1892,6 +3110,7 @@ void ScreenShareSession::recvLoop() {
         }
     }
 
+    flushPendingNackRequests();
     flushPendingKeyFrameRequests();
     stopAllRecvPeerWorkers();
 }

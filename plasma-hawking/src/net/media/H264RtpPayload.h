@@ -14,6 +14,18 @@ struct H264AccessUnit {
     uint8_t payloadType{0};
 };
 
+struct H264PacketLossInfo {
+    std::vector<uint16_t> missingSequences;
+
+    void clear() {
+        missingSequences.clear();
+    }
+
+    bool hasMissingSequences() const {
+        return !missingSequences.empty();
+    }
+};
+
 std::vector<std::vector<uint8_t>> packetizeH264AnnexB(const std::vector<uint8_t>& encodedFrame,
                                                       std::size_t maxPayloadBytes);
 
@@ -21,7 +33,8 @@ class H264AccessUnitAssembler {
 public:
     bool consume(const RTPPacket& packet,
                  H264AccessUnit& outAccessUnit,
-                 bool* packetLossDetected = nullptr);
+                 bool* packetLossDetected = nullptr,
+                 H264PacketLossInfo* lossInfo = nullptr);
 
 private:
     static void appendStartCode(std::vector<uint8_t>& target);

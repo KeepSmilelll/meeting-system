@@ -87,7 +87,8 @@ public:
     void setDecodedFrameCallback(std::function<void(av::codec::DecodedVideoFrame)> callback);
     void setDecodedFrameWithSsrcCallback(
         std::function<void(av::codec::DecodedVideoFrame, uint32_t)> callback);
-    void setLocalCameraPreviewCallback(std::function<void(av::codec::DecodedVideoFrame)> callback);
+    void setLocalCameraPreviewCallback(
+        std::function<void(av::codec::DecodedVideoFrame, VideoSendSource)> callback);
     void setErrorCallback(std::function<void(std::string)> callback);
     void setCameraSourceCallback(std::function<void(bool syntheticFallback)> callback);
     void setStatusCallback(std::function<void(std::string)> callback);
@@ -140,7 +141,7 @@ private:
     std::string m_lastError;
     std::function<void(av::codec::DecodedVideoFrame)> m_decodedFrameCallback;
     std::function<void(av::codec::DecodedVideoFrame, uint32_t)> m_decodedFrameWithSsrcCallback;
-    std::function<void(av::codec::DecodedVideoFrame)> m_localCameraPreviewCallback;
+    std::function<void(av::codec::DecodedVideoFrame, VideoSendSource)> m_localCameraPreviewCallback;
     std::function<void(std::string)> m_errorCallback;
     std::function<void(bool)> m_cameraSourceCallback;
     std::function<void(std::string)> m_statusCallback;
@@ -148,6 +149,7 @@ private:
     std::atomic<bool> m_running{false};
     std::atomic<bool> m_sharingEnabled{false};
     std::atomic<bool> m_cameraSendingEnabled{false};
+    std::atomic<bool> m_disableHardwareScreenCapture{false};
     std::string m_preferredCameraDeviceName;
     std::atomic<uint64_t> m_cameraDeviceGeneration{0};
     std::atomic<uint64_t> m_sentPacketCount{0};

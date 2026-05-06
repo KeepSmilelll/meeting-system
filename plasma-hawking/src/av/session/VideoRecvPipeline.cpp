@@ -233,9 +233,13 @@ VideoRecvPacketResult VideoRecvPipeline::consumePacket(const media::RTPPacket& p
                                                        uint32_t expectedRemoteSsrc,
                                                        av::codec::DecodedVideoFrame& outFrame,
                                                        uint32_t& outRemoteMediaSsrc,
-                                                       std::string* error) {
+                                                       std::string* error,
+                                                       media::H264PacketLossInfo* lossInfo) {
     if (error != nullptr) {
         error->clear();
+    }
+    if (lossInfo != nullptr) {
+        lossInfo->clear();
     }
 
     if (packet.header.payloadType != m_config.screenPayloadType &&
@@ -262,7 +266,11 @@ VideoRecvPacketResult VideoRecvPipeline::consumePacket(const media::RTPPacket& p
 
     media::H264AccessUnit accessUnit;
     bool packetLossDetected = false;
-    if (!streamState->assembler.consume(packet, accessUnit, &packetLossDetected)) {
+    media::H264PacketLossInfo localLossInfo;
+    if (!streamState->assembler.consume(packet, accessUnit, &packetLossDetected, &localLossInfo)) {
+        if (lossInfo != nullptr) {
+            *lossInfo = localLossInfo;
+        }
         const VideoRecvPacketResult popResult =
             popDecodedFrameResult(remoteMediaSsrc, outFrame, outRemoteMediaSsrc, error);
         if (popResult != VideoRecvPacketResult::NeedMore) {

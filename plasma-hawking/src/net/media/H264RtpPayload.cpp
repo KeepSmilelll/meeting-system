@@ -7,6 +7,8 @@
 namespace media {
 namespace {
 
+constexpr uint16_t kMaxReportedMissingSequences = 32U;
+
 struct NaluView {
     const uint8_t* data{nullptr};
     std::size_t size{0};
@@ -50,6 +52,25 @@ std::vector<NaluView> splitAnnexBNalus(const std::vector<uint8_t>& payload) {
     }
 
     return nalus;
+}
+
+bool isForwardSequenceGap(uint16_t expected, uint16_t actual) {
+    const uint16_t delta = static_cast<uint16_t>(actual - expected);
+    return delta != 0U && delta < 0x8000U;
+}
+
+void appendMissingSequences(uint16_t expected,
+                            uint16_t actual,
+                            H264PacketLossInfo* lossInfo) {
+    if (lossInfo == nullptr) {
+        return;
+    }
+    uint16_t sequence = expected;
+    while (sequence != actual &&
+           lossInfo->missingSequences.size() < kMaxReportedMissingSequences) {
+        lossInfo->missingSequences.push_back(sequence);
+        sequence = static_cast<uint16_t>(sequence + 1U);
+    }
 }
 
 }  // namespace
@@ -118,12 +139,23 @@ void H264AccessUnitAssembler::appendCompleteNalu(std::vector<uint8_t>& target,
 }
 
 bool H264AccessUnitAssembler::consume(const RTPPacket& packet,
-                                      H264AccessUnit& outAccessUnit,
-                                      bool* packetLossDetected) {
+                                       H264AccessUnit& outAccessUnit,
+                                       bool* packetLossDetected,
+                                       H264PacketLossInfo* lossInfo) {
     bool packetLoss = false;
+    if (lossInfo != nullptr) {
+        lossInfo->clear();
+    }
 
     if (m_hasExpectedSequence && packet.header.sequenceNumber != m_expectedSequence) {
+        if (!isForwardSequenceGap(m_expectedSequence, packet.header.sequenceNumber)) {
+            if (packetLossDetected != nullptr) {
+                *packetLossDetected = false;
+            }
+            return false;
+        }
         packetLoss = true;
+        appendMissingSequences(m_expectedSequence, packet.header.sequenceNumber, lossInfo);
         m_accessUnitCorrupted = true;
         m_fragmentedNalu.clear();
         if (!m_hasTimestamp || packet.header.timestamp != m_timestamp) {

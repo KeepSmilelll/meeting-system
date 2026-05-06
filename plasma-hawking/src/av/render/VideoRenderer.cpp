@@ -330,7 +330,9 @@ public:
         const av::codec::DecodedVideoFrame* uploadFrame = nullptr;
         NV12Shader::InputFormat inputFormat = NV12Shader::InputFormat::Nv12;
         if (!usingHardwareInterop) {
-            if (av::isHardwareE2E(m_pipelineProfile)) {
+            const bool hasSoftwareUpload =
+                m_frame->hasAvFramePlanes() || m_frame->hasCpuPlanes();
+            if (av::isHardwareE2E(m_pipelineProfile) && !hasSoftwareUpload) {
 #ifdef _WIN32
                 logHardwareInteropFailure(QStringLiteral("hardware profile requires D3D11/OpenGL interop; CPU upload disabled"));
 #else
@@ -338,6 +340,14 @@ public:
                                      << "hardware profile unsupported on this platform; CPU upload disabled";
 #endif
                 return;
+            }
+            if (av::isHardwareE2E(m_pipelineProfile) &&
+                hasSoftwareUpload &&
+                !m_loggedSoftwareUploadInHardwareProfile) {
+                qInfo().noquote() << "[video-renderer] software frame upload active"
+                                  << "profile=" << av::videoPipelineProfileName(m_pipelineProfile)
+                                  << "size=" << m_frame->width << "x" << m_frame->height;
+                m_loggedSoftwareUploadInHardwareProfile = true;
             }
 #ifdef _WIN32
             releaseHardwareInteropTextures();
@@ -767,9 +777,6 @@ private:
                                const av::codec::DecodedVideoFrame*& uploadFrame) {
         uploadFrame = nullptr;
         if (source.hasAvFramePlanes() || source.hasCpuPlanes()) {
-            if (av::isHardwareE2E(m_pipelineProfile)) {
-                return false;
-            }
             uploadFrame = &source;
             return true;
         }
@@ -879,9 +886,6 @@ private:
     }
 
     void uploadFrameTextures(const av::codec::DecodedVideoFrame& frame) {
-        if (av::isHardwareE2E(m_pipelineProfile)) {
-            return;
-        }
         const bool needsResize = m_textureWidth != frame.width || m_textureHeight != frame.height;
         const int pboSlot = static_cast<int>(m_pboUploadIndex++ % 2U);
         const GLuint yPbo = m_pbos[static_cast<std::size_t>(pboSlot * 2)];
@@ -1055,6 +1059,7 @@ private:
     bool m_loggedHardwareShareCandidate{false};
     bool m_loggedHardwareTransferFallback{false};
     bool m_loggedHardwareTransferFailure{false};
+    bool m_loggedSoftwareUploadInHardwareProfile{false};
 #ifdef _WIN32
     bool m_loggedHardwareInteropActivated{false};
     bool m_loggedHardwareInteropFailure{false};

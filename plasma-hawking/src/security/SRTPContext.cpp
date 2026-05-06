@@ -155,6 +155,7 @@ struct SRTPContext::Impl {
     QByteArray masterKey;
     QByteArray masterSalt;
     QString lastError;
+    int lastStatusCode{0};
 
 #ifdef HAVE_LIBSRTP2
     SrtpLibraryGuard library;
@@ -185,6 +186,7 @@ bool SRTPContext::configure(const QByteArray& masterKey,
 
     clear();
     m_impl->lastError.clear();
+    m_impl->lastStatusCode = 0;
 
     if (masterKey.isEmpty() || masterSalt.isEmpty()) {
         m_impl->lastError = QStringLiteral("SRTP keying material is empty");
@@ -260,6 +262,7 @@ void SRTPContext::clear() {
     m_impl->masterKey.clear();
     m_impl->masterSalt.clear();
     m_impl->lastError.clear();
+    m_impl->lastStatusCode = 0;
 #ifdef HAVE_LIBSRTP2
     m_impl->session.reset();
     m_impl->ssrc = 0;
@@ -281,6 +284,22 @@ QString SRTPContext::lastError() const {
     return m_impl ? m_impl->lastError : QString{};
 }
 
+int SRTPContext::lastStatusCode() const {
+    return m_impl ? m_impl->lastStatusCode : 0;
+}
+
+bool SRTPContext::lastFailureWasReplay() const {
+#ifdef HAVE_LIBSRTP2
+    if (!m_impl) {
+        return false;
+    }
+    return m_impl->lastStatusCode == static_cast<int>(srtp_err_status_replay_fail) ||
+           m_impl->lastStatusCode == static_cast<int>(srtp_err_status_replay_old);
+#else
+    return false;
+#endif
+}
+
 bool SRTPContext::protectRtp(QByteArray* packet) {
     if (packet == nullptr || packet->isEmpty()) {
         if (m_impl) {
@@ -298,6 +317,7 @@ bool SRTPContext::protectRtp(QByteArray* packet) {
 #ifdef HAVE_LIBSRTP2
     if (!m_impl->session) {
         m_impl->lastError = QStringLiteral("SRTP session is not ready");
+        m_impl->lastStatusCode = 0;
         return false;
     }
 
@@ -309,10 +329,12 @@ bool SRTPContext::protectRtp(QByteArray* packet) {
     if (status != srtp_err_status_ok || protectedSize <= originalSize) {
         packet->resize(originalSize);
         m_impl->lastError = statusToString(status, "srtp_protect");
+        m_impl->lastStatusCode = static_cast<int>(status);
         return false;
     }
     packet->resize(protectedSize);
     m_impl->lastError.clear();
+    m_impl->lastStatusCode = 0;
     return true;
 #else
     Q_UNUSED(packet);
@@ -338,6 +360,7 @@ bool SRTPContext::unprotectRtp(QByteArray* packet) {
 #ifdef HAVE_LIBSRTP2
     if (!m_impl->session) {
         m_impl->lastError = QStringLiteral("SRTP session is not ready");
+        m_impl->lastStatusCode = 0;
         return false;
     }
 
@@ -346,10 +369,12 @@ bool SRTPContext::unprotectRtp(QByteArray* packet) {
         srtp_unprotect(m_impl->session.get(), packet->data(), &plainSize);
     if (status != srtp_err_status_ok || plainSize <= 0) {
         m_impl->lastError = statusToString(status, "srtp_unprotect");
+        m_impl->lastStatusCode = static_cast<int>(status);
         return false;
     }
     packet->resize(plainSize);
     m_impl->lastError.clear();
+    m_impl->lastStatusCode = 0;
     return true;
 #else
     Q_UNUSED(packet);
@@ -375,6 +400,7 @@ bool SRTPContext::protectRtcp(QByteArray* packet) {
 #ifdef HAVE_LIBSRTP2
     if (!m_impl->session) {
         m_impl->lastError = QStringLiteral("SRTP session is not ready");
+        m_impl->lastStatusCode = 0;
         return false;
     }
 
@@ -386,10 +412,12 @@ bool SRTPContext::protectRtcp(QByteArray* packet) {
     if (status != srtp_err_status_ok || protectedSize <= originalSize) {
         packet->resize(originalSize);
         m_impl->lastError = statusToString(status, "srtp_protect_rtcp");
+        m_impl->lastStatusCode = static_cast<int>(status);
         return false;
     }
     packet->resize(protectedSize);
     m_impl->lastError.clear();
+    m_impl->lastStatusCode = 0;
     return true;
 #else
     Q_UNUSED(packet);
@@ -415,6 +443,7 @@ bool SRTPContext::unprotectRtcp(QByteArray* packet) {
 #ifdef HAVE_LIBSRTP2
     if (!m_impl->session) {
         m_impl->lastError = QStringLiteral("SRTP session is not ready");
+        m_impl->lastStatusCode = 0;
         return false;
     }
 
@@ -423,10 +452,12 @@ bool SRTPContext::unprotectRtcp(QByteArray* packet) {
         srtp_unprotect_rtcp(m_impl->session.get(), packet->data(), &plainSize);
     if (status != srtp_err_status_ok || plainSize <= 0) {
         m_impl->lastError = statusToString(status, "srtp_unprotect_rtcp");
+        m_impl->lastStatusCode = static_cast<int>(status);
         return false;
     }
     packet->resize(plainSize);
     m_impl->lastError.clear();
+    m_impl->lastStatusCode = 0;
     return true;
 #else
     Q_UNUSED(packet);

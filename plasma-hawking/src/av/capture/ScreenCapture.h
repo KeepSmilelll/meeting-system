@@ -15,6 +15,9 @@ struct ScreenFrame {
     int height{0};
     int64_t pts{0};
     std::vector<uint8_t> bgra;
+    // GPU-converted NV12: Y plane (width*height) followed by interleaved UV plane (width*height/2).
+    // When non-empty the encoder copies planes directly, skipping CPU BGRA-to-NV12 conversion.
+    std::vector<uint8_t> nv12;
 };
 
 struct ScreenCaptureConfig {

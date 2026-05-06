@@ -37,6 +37,8 @@ public:
     bool configured() const;
     QString keyFingerprint() const;
     QString lastError() const;
+    int lastStatusCode() const;
+    bool lastFailureWasReplay() const;
 
     bool protectRtp(QByteArray* packet);
     bool unprotectRtp(QByteArray* packet);

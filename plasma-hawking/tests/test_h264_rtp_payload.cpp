@@ -23,10 +23,11 @@ std::vector<uint8_t> makeLargeAnnexBNalu() {
 
 media::RTPPacket makePacket(uint16_t sequence,
                             bool marker,
-                            const std::vector<uint8_t>& payload) {
+                            const std::vector<uint8_t>& payload,
+                            uint32_t timestamp = 90000U) {
     media::RTPPacket packet;
     packet.header.sequenceNumber = sequence;
-    packet.header.timestamp = 90000;
+    packet.header.timestamp = timestamp;
     packet.header.payloadType = 96;
     packet.header.marker = marker;
     packet.payload = payload;
@@ -94,6 +95,53 @@ bool testFragmentLossDropsAccessUnit() {
            expect(!completed, "corrupted access unit should be dropped");
 }
 
+bool testFragmentLossReportsMissingSequence() {
+    const std::vector<uint8_t> encoded = makeLargeAnnexBNalu();
+    const auto payloads = media::packetizeH264AnnexB(encoded, 6);
+    if (!expect(payloads.size() > 3, "expected enough fragments for missing sequence test")) {
+        return false;
+    }
+
+    media::H264AccessUnitAssembler assembler;
+    media::H264AccessUnit accessUnit;
+    bool packetLoss = false;
+    media::H264PacketLossInfo lossInfo;
+    (void)assembler.consume(makePacket(500, false, payloads[0]), accessUnit, &packetLoss, &lossInfo);
+    if (!expect(!packetLoss && lossInfo.missingSequences.empty(), "first packet should not report loss")) {
+        return false;
+    }
+
+    const bool completed = assembler.consume(makePacket(502, false, payloads[2]),
+                                             accessUnit,
+                                             &packetLoss,
+                                             &lossInfo);
+    return expect(packetLoss, "sequence gap was not reported as packet loss") &&
+           expect(!completed, "gap packet should not complete access unit") &&
+           expect(lossInfo.missingSequences.size() == 1U, "expected exactly one missing sequence") &&
+           expect(lossInfo.missingSequences.front() == 501U, "wrong missing sequence reported");
+}
+
+bool testLatePacketDoesNotReportForwardLoss() {
+    media::H264AccessUnitAssembler assembler;
+    media::H264AccessUnit accessUnit;
+    bool packetLoss = false;
+    media::H264PacketLossInfo lossInfo;
+
+    const std::vector<uint8_t> nalu{0x65, 0x01, 0x02};
+    (void)assembler.consume(makePacket(700, true, nalu), accessUnit, &packetLoss, &lossInfo);
+    if (!expect(!packetLoss && lossInfo.missingSequences.empty(), "ordered packet should not report loss")) {
+        return false;
+    }
+
+    const bool completed = assembler.consume(makePacket(700, true, nalu),
+                                             accessUnit,
+                                             &packetLoss,
+                                             &lossInfo);
+    return expect(!completed, "duplicate packet should be ignored") &&
+           expect(!packetLoss, "duplicate packet should not report packet loss") &&
+           expect(lossInfo.missingSequences.empty(), "duplicate packet should not report missing sequences");
+}
+
 }  // namespace
 
 int main() {
@@ -101,6 +149,12 @@ int main() {
         return 1;
     }
     if (!testFragmentLossDropsAccessUnit()) {
+        return 1;
+    }
+    if (!testFragmentLossReportsMissingSequence()) {
+        return 1;
+    }
+    if (!testLatePacketDoesNotReportForwardLoss()) {
         return 1;
     }
     return 0;

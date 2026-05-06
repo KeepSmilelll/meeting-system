@@ -70,8 +70,13 @@ int main(int argc, char* argv[]) {
     const QByteArray plainRtp = rtpPacket;
     assert(sender.protectRtp(&rtpPacket));
     assert(rtpPacket.size() > plainRtp.size());
+    const QByteArray protectedRtp = rtpPacket;
     assert(receiver.unprotectRtp(&rtpPacket));
     assert(rtpPacket == plainRtp);
+    QByteArray replayRtp = protectedRtp;
+    assert(!receiver.unprotectRtp(&replayRtp));
+    assert(receiver.lastFailureWasReplay());
+    assert(receiver.lastStatusCode() == 9 || receiver.lastStatusCode() == 10);
 
     QByteArray rtcpPacket = QByteArray::fromHex("80C80006112233440000000200000003000000040000000500000006");
     const QByteArray plainRtcp = rtcpPacket;

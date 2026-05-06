@@ -1,5 +1,7 @@
 #include "VideoRecvConsumePipeline.h"
 
+#include <utility>
+
 namespace av::session {
 
 bool VideoRecvConsumePipeline::consumeAndDecide(const media::RTPPacket& packet,
@@ -10,18 +12,26 @@ bool VideoRecvConsumePipeline::consumeAndDecide(const media::RTPPacket& packet,
     outOutcome = VideoRecvConsumeOutcome{};
 
     std::string pipelineError;
+    media::H264PacketLossInfo lossInfo;
     const VideoRecvPacketResult result = recvPipeline.consumePacket(
         packet,
         expectedRemoteSsrc,
         outFrame,
         outOutcome.remoteMediaSsrc,
-        &pipelineError);
+        &pipelineError,
+        &lossInfo);
     if (result == VideoRecvPacketResult::Ignored) {
         return false;
     }
 
     outOutcome.ignored = false;
+    outOutcome.missingSequences = std::move(lossInfo.missingSequences);
     outOutcome.decision = recvPipeline.makeHandlingDecision(result, pipelineError);
+    if (result == VideoRecvPacketResult::PacketLoss && !outOutcome.missingSequences.empty()) {
+        outOutcome.decision.action = VideoRecvHandlingAction::RequestRetransmit;
+        outOutcome.decision.keyFrameReason = "packet loss";
+        outOutcome.decision.retransmitSequenceNumbers = outOutcome.missingSequences;
+    }
     return true;
 }
 

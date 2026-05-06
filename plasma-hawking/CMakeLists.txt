@@ -550,6 +550,7 @@ add_executable(test_screen_share_session
     src/net/media/RTPSender.cpp
     src/net/media/RTPReceiver.cpp
     src/net/media/H264RtpPayload.cpp
+    src/net/media/JitterBuffer.cpp
 )
 
 target_include_directories(test_screen_share_session PRIVATE
@@ -615,6 +616,7 @@ add_executable(test_screen_share_session_camera_smoke
     src/net/media/RTPSender.cpp
     src/net/media/RTPReceiver.cpp
     src/net/media/H264RtpPayload.cpp
+    src/net/media/JitterBuffer.cpp
 )
 
 target_include_directories(test_screen_share_session_camera_smoke PRIVATE
