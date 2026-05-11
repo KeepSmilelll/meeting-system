@@ -896,18 +896,35 @@ bool VideoEncoder::encode(const capture::ScreenFrame& inFrame,
     // Fast path: GPU already produced NV12 - copy planes directly.
     const std::size_t expectedNv12 = static_cast<std::size_t>(m_width) * m_height * 3 / 2;
     if (!inFrame.nv12.empty() && inFrame.nv12.size() == expectedNv12 &&
-        m_outputPixelFormat == AV_PIX_FMT_NV12) {
+        (m_outputPixelFormat == AV_PIX_FMT_NV12 || m_outputPixelFormat == AV_PIX_FMT_YUV420P)) {
         const uint8_t* yPlane = inFrame.nv12.data();
         const uint8_t* uvPlane = yPlane + static_cast<std::size_t>(m_width) * m_height;
+        // Y plane: same for both NV12 and YUV420P.
         for (int y = 0; y < m_height; ++y) {
             std::memcpy(frame->data[0] + static_cast<std::ptrdiff_t>(y) * frame->linesize[0],
                         yPlane + static_cast<std::size_t>(y) * m_width,
                         static_cast<std::size_t>(m_width));
         }
-        for (int y = 0; y < m_height / 2; ++y) {
-            std::memcpy(frame->data[1] + static_cast<std::ptrdiff_t>(y) * frame->linesize[1],
-                        uvPlane + static_cast<std::size_t>(y) * m_width,
-                        static_cast<std::size_t>(m_width));
+        if (m_outputPixelFormat == AV_PIX_FMT_NV12) {
+            // NV12: interleaved UV plane copied directly.
+            for (int y = 0; y < m_height / 2; ++y) {
+                std::memcpy(frame->data[1] + static_cast<std::ptrdiff_t>(y) * frame->linesize[1],
+                            uvPlane + static_cast<std::size_t>(y) * m_width,
+                            static_cast<std::size_t>(m_width));
+            }
+        } else {
+            // YUV420P: de-interleave NV12 UV into separate U and V planes.
+            const int chromaW = m_width / 2;
+            const int chromaH = m_height / 2;
+            for (int y = 0; y < chromaH; ++y) {
+                const uint8_t* uvRow = uvPlane + static_cast<std::size_t>(y) * m_width;
+                uint8_t* uRow = frame->data[1] + static_cast<std::ptrdiff_t>(y) * frame->linesize[1];
+                uint8_t* vRow = frame->data[2] + static_cast<std::ptrdiff_t>(y) * frame->linesize[2];
+                for (int x = 0; x < chromaW; ++x) {
+                    uRow[x] = uvRow[x * 2];
+                    vRow[x] = uvRow[x * 2 + 1];
+                }
+            }
         }
     } else if (!fillFrameFromBgra(inFrame, *frame, m_outputPixelFormat)) {
         if (error != nullptr) {
