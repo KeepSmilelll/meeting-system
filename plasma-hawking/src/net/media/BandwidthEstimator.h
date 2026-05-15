@@ -16,7 +16,7 @@ public:
         uint32_t sampleWindowMs{500};
     };
 
-    explicit BandwidthEstimator(Config config = {});
+    explicit BandwidthEstimator(Config config = Config{});
 
     void reset();
     void onPacketSent(std::size_t bytes);
