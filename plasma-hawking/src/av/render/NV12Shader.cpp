@@ -1,6 +1,7 @@
 #include "NV12Shader.h"
 
 #include <QDebug>
+#include <QOpenGLContext>
 
 namespace av::render {
 namespace {
@@ -49,6 +50,52 @@ void main() {
 }
 )";
 
+constexpr const char* kEsVertexShaderSource = R"(
+#version 300 es
+precision highp float;
+layout(location = 0) in vec2 aPos;
+layout(location = 1) in vec2 aTexCoord;
+out vec2 vTexCoord;
+void main() {
+    vTexCoord = aTexCoord;
+    gl_Position = vec4(aPos, 0.0, 1.0);
+}
+)";
+
+constexpr const char* kEsFragmentShaderSource = R"(
+#version 300 es
+precision mediump float;
+in vec2 vTexCoord;
+out vec4 fragColor;
+uniform sampler2D texY;
+uniform sampler2D texUV;
+uniform sampler2D texU;
+uniform sampler2D texV;
+uniform int u_inputFormat;
+void main() {
+    if (u_inputFormat == 2) {
+        fragColor = texture(texY, vTexCoord);
+        return;
+    }
+
+    float y = texture(texY, vTexCoord).r;
+    float u = 0.0;
+    float v = 0.0;
+    if (u_inputFormat == 1) {
+        u = texture(texU, vTexCoord).r - 0.5;
+        v = texture(texV, vTexCoord).r - 0.5;
+    } else {
+        vec2 uv = texture(texUV, vTexCoord).rg - vec2(0.5, 0.5);
+        u = uv.x;
+        v = uv.y;
+    }
+    float r = y + 1.5748 * v;
+    float g = y - 0.1873 * u - 0.4681 * v;
+    float b = y + 1.8556 * u;
+    fragColor = vec4(r, g, b, 1.0);
+}
+)";
+
 }  // namespace
 
 NV12Shader::~NV12Shader() = default;
@@ -61,8 +108,12 @@ bool NV12Shader::initialize(QOpenGLExtraFunctions* gl) {
         return true;
     }
 
-    const GLuint vertexShader = compileShader(gl, GL_VERTEX_SHADER, kVertexShaderSource);
-    const GLuint fragmentShader = compileShader(gl, GL_FRAGMENT_SHADER, kFragmentShaderSource);
+    const bool openGles = QOpenGLContext::currentContext() != nullptr &&
+                          QOpenGLContext::currentContext()->isOpenGLES();
+    const GLuint vertexShader =
+        compileShader(gl, GL_VERTEX_SHADER, openGles ? kEsVertexShaderSource : kVertexShaderSource);
+    const GLuint fragmentShader =
+        compileShader(gl, GL_FRAGMENT_SHADER, openGles ? kEsFragmentShaderSource : kFragmentShaderSource);
     if (vertexShader == 0 || fragmentShader == 0) {
         if (vertexShader != 0) {
             gl->glDeleteShader(vertexShader);
