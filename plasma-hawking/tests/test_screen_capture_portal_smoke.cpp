@@ -4,6 +4,7 @@
 #include <QGuiApplication>
 #include <QScreen>
 #include <QThread>
+#include <QWindow>
 #include <QtGlobal>
 
 #include <algorithm>
@@ -30,6 +31,12 @@ int main(int argc, char** argv) {
         std::cerr << "portal-screen-smoke skipped: no primary screen" << std::endl;
         return 77;
     }
+
+    QWindow window;
+    window.setTitle(QStringLiteral("meeting portal screen smoke"));
+    window.resize(320, 200);
+    window.show();
+    QGuiApplication::processEvents(QEventLoop::AllEvents, 100);
 
     const int timeoutMs = std::max(5000, envInt("MEETING_PORTAL_SCREEN_SMOKE_TIMEOUT_MS", 45000));
     av::capture::ScreenCapture capture(av::capture::ScreenCaptureConfig{
