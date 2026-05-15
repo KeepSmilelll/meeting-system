@@ -146,6 +146,27 @@ endif()
 find_package(Protobuf REQUIRED)
 qt_standard_project_setup()
 
+if(WIN32)
+    set(MEETING_SIGNALING_PROTO_CC "${CMAKE_CURRENT_SOURCE_DIR}/proto/pb/signaling.pb.cc")
+    set(MEETING_SIGNALING_PROTO_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/proto/pb")
+else()
+    set(MEETING_PROTO_GENERATED_DIR "${CMAKE_BINARY_DIR}/proto/pb")
+    set(MEETING_SIGNALING_PROTO "${CMAKE_CURRENT_SOURCE_DIR}/proto/signaling.proto")
+    set(MEETING_SIGNALING_PROTO_CC "${MEETING_PROTO_GENERATED_DIR}/signaling.pb.cc")
+    set(MEETING_SIGNALING_PROTO_H "${MEETING_PROTO_GENERATED_DIR}/signaling.pb.h")
+    set(MEETING_SIGNALING_PROTO_INCLUDE_DIR "${MEETING_PROTO_GENERATED_DIR}")
+    add_custom_command(
+        OUTPUT "${MEETING_SIGNALING_PROTO_CC}" "${MEETING_SIGNALING_PROTO_H}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${MEETING_SIGNALING_PROTO_INCLUDE_DIR}"
+        COMMAND ${Protobuf_PROTOC_EXECUTABLE}
+            --cpp_out=${MEETING_SIGNALING_PROTO_INCLUDE_DIR}
+            --proto_path=${CMAKE_CURRENT_SOURCE_DIR}/proto
+            "${MEETING_SIGNALING_PROTO}"
+        DEPENDS "${MEETING_SIGNALING_PROTO}"
+        VERBATIM
+    )
+endif()
+
 if(NOT (FFMPEG_INCLUDE_DIR AND FFMPEG_AVCODEC_LIBRARY))
     message(FATAL_ERROR "meeting_client requires FFmpeg headers/libs. Set FFMPEG_ROOT_HINT or install libavcodec/libavdevice/libavformat/libavutil/libswresample/libswscale development packages.")
 endif()
@@ -451,12 +472,12 @@ qt_add_executable(meeting_client
     src/net/media/H264RtpPayload.cpp
     src/net/media/BandwidthEstimator.cpp
     src/net/media/JitterBuffer.cpp
-    proto/pb/signaling.pb.cc
+    ${MEETING_SIGNALING_PROTO_CC}
 )
 
 target_include_directories(meeting_client PRIVATE
     src
-    proto/pb
+    ${MEETING_SIGNALING_PROTO_INCLUDE_DIR}
     ${FFMPEG_INCLUDE_DIR}
 )
 if(LIBSRTP_INCLUDE_DIR)
@@ -713,12 +734,12 @@ add_executable(test_signaling_client_ssrc
     src/net/signaling/SignalingClient.cpp
     src/net/ice/StunClient.cpp
     src/net/ice/TurnClient.cpp
-    proto/pb/signaling.pb.cc
+    ${MEETING_SIGNALING_PROTO_CC}
 )
 
 target_include_directories(test_signaling_client_ssrc PRIVATE
     src
-    proto/pb
+    ${MEETING_SIGNALING_PROTO_INCLUDE_DIR}
 )
 
 target_link_libraries(test_signaling_client_ssrc PRIVATE
@@ -1026,12 +1047,12 @@ add_executable(test_meeting_controller_mute_all
     src/net/media/H264RtpPayload.cpp
     src/net/media/BandwidthEstimator.cpp
     src/net/media/JitterBuffer.cpp
-    proto/pb/signaling.pb.cc
+    ${MEETING_SIGNALING_PROTO_CC}
 )
 
 target_include_directories(test_meeting_controller_mute_all PRIVATE
     src
-    proto/pb
+    ${MEETING_SIGNALING_PROTO_INCLUDE_DIR}
     ${FFMPEG_INCLUDE_DIR}
 )
 
@@ -1122,12 +1143,12 @@ add_executable(test_meeting_runtime_smoke
     src/net/media/H264RtpPayload.cpp
     src/net/media/BandwidthEstimator.cpp
     src/net/media/JitterBuffer.cpp
-    proto/pb/signaling.pb.cc
+    ${MEETING_SIGNALING_PROTO_CC}
 )
 
 target_include_directories(test_meeting_runtime_smoke PRIVATE
     src
-    proto/pb
+    ${MEETING_SIGNALING_PROTO_INCLUDE_DIR}
     ${FFMPEG_INCLUDE_DIR}
 )
 
