@@ -355,6 +355,12 @@ struct ScreenCapture::Impl {
                                  error = errorString.trimmed().isEmpty()
                                      ? QStringLiteral("portal screen capture error %1").arg(static_cast<int>(captureError))
                                      : errorString.trimmed();
+                                 const bool stillActive = screenCapture && screenCapture->isActive();
+                                 qWarning().noquote() << "[screen-capture] portal backend error:" << error
+                                                      << "active=" << stillActive;
+                                 if (stillActive) {
+                                     return;
+                                 }
                                  if (owner != nullptr) {
                                      owner->running.store(false, std::memory_order_release);
                                      if (owner->owner != nullptr) {
@@ -362,7 +368,6 @@ struct ScreenCapture::Impl {
                                          owner->owner->m_ringBuffer.close();
                                      }
                                  }
-                                 qWarning().noquote() << "[screen-capture] portal backend error:" << error;
                              });
             QObject::connect(screenCapture.get(),
                              &QScreenCapture::activeChanged,
