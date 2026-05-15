@@ -1,12 +1,26 @@
 #include "ScreenCapture.h"
 
+#include <QCoreApplication>
 #include <QDebug>
+#include <QGuiApplication>
+#include <QImage>
+#include <QMetaObject>
+#include <QScreen>
+#include <QThread>
 #include <QtGlobal>
+
+#if !defined(_WIN32) && QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+#include <QtMultimedia/QMediaCaptureSession>
+#include <QtMultimedia/QScreenCapture>
+#include <QtMultimedia/QVideoFrame>
+#include <QtMultimedia/QVideoSink>
+#endif
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <thread>
 #include <utility>
@@ -48,6 +62,42 @@ ScreenCaptureConfig normalizeConfig(ScreenCaptureConfig config) {
     return config;
 }
 
+bool isApplicationThread() {
+    return QCoreApplication::instance() != nullptr &&
+           QThread::currentThread() == QCoreApplication::instance()->thread();
+}
+
+bool invokeBoolOnApplicationThread(const std::function<bool()>& callback) {
+    if (!callback || QCoreApplication::instance() == nullptr) {
+        return false;
+    }
+    if (isApplicationThread()) {
+        return callback();
+    }
+
+    bool result = false;
+    QMetaObject::invokeMethod(QCoreApplication::instance(),
+                              [&]() {
+                                  result = callback();
+                              },
+                              Qt::BlockingQueuedConnection);
+    return result;
+}
+
+void invokeVoidOnApplicationThread(const std::function<void()>& callback) {
+    if (!callback || QCoreApplication::instance() == nullptr) {
+        return;
+    }
+    if (isApplicationThread()) {
+        callback();
+        return;
+    }
+
+    QMetaObject::invokeMethod(QCoreApplication::instance(),
+                              callback,
+                              Qt::BlockingQueuedConnection);
+}
+
 }  // namespace
 
 struct ScreenCapture::Impl {
@@ -71,6 +121,9 @@ struct ScreenCapture::Impl {
         running = false;
         return;
 #else
+        if (startPortalCapture()) {
+            return;
+        }
         running = false;
         return;
 #endif
@@ -83,6 +136,8 @@ struct ScreenCapture::Impl {
         }
 #ifdef _WIN32
         releaseDesktopCapture();
+#else
+        stopPortalCapture();
 #endif
     }
 
@@ -260,6 +315,174 @@ struct ScreenCapture::Impl {
     }
 #endif
 
+#ifndef _WIN32
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+    struct PortalCaptureBackend {
+        explicit PortalCaptureBackend(Impl* owner)
+            : owner(owner) {}
+
+        bool start() {
+            if (owner == nullptr || QGuiApplication::instance() == nullptr) {
+                error = QStringLiteral("Qt GUI application instance required for portal screen capture");
+                return false;
+            }
+
+            QScreen* screen = QGuiApplication::primaryScreen();
+            if (screen == nullptr) {
+                error = QStringLiteral("no primary screen available for portal screen capture");
+                return false;
+            }
+
+            screenCapture = std::make_unique<QScreenCapture>();
+            videoSink = std::make_unique<QVideoSink>();
+            session.setScreenCapture(screenCapture.get());
+            session.setVideoSink(videoSink.get());
+            screenCapture->setScreen(screen);
+
+            QObject::connect(videoSink.get(),
+                             &QVideoSink::videoFrameChanged,
+                             videoSink.get(),
+                             [this](const QVideoFrame& frame) {
+                                 handleFrame(frame);
+                             });
+            QObject::connect(screenCapture.get(),
+                             &QScreenCapture::errorOccurred,
+                             screenCapture.get(),
+                             [this](QScreenCapture::Error captureError, const QString& errorString) {
+                                 if (captureError == QScreenCapture::NoError) {
+                                     return;
+                                 }
+                                 error = errorString.trimmed().isEmpty()
+                                     ? QStringLiteral("portal screen capture error %1").arg(static_cast<int>(captureError))
+                                     : errorString.trimmed();
+                                 if (owner != nullptr) {
+                                     owner->running.store(false, std::memory_order_release);
+                                 }
+                                 qWarning().noquote() << "[screen-capture] portal backend error:" << error;
+                             });
+
+            screenCapture->start();
+            return true;
+        }
+
+        void stop() {
+            if (screenCapture) {
+                screenCapture->stop();
+            }
+            session.setVideoSink(nullptr);
+            session.setScreenCapture(nullptr);
+            videoSink.reset();
+            screenCapture.reset();
+        }
+
+        void handleFrame(const QVideoFrame& videoFrame) {
+            if (owner == nullptr || !owner->running.load(std::memory_order_acquire) || !videoFrame.isValid()) {
+                return;
+            }
+
+            QImage image = videoFrame.toImage();
+            if (image.isNull()) {
+                return;
+            }
+            if (image.format() != QImage::Format_ARGB32) {
+                image = image.convertToFormat(QImage::Format_ARGB32);
+            }
+            if (image.isNull() || image.width() <= 0 || image.height() <= 0) {
+                return;
+            }
+
+            ScreenFrame frame;
+            frame.width = image.width() & ~1;
+            frame.height = image.height() & ~1;
+            if (owner->config.targetWidth > 0 && owner->config.targetHeight > 0 &&
+                (frame.width != owner->config.targetWidth || frame.height != owner->config.targetHeight)) {
+                QImage scaled = image.scaled(owner->config.targetWidth & ~1,
+                                             owner->config.targetHeight & ~1,
+                                             Qt::IgnoreAspectRatio,
+                                             Qt::SmoothTransformation);
+                if (!scaled.isNull()) {
+                    if (scaled.format() != QImage::Format_ARGB32) {
+                        scaled = scaled.convertToFormat(QImage::Format_ARGB32);
+                    }
+                    image = std::move(scaled);
+                    frame.width = image.width() & ~1;
+                    frame.height = image.height() & ~1;
+                }
+            }
+            if (frame.width <= 0 || frame.height <= 0) {
+                return;
+            }
+
+            const auto elapsedMs =
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - captureStartedAt)
+                    .count();
+            int64_t nextPts = static_cast<int64_t>(
+                (elapsedMs * static_cast<int64_t>(owner->config.frameRate)) / 1000);
+            if (nextPts <= lastPts) {
+                nextPts = lastPts + 1;
+            }
+            lastPts = nextPts;
+            frame.pts = nextPts;
+            frame.bgra.resize(static_cast<std::size_t>(frame.width) * static_cast<std::size_t>(frame.height) * 4U);
+            for (int y = 0; y < frame.height; ++y) {
+                const uchar* src = image.constScanLine(y);
+                std::memcpy(frame.bgra.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(frame.width) * 4U,
+                            src,
+                            static_cast<std::size_t>(frame.width) * 4U);
+            }
+
+            owner->m_ownerPushFrame(std::move(frame));
+        }
+
+        Impl* owner{nullptr};
+        QMediaCaptureSession session;
+        std::unique_ptr<QScreenCapture> screenCapture;
+        std::unique_ptr<QVideoSink> videoSink;
+        QString error;
+        std::chrono::steady_clock::time_point captureStartedAt{std::chrono::steady_clock::now()};
+        int64_t lastPts{-1};
+    };
+
+    bool startPortalCapture() {
+        if (QCoreApplication::instance() == nullptr) {
+            qWarning().noquote() << "[screen-capture] portal backend unavailable: no Qt application instance";
+            return false;
+        }
+
+        const bool started = invokeBoolOnApplicationThread([this]() {
+            portalCapture = std::make_unique<PortalCaptureBackend>(this);
+            if (!portalCapture->start()) {
+                qWarning().noquote() << "[screen-capture] portal backend start failed:" << portalCapture->error;
+                portalCapture.reset();
+                return false;
+            }
+            return true;
+        });
+        if (started) {
+            qInfo().noquote() << "[screen-capture] portal backend active screenBackend=portal-qt screenInterop=cpu-upload";
+        }
+        return started;
+    }
+
+    void stopPortalCapture() {
+        invokeVoidOnApplicationThread([this]() {
+            if (portalCapture) {
+                portalCapture->stop();
+                portalCapture.reset();
+            }
+        });
+    }
+#else
+    bool startPortalCapture() {
+        qWarning().noquote() << "[screen-capture] portal backend unavailable: Qt 6.5+ QScreenCapture required";
+        return false;
+    }
+
+    void stopPortalCapture() {}
+#endif
+#endif
+
     ScreenCapture* owner{nullptr};
     ScreenCaptureConfig config;
     std::thread worker;
@@ -279,7 +502,25 @@ struct ScreenCapture::Impl {
     int sourceHeight{0};
     int targetWidth{0};
     int targetHeight{0};
+#else
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+    std::unique_ptr<PortalCaptureBackend> portalCapture;
 #endif
+#endif
+
+    void m_ownerPushFrame(ScreenFrame frame) {
+        const int64_t pts = frame.pts;
+        const int width = frame.width;
+        const int height = frame.height;
+        owner->m_ringBuffer.push(std::move(frame));
+        if (!loggedFirstFrame) {
+            loggedFirstFrame = true;
+            qInfo().noquote() << "[screen-capture] first frame pts=" << pts
+                              << "size=" << width << "x" << height
+                              << "screenBackend=portal-qt"
+                              << "screenInterop=cpu-upload";
+        }
+    }
 };
 
 ScreenCapture::ScreenCapture(ScreenCaptureConfig config)

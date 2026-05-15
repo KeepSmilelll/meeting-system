@@ -4,17 +4,27 @@ project(meeting_client LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick Network Sql Multimedia)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick Network Sql Multimedia OpenGL)
 include(CTest)
 
 # Optional FFmpeg smoke target for the Opus audio pipeline.
 option(MEETING_BUILD_AUDIO_CODEC_SMOKE "Build the audio codec smoke test target" ON)
-set(FFMPEG_ROOT_HINT "D:/Setup/ffmpeg-7.1-full_build-shared" CACHE PATH "Local FFmpeg root hint")
-set(OPENSSL_ROOT_HINT "D:/LOL/英雄联盟(26)/Cross/coach/agent/lol_ai_coach/Python311/Library" CACHE PATH "Local OpenSSL 3 root hint")
-set(LIBSRTP_ROOT_DEFAULT "D:/meeting/third_party/libsrtp2")
-set(LIBSRTP_ROOT_HINT "${LIBSRTP_ROOT_DEFAULT}" CACHE PATH "Local libsrtp2 root hint")
-set(SPEEXDSP_ROOT_HINT "D:/meeting/third_party/speexdsp" CACHE PATH "Local SpeexDSP source checkout")
-set(RNNOISE_ROOT_HINT "D:/meeting/third_party/rnnoise" CACHE PATH "Local RNNoise source checkout")
+if(WIN32)
+    set(MEETING_DEFAULT_FFMPEG_ROOT "D:/Setup/ffmpeg-7.1-full_build-shared")
+    set(MEETING_DEFAULT_OPENSSL_ROOT "D:/LOL/英雄联盟(26)/Cross/coach/agent/lol_ai_coach/Python311/Library")
+    set(MEETING_DEFAULT_THIRD_PARTY_ROOT "D:/meeting/third_party")
+else()
+    set(MEETING_DEFAULT_FFMPEG_ROOT "")
+    set(MEETING_DEFAULT_OPENSSL_ROOT "")
+    set(MEETING_DEFAULT_THIRD_PARTY_ROOT "${CMAKE_CURRENT_LIST_DIR}/../third_party")
+endif()
+
+set(FFMPEG_ROOT_HINT "${MEETING_DEFAULT_FFMPEG_ROOT}" CACHE PATH "Optional FFmpeg root hint")
+set(OPENSSL_ROOT_HINT "${MEETING_DEFAULT_OPENSSL_ROOT}" CACHE PATH "Optional OpenSSL 3 root hint")
+set(LIBSRTP_ROOT_DEFAULT "${MEETING_DEFAULT_THIRD_PARTY_ROOT}/libsrtp2")
+set(LIBSRTP_ROOT_HINT "${LIBSRTP_ROOT_DEFAULT}" CACHE PATH "Optional libsrtp2 root hint")
+set(SPEEXDSP_ROOT_HINT "${MEETING_DEFAULT_THIRD_PARTY_ROOT}/speexdsp" CACHE PATH "SpeexDSP source checkout")
+set(RNNOISE_ROOT_HINT "${MEETING_DEFAULT_THIRD_PARTY_ROOT}/rnnoise" CACHE PATH "RNNoise source checkout")
 if(LIBSRTP_ROOT_HINT STREQUAL "" AND EXISTS "${LIBSRTP_ROOT_DEFAULT}")
     set(LIBSRTP_ROOT_HINT "${LIBSRTP_ROOT_DEFAULT}" CACHE PATH "Local libsrtp2 root hint" FORCE)
 endif()
@@ -48,19 +58,32 @@ unset(FFMPEG_AVFORMAT_LIBRARY CACHE)
 unset(FFMPEG_AVUTIL_LIBRARY CACHE)
 unset(FFMPEG_SWRESAMPLE_LIBRARY CACHE)
 unset(FFMPEG_SWSCALE_LIBRARY CACHE)
-find_path(OPENSSL_INCLUDE_DIR
-    NAMES openssl/ssl.h
-    HINTS "${OPENSSL_ROOT_HINT}/include"
-)
-find_library(OPENSSL_SSL_LIBRARY
-    NAMES libssl ssl
-    HINTS "${OPENSSL_ROOT_HINT}/lib"
-)
-find_library(OPENSSL_CRYPTO_LIBRARY
-    NAMES libcrypto crypto
-    HINTS "${OPENSSL_ROOT_HINT}/lib"
-)
-if(EXISTS "${FFMPEG_ROOT_HINT}")
+if(OPENSSL_ROOT_HINT AND EXISTS "${OPENSSL_ROOT_HINT}")
+    find_path(OPENSSL_INCLUDE_DIR
+        NAMES openssl/ssl.h
+        HINTS "${OPENSSL_ROOT_HINT}/include"
+        NO_DEFAULT_PATH
+    )
+    find_library(OPENSSL_SSL_LIBRARY
+        NAMES libssl ssl
+        HINTS "${OPENSSL_ROOT_HINT}/lib"
+        NO_DEFAULT_PATH
+    )
+    find_library(OPENSSL_CRYPTO_LIBRARY
+        NAMES libcrypto crypto
+        HINTS "${OPENSSL_ROOT_HINT}/lib"
+        NO_DEFAULT_PATH
+    )
+endif()
+if(NOT (OPENSSL_INCLUDE_DIR AND OPENSSL_SSL_LIBRARY AND OPENSSL_CRYPTO_LIBRARY))
+    find_package(OpenSSL QUIET)
+    if(OpenSSL_FOUND)
+        set(OPENSSL_INCLUDE_DIR ${OPENSSL_INCLUDE_DIR})
+        set(OPENSSL_SSL_LIBRARY OpenSSL::SSL)
+        set(OPENSSL_CRYPTO_LIBRARY OpenSSL::Crypto)
+    endif()
+endif()
+if(FFMPEG_ROOT_HINT AND EXISTS "${FFMPEG_ROOT_HINT}")
     find_path(FFMPEG_INCLUDE_DIR
         NAMES libavcodec/avcodec.h
         HINTS "${FFMPEG_ROOT_HINT}/include"
@@ -97,12 +120,34 @@ if(EXISTS "${FFMPEG_ROOT_HINT}")
         NO_DEFAULT_PATH
     )
 endif()
+if(NOT (FFMPEG_INCLUDE_DIR AND FFMPEG_AVCODEC_LIBRARY AND FFMPEG_AVDEVICE_LIBRARY AND FFMPEG_AVFORMAT_LIBRARY AND FFMPEG_AVUTIL_LIBRARY AND FFMPEG_SWRESAMPLE_LIBRARY AND FFMPEG_SWSCALE_LIBRARY))
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(PC_FFMPEG QUIET IMPORTED_TARGET
+            libavcodec
+            libavdevice
+            libavformat
+            libavutil
+            libswresample
+            libswscale
+        )
+        if(PC_FFMPEG_FOUND)
+            set(FFMPEG_INCLUDE_DIR ${PC_FFMPEG_INCLUDE_DIRS})
+            set(FFMPEG_AVCODEC_LIBRARY PkgConfig::PC_FFMPEG)
+            set(FFMPEG_AVDEVICE_LIBRARY "")
+            set(FFMPEG_AVFORMAT_LIBRARY "")
+            set(FFMPEG_AVUTIL_LIBRARY "")
+            set(FFMPEG_SWRESAMPLE_LIBRARY "")
+            set(FFMPEG_SWSCALE_LIBRARY "")
+        endif()
+    endif()
+endif()
 
 find_package(Protobuf REQUIRED)
 qt_standard_project_setup()
 
-if(NOT (FFMPEG_INCLUDE_DIR AND FFMPEG_AVCODEC_LIBRARY AND FFMPEG_AVDEVICE_LIBRARY AND FFMPEG_AVFORMAT_LIBRARY AND FFMPEG_AVUTIL_LIBRARY AND FFMPEG_SWRESAMPLE_LIBRARY AND FFMPEG_SWSCALE_LIBRARY))
-    message(FATAL_ERROR "meeting_client requires FFmpeg 7.1 headers/libs under ${FFMPEG_ROOT_HINT}")
+if(NOT (FFMPEG_INCLUDE_DIR AND FFMPEG_AVCODEC_LIBRARY))
+    message(FATAL_ERROR "meeting_client requires FFmpeg headers/libs. Set FFMPEG_ROOT_HINT or install libavcodec/libavdevice/libavformat/libavutil/libswresample/libswscale development packages.")
 endif()
 
 if(NOT EXISTS "${SPEEXDSP_ROOT_HINT}/include/speex/speex_echo.h")
@@ -416,6 +461,7 @@ target_link_libraries(meeting_client PRIVATE
     Qt6::Network
     Qt6::Sql
     Qt6::Multimedia
+    Qt6::OpenGL
     protobuf::libprotobuf
     ${FFMPEG_AVCODEC_LIBRARY}
     ${FFMPEG_AVDEVICE_LIBRARY}

@@ -1863,19 +1863,26 @@ void ScreenShareSession::sendLoop() {
                                           int frameRate,
                                           int bitrate,
                                           uint8_t payloadType) {
-        return av::isHardwareE2E(profile)
-            ? encoder.configureHardwareD3D11(width,
-                                             height,
-                                             frameRate,
-                                             bitrate,
-                                             payloadType,
-                                             m_config.encoderPreset)
-            : encoder.configure(width,
-                                height,
-                                frameRate,
-                                bitrate,
-                                payloadType,
-                                m_config.encoderPreset);
+        if (av::isHardwareE2E(profile)) {
+#ifdef _WIN32
+            return encoder.configureHardwareD3D11(width,
+                                                  height,
+                                                  frameRate,
+                                                  bitrate,
+                                                  payloadType,
+                                                  m_config.encoderPreset);
+#else
+            qWarning().noquote() << "[screen-session] hardware video pipeline unsupported on this platform"
+                                 << "profile=" << av::videoPipelineProfileName(profile);
+            return false;
+#endif
+        }
+        return encoder.configure(width,
+                                 height,
+                                 frameRate,
+                                 bitrate,
+                                 payloadType,
+                                 m_config.encoderPreset);
     };
     bool encoderConfigured = configureEncoderForProfile(sendProfile,
                                                         m_config.width,
@@ -1910,13 +1917,13 @@ void ScreenShareSession::sendLoop() {
         {
             QMutexLocker locker(&m_mutex);
             setErrorLocked(av::isHardwareE2E(sendProfile)
-                               ? "hardware video encoder configure failed"
+                               ? "hardware video pipeline unsupported on this platform"
                                : "video encoder configure failed");
             errorCallback = m_errorCallback;
         }
         if (errorCallback) {
             errorCallback(av::isHardwareE2E(sendProfile)
-                              ? "hardware video encoder configure failed"
+                              ? "hardware video pipeline unsupported on this platform"
                               : "video encoder configure failed");
         }
         return;
@@ -1947,6 +1954,7 @@ void ScreenShareSession::sendLoop() {
     bool firstHardwareCameraPreviewFrameStored = false;
     bool firstHardwareScreenPreviewFrameStored = false;
     bool firstGpuReadbackScreenFrameObserved = false;
+    bool firstSoftwareScreenFrameObserved = false;
     bool gpuReadbackScreenCaptureFailed = false;
     const auto statusCallback = [this]() {
         QMutexLocker locker(&m_mutex);
@@ -2476,6 +2484,21 @@ void ScreenShareSession::sendLoop() {
                 localScreenPreviewDispatched = true;
             }
         }
+#ifndef _WIN32
+        if (!firstSoftwareScreenFrameObserved &&
+            source == VideoSendSource::Screen &&
+            capturedFrame.inputFrame.hasScreenFrame()) {
+            firstSoftwareScreenFrameObserved = true;
+            if (statusCallback) {
+                statusCallback("Video screen capture active screenBackend=portal-qt screenInterop=cpu-upload encoder=software");
+            }
+            qInfo().noquote() << "[screen-session] screen capture active"
+                              << "profile=" << av::videoPipelineProfileName(sendProfile)
+                              << "screenBackend=portal-qt"
+                              << "screenInterop=cpu-upload"
+                              << "encoder=software";
+        }
+#endif
 
         if (!peer.isValid() || videoSuspended) {
             maybeSendSenderReport();
