@@ -364,6 +364,12 @@ struct ScreenCapture::Impl {
                                  }
                                  qWarning().noquote() << "[screen-capture] portal backend error:" << error;
                              });
+            QObject::connect(screenCapture.get(),
+                             &QScreenCapture::activeChanged,
+                             screenCapture.get(),
+                             [](bool active) {
+                                 qInfo().noquote() << "[screen-capture] portal backend activeChanged=" << active;
+                             });
 
             screenCapture->start();
             return true;
