@@ -102,6 +102,7 @@ inline bool sameIpv4Endpoint(const sockaddr_in& lhs, const sockaddr_in& rhs, boo
     }
     return !matchPort || lhs.sin_port == rhs.sin_port;
 }
+#endif
 
 inline bool looksLikeRtcpPacket(const uint8_t* data, std::size_t len) {
     if (data == nullptr || len < 4) {
@@ -117,6 +118,7 @@ inline bool looksLikeRtcpPacket(const uint8_t* data, std::size_t len) {
     return packetType >= 192U && packetType <= 223U;
 }
 
+#ifdef _WIN32
 inline bool isTransientUdpRecvError() {
     const int errorCode = WSAGetLastError();
     return errorCode == WSAETIMEDOUT ||
@@ -124,6 +126,7 @@ inline bool isTransientUdpRecvError() {
            errorCode == WSAEWOULDBLOCK ||
            errorCode == WSAENOTSOCK;
 }
+#endif
 
 inline uint16_t parseRtpSequenceNumber(const uint8_t* data, std::size_t len) {
     constexpr std::size_t kMinRtpHeaderBytes = 12U;
@@ -134,6 +137,5 @@ inline uint16_t parseRtpSequenceNumber(const uint8_t* data, std::size_t len) {
     return static_cast<uint16_t>((static_cast<uint16_t>(data[2]) << 8) |
                                  static_cast<uint16_t>(data[3]));
 }
-#endif
 
 }  // namespace media
