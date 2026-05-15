@@ -160,6 +160,18 @@ endif()
 set(speexdsp_SOURCE_DIR "${SPEEXDSP_ROOT_HINT}")
 set(rnnoise_SOURCE_DIR "${RNNOISE_ROOT_HINT}")
 
+set(MEETING_SPEEXDSP_CONFIG_DIR "${CMAKE_BINARY_DIR}/speexdsp_config")
+file(MAKE_DIRECTORY "${MEETING_SPEEXDSP_CONFIG_DIR}")
+file(WRITE "${MEETING_SPEEXDSP_CONFIG_DIR}/speexdsp_config_types.h"
+"#ifndef __SPEEX_TYPES_H__\n"
+"#define __SPEEX_TYPES_H__\n"
+"#include <stdint.h>\n"
+"typedef int16_t spx_int16_t;\n"
+"typedef uint16_t spx_uint16_t;\n"
+"typedef int32_t spx_int32_t;\n"
+"typedef uint32_t spx_uint32_t;\n"
+"#endif\n")
+
 set(MEETING_SPEEXDSP_SOURCES
     "${speexdsp_SOURCE_DIR}/libspeexdsp/fftwrap.c"
     "${speexdsp_SOURCE_DIR}/libspeexdsp/filterbank.c"
@@ -169,6 +181,7 @@ set(MEETING_SPEEXDSP_SOURCES
 )
 add_library(meeting_speexdsp STATIC ${MEETING_SPEEXDSP_SOURCES})
 target_include_directories(meeting_speexdsp PUBLIC
+    "${MEETING_SPEEXDSP_CONFIG_DIR}"
     "${speexdsp_SOURCE_DIR}/include"
     "${speexdsp_SOURCE_DIR}/libspeexdsp"
 )
