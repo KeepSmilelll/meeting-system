@@ -657,6 +657,30 @@ endif()
 
 add_test(NAME test_screen_share_session COMMAND test_screen_share_session)
 
+if(NOT WIN32 AND Qt6_VERSION VERSION_GREATER_EQUAL "6.5.0")
+    add_executable(test_screen_capture_portal_smoke
+        tests/test_screen_capture_portal_smoke.cpp
+        src/av/capture/ScreenCapture.cpp
+    )
+
+    target_include_directories(test_screen_capture_portal_smoke PRIVATE
+        src
+    )
+
+    target_link_libraries(test_screen_capture_portal_smoke PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Multimedia
+    )
+
+    add_test(NAME test_screen_capture_portal_smoke COMMAND test_screen_capture_portal_smoke)
+    set_tests_properties(test_screen_capture_portal_smoke PROPERTIES
+        SKIP_RETURN_CODE 77
+        RUN_SERIAL TRUE
+        TIMEOUT 60
+    )
+endif()
+
 add_executable(test_screen_share_session_camera_smoke
     tests/test_screen_share_session_camera_smoke.cpp
     src/security/CryptoUtils.cpp
