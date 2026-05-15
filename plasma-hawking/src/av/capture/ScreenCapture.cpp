@@ -357,6 +357,10 @@ struct ScreenCapture::Impl {
                                      : errorString.trimmed();
                                  if (owner != nullptr) {
                                      owner->running.store(false, std::memory_order_release);
+                                     if (owner->owner != nullptr) {
+                                         owner->owner->m_running.store(false, std::memory_order_release);
+                                         owner->owner->m_ringBuffer.close();
+                                     }
                                  }
                                  qWarning().noquote() << "[screen-capture] portal backend error:" << error;
                              });
@@ -548,7 +552,7 @@ bool ScreenCapture::start() {
 }
 
 void ScreenCapture::stop() {
-    if (!m_running.exchange(false, std::memory_order_acq_rel)) {
+    if (!m_running.exchange(false, std::memory_order_acq_rel) && !m_impl) {
         return;
     }
 
