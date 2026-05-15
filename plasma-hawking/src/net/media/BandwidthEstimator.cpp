@@ -4,6 +4,9 @@
 
 namespace media {
 
+BandwidthEstimator::BandwidthEstimator()
+    : BandwidthEstimator(Config{}) {}
+
 BandwidthEstimator::BandwidthEstimator(Config config)
     : m_config(config) {
     if (m_config.minBitrateKbps == 0) {

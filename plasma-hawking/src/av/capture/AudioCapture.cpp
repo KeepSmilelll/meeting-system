@@ -1,5 +1,6 @@
 #include "AudioCapture.h"
 
+#include <QtMultimedia/QAudio>
 #include <QtMultimedia/QAudioFormat>
 #include <QtMultimedia/QAudioSource>
 #include <QtMultimedia/QMediaDevices>
@@ -216,7 +217,7 @@ struct AudioCapture::Impl {
         }
 
         audioSource->start(captureDevice.get());
-        if (audioSource->error() != QtAudio::NoError) {
+        if (audioSource->error() != QAudio::NoError) {
             error = "audio source start failed";
             audioSource->stop();
             captureDevice.reset();
