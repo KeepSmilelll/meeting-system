@@ -36,6 +36,18 @@ int main(int argc, char** argv) {
     window.setTitle(QStringLiteral("meeting portal screen smoke"));
     window.resize(320, 200);
     window.show();
+    window.requestActivate();
+
+    QElapsedTimer exposeTimer;
+    exposeTimer.start();
+    while (!window.isExposed() && exposeTimer.elapsed() < 3000) {
+        QGuiApplication::processEvents(QEventLoop::AllEvents, 50);
+        QThread::msleep(20);
+    }
+    if (!window.isExposed()) {
+        std::cerr << "portal-screen-smoke skipped: smoke window was not exposed" << std::endl;
+        return 77;
+    }
     QGuiApplication::processEvents(QEventLoop::AllEvents, 100);
 
     const int timeoutMs = std::max(5000, envInt("MEETING_PORTAL_SCREEN_SMOKE_TIMEOUT_MS", 45000));
