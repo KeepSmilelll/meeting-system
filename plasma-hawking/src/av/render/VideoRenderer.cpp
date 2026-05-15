@@ -297,8 +297,6 @@ public:
 
     void render() override {
         if (!m_initialized) {
-            initializeOpenGLFunctions();
-            initializeGeometry();
             if (!m_loggedContextInfo) {
                 if (const auto* context = QOpenGLContext::currentContext()) {
                     const QSurfaceFormat format = context->format();
@@ -307,9 +305,19 @@ public:
                                       << "minor=" << format.minorVersion()
                                       << "profile=" << static_cast<int>(format.profile())
                                       << "api=" << static_cast<int>(context->openGLModuleType());
+                } else {
+                    qWarning().noquote() << "[video-renderer] no current OpenGL context";
                 }
                 m_loggedContextInfo = true;
             }
+            if (!initializeOpenGLFunctions()) {
+                if (!m_loggedFunctionInitFailure) {
+                    qWarning().noquote() << "[video-renderer] OpenGL function initialization failed";
+                    m_loggedFunctionInitFailure = true;
+                }
+                return;
+            }
+            initializeGeometry();
             m_initialized = m_shader.initialize(this);
             if (!m_initialized && !m_loggedInitFailure) {
                 qWarning().noquote() << "[video-renderer] shader initialization failed";
@@ -1053,6 +1061,7 @@ private:
 
     bool m_initialized{false};
     bool m_loggedContextInfo{false};
+    bool m_loggedFunctionInitFailure{false};
     bool m_loggedInitFailure{false};
     bool m_loggedFirstSynchronizedFrame{false};
     bool m_loggedFirstDraw{false};
