@@ -6,9 +6,9 @@ namespace av::render {
 namespace {
 
 constexpr const char* kVertexShaderSource = R"(
-#version 460 core
-layout(location = 0) in vec2 aPos;
-layout(location = 1) in vec2 aTexCoord;
+#version 150
+in vec2 aPos;
+in vec2 aTexCoord;
 out vec2 vTexCoord;
 void main() {
     vTexCoord = aTexCoord;
@@ -17,7 +17,7 @@ void main() {
 )";
 
 constexpr const char* kFragmentShaderSource = R"(
-#version 460 core
+#version 150
 in vec2 vTexCoord;
 out vec4 fragColor;
 uniform sampler2D texY;
@@ -53,7 +53,7 @@ void main() {
 
 NV12Shader::~NV12Shader() = default;
 
-bool NV12Shader::initialize(QOpenGLFunctions_4_5_Core* gl) {
+bool NV12Shader::initialize(QOpenGLExtraFunctions* gl) {
     if (gl == nullptr) {
         return false;
     }
@@ -76,6 +76,8 @@ bool NV12Shader::initialize(QOpenGLFunctions_4_5_Core* gl) {
     m_program = gl->glCreateProgram();
     gl->glAttachShader(m_program, vertexShader);
     gl->glAttachShader(m_program, fragmentShader);
+    gl->glBindAttribLocation(m_program, 0, "aPos");
+    gl->glBindAttribLocation(m_program, 1, "aTexCoord");
     gl->glLinkProgram(m_program);
 
     GLint linked = GL_FALSE;
@@ -104,7 +106,7 @@ bool NV12Shader::initialize(QOpenGLFunctions_4_5_Core* gl) {
     return true;
 }
 
-void NV12Shader::cleanup(QOpenGLFunctions_4_5_Core* gl) {
+void NV12Shader::cleanup(QOpenGLExtraFunctions* gl) {
     if (gl != nullptr && m_program != 0) {
         gl->glDeleteProgram(m_program);
         m_program = 0;
@@ -112,19 +114,19 @@ void NV12Shader::cleanup(QOpenGLFunctions_4_5_Core* gl) {
     }
 }
 
-void NV12Shader::bind(QOpenGLFunctions_4_5_Core* gl) const {
+void NV12Shader::bind(QOpenGLExtraFunctions* gl) const {
     if (gl != nullptr && m_program != 0) {
         gl->glUseProgram(m_program);
     }
 }
 
-void NV12Shader::setInputFormat(QOpenGLFunctions_4_5_Core* gl, InputFormat format) const {
+void NV12Shader::setInputFormat(QOpenGLExtraFunctions* gl, InputFormat format) const {
     if (gl != nullptr && m_program != 0 && m_inputFormatLocation >= 0) {
         gl->glUniform1i(m_inputFormatLocation, static_cast<GLint>(format));
     }
 }
 
-void NV12Shader::release(QOpenGLFunctions_4_5_Core* gl) const {
+void NV12Shader::release(QOpenGLExtraFunctions* gl) const {
     if (gl != nullptr) {
         gl->glUseProgram(0);
     }
@@ -134,7 +136,7 @@ GLuint NV12Shader::program() const {
     return m_program;
 }
 
-GLuint NV12Shader::compileShader(QOpenGLFunctions_4_5_Core* gl, GLenum type, const char* source) {
+GLuint NV12Shader::compileShader(QOpenGLExtraFunctions* gl, GLenum type, const char* source) {
     const GLuint shader = gl->glCreateShader(type);
     gl->glShaderSource(shader, 1, &source, nullptr);
     gl->glCompileShader(shader);

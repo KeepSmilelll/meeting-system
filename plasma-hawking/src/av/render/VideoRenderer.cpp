@@ -5,7 +5,7 @@
 
 #include <QOpenGLFramebufferObject>
 #include <QOpenGLContext>
-#include <QOpenGLFunctions_4_5_Core>
+#include <QOpenGLExtraFunctions>
 #include <QSurfaceFormat>
 #include <QDebug>
 
@@ -249,7 +249,7 @@ bool copyYuv420pFrame(const AVFrame& frame, av::codec::DecodedVideoFrame& outFra
     return true;
 }
 
-class VideoRendererBackend final : public QQuickFramebufferObject::Renderer, protected QOpenGLFunctions_4_5_Core {
+class VideoRendererBackend final : public QQuickFramebufferObject::Renderer, protected QOpenGLExtraFunctions {
 public:
     VideoRendererBackend() = default;
     ~VideoRendererBackend() override {
@@ -297,26 +297,28 @@ public:
 
     void render() override {
         if (!m_initialized) {
+            const auto* currentContext = QOpenGLContext::currentContext();
             if (!m_loggedContextInfo) {
-                if (const auto* context = QOpenGLContext::currentContext()) {
-                    const QSurfaceFormat format = context->format();
+                if (currentContext != nullptr) {
+                    const QSurfaceFormat format = currentContext->format();
                     qInfo().noquote() << "[video-renderer] context"
                                       << "major=" << format.majorVersion()
                                       << "minor=" << format.minorVersion()
                                       << "profile=" << static_cast<int>(format.profile())
-                                      << "api=" << static_cast<int>(context->openGLModuleType());
+                                      << "api=" << static_cast<int>(currentContext->openGLModuleType());
                 } else {
                     qWarning().noquote() << "[video-renderer] no current OpenGL context";
                 }
                 m_loggedContextInfo = true;
             }
-            if (!initializeOpenGLFunctions()) {
+            if (currentContext == nullptr) {
                 if (!m_loggedFunctionInitFailure) {
-                    qWarning().noquote() << "[video-renderer] OpenGL function initialization failed";
+                    qWarning().noquote() << "[video-renderer] OpenGL function initialization skipped without context";
                     m_loggedFunctionInitFailure = true;
                 }
                 return;
             }
+            initializeOpenGLFunctions();
             initializeGeometry();
             m_initialized = m_shader.initialize(this);
             if (!m_initialized && !m_loggedInitFailure) {

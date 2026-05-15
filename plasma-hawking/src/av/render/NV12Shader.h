@@ -1,6 +1,6 @@
 #pragma once
 
-#include <QOpenGLFunctions_4_5_Core>
+#include <QOpenGLExtraFunctions>
 
 namespace av::render {
 
@@ -15,15 +15,15 @@ public:
     NV12Shader() = default;
     ~NV12Shader();
 
-    bool initialize(QOpenGLFunctions_4_5_Core* gl);
-    void cleanup(QOpenGLFunctions_4_5_Core* gl);
-    void bind(QOpenGLFunctions_4_5_Core* gl) const;
-    void setInputFormat(QOpenGLFunctions_4_5_Core* gl, InputFormat format) const;
-    void release(QOpenGLFunctions_4_5_Core* gl) const;
+    bool initialize(QOpenGLExtraFunctions* gl);
+    void cleanup(QOpenGLExtraFunctions* gl);
+    void bind(QOpenGLExtraFunctions* gl) const;
+    void setInputFormat(QOpenGLExtraFunctions* gl, InputFormat format) const;
+    void release(QOpenGLExtraFunctions* gl) const;
     GLuint program() const;
 
 private:
-    GLuint compileShader(QOpenGLFunctions_4_5_Core* gl, GLenum type, const char* source);
+    GLuint compileShader(QOpenGLExtraFunctions* gl, GLenum type, const char* source);
 
     GLuint m_program{0};
     GLint m_inputFormatLocation{-1};
